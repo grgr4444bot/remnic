@@ -387,6 +387,11 @@ test("diagnostic matrix artifact records sanitized run metadata", () => {
         model: "gemma4:31b",
         baseUrl: "https://ollama.com/api",
       },
+      internalProvider: {
+        provider: "codex-cli",
+        model: "gpt-5.5",
+        baseUrl: "codex-cli://local",
+      },
     },
     variants: [],
   });
@@ -398,6 +403,9 @@ test("diagnostic matrix artifact records sanitized run metadata", () => {
     artifact.config.amaBenchCrossJudgeProvider?.baseUrl,
     "https://ollama.com/api",
   );
+  assert.equal(artifact.config.internalProvider?.provider, "codex-cli");
+  assert.equal(artifact.config.internalProvider?.model, "gpt-5.5");
+  assert.equal(artifact.config.internalProvider?.baseUrl, "codex-cli://local");
   assert.equal(artifact.config.limit, 2);
 });
 

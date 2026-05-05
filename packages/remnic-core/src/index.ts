@@ -74,6 +74,15 @@ export { StorageManager } from "./storage.js";
 // ---------------------------------------------------------------------------
 
 export { ExtractionEngine } from "./extraction.js";
+export {
+  setCodexCliFallbackRunnerForProcess,
+  type CodexCliFallbackConfig,
+  type CodexCliFallbackMessage,
+  type CodexCliFallbackOptions,
+  type CodexCliFallbackRequest,
+  type CodexCliFallbackResult,
+  type CodexCliFallbackRunner,
+} from "./codex-cli-fallback.js";
 
 // ---------------------------------------------------------------------------
 // Smart buffer (issue #563)

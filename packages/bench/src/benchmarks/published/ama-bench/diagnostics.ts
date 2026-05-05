@@ -325,6 +325,7 @@ export interface AmaBenchDiagnosticMatrixArtifact {
     seed?: number;
     systemProvider?: SanitizedDiagnosticProvider | null;
     judgeProvider?: SanitizedDiagnosticProvider | null;
+    internalProvider?: SanitizedDiagnosticProvider | null;
     amaBenchCrossJudgeProvider?: SanitizedDiagnosticProvider | null;
     strongSystemProvider?: SanitizedDiagnosticProvider | null;
     variantIds?: string[];

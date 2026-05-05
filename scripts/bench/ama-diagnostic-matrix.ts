@@ -66,6 +66,12 @@ interface ParsedArgs {
   judgeModel?: string;
   judgeBaseUrl?: string;
   judgeApiKey?: string;
+  internalProvider?: BuiltInProvider;
+  internalModel?: string;
+  internalBaseUrl?: string;
+  internalApiKey?: string;
+  internalDisableThinking: boolean;
+  internalCodexReasoningEffort?: ProviderConfig["reasoningEffort"];
   strongSystemProvider?: BuiltInProvider;
   strongSystemModel?: string;
   strongSystemBaseUrl?: string;
@@ -134,6 +140,12 @@ export async function runAmaBenchDiagnosticMatrix(
     judgeModel: parsed.judgeModel,
     judgeBaseUrl: parsed.judgeBaseUrl,
     judgeApiKey: parsed.judgeApiKey,
+    internalProvider: parsed.internalProvider,
+    internalModel: parsed.internalModel,
+    internalBaseUrl: parsed.internalBaseUrl,
+    internalApiKey: parsed.internalApiKey,
+    internalDisableThinking: parsed.internalDisableThinking,
+    internalCodexReasoningEffort: parsed.internalCodexReasoningEffort,
     requestTimeout: parsed.requestTimeout,
     max429WaitMs: parsed.max429WaitMs,
     disableThinking: parsed.disableThinking,
@@ -168,6 +180,7 @@ export async function runAmaBenchDiagnosticMatrix(
         runtimeProfile: runtime.profile,
         systemProvider: runtime.systemProvider,
         judgeProvider: runtime.judgeProvider,
+        internalProvider: runtime.internalProvider,
         remnicConfig: runtime.remnicConfig,
         amaBenchJudgeProtocol: parsed.amaBenchJudgeProtocol,
         ...(crossJudge.judge ? { amaBenchCrossJudge: crossJudge.judge } : {}),
@@ -197,6 +210,7 @@ export async function runAmaBenchDiagnosticMatrix(
       ...(parsed.seed !== undefined ? { seed: parsed.seed } : {}),
       systemProvider: sanitizeProvider(runtime.systemProvider),
       judgeProvider: sanitizeProvider(runtime.judgeProvider),
+      internalProvider: sanitizeProvider(runtime.internalProvider),
       amaBenchCrossJudgeProvider: sanitizeProvider(crossJudge.provider),
       strongSystemProvider: sanitizeProvider(strongProviderConfig(parsed)),
       variantIds: variants.map((variant) => variant.id),
@@ -356,22 +370,31 @@ function validatePrimaryProviderConfigs(parsed: ParsedArgs): void {
     baseUrl: parsed.judgeBaseUrl,
     apiKey: parsed.judgeApiKey,
   });
+  validateProviderFlagGroup("internal", {
+    provider: parsed.internalProvider,
+    model: parsed.internalModel,
+    baseUrl: parsed.internalBaseUrl,
+    apiKey: parsed.internalApiKey,
+    codexReasoningEffort: parsed.internalCodexReasoningEffort,
+  });
 }
 
 function validateProviderFlagGroup(
-  label: "system" | "judge",
+  label: "system" | "judge" | "internal",
   config: {
     provider?: BuiltInProvider;
     model?: string;
     baseUrl?: string;
     apiKey?: string;
+    codexReasoningEffort?: ProviderConfig["reasoningEffort"];
   },
 ): void {
   const hasAny =
     config.provider !== undefined ||
     config.model !== undefined ||
     config.baseUrl !== undefined ||
-    config.apiKey !== undefined;
+    config.apiKey !== undefined ||
+    config.codexReasoningEffort !== undefined;
   if (!hasAny) {
     return;
   }
@@ -383,6 +406,14 @@ function validateProviderFlagGroup(
   if (config.provider === "local-llm" && !config.baseUrl) {
     throw new Error(
       `--${label}-provider local-llm requires --${label}-base-url.`,
+    );
+  }
+  if (
+    config.codexReasoningEffort !== undefined &&
+    config.provider !== "codex-cli"
+  ) {
+    throw new Error(
+      `--${label}-codex-reasoning-effort requires --${label}-provider codex-cli.`,
     );
   }
 }
@@ -436,6 +467,7 @@ function asProviderFactoryConfig(config: ProviderConfig): ProviderFactoryConfig 
     ...(config.apiKey ? { apiKey: config.apiKey } : {}),
     ...(config.retryOptions ? { retryOptions: config.retryOptions } : {}),
     ...(config.disableThinking ? { disableThinking: config.disableThinking } : {}),
+    ...(config.reasoningEffort ? { reasoningEffort: config.reasoningEffort } : {}),
   } as ProviderFactoryConfig;
 }
 
@@ -458,6 +490,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     runtimeProfile: "real",
     strongDisableThinking: false,
     disableThinking: false,
+    internalDisableThinking: false,
     amaBenchJudgeProtocol: "default",
     includeStrong: false,
   };
@@ -551,6 +584,32 @@ function parseArgs(argv: string[]): ParsedArgs {
         break;
       case "--judge-api-key":
         parsed.judgeApiKey = parseNonEmptyValue(takeValue(index, arg), arg);
+        index += 1;
+        break;
+      case "--internal-provider":
+        parsed.internalProvider = parseProvider(takeValue(index, arg), arg);
+        index += 1;
+        break;
+      case "--internal-model":
+        parsed.internalModel = parseNonEmptyValue(takeValue(index, arg), arg);
+        index += 1;
+        break;
+      case "--internal-base-url":
+        parsed.internalBaseUrl = parseNonEmptyValue(takeValue(index, arg), arg);
+        index += 1;
+        break;
+      case "--internal-api-key":
+        parsed.internalApiKey = parseNonEmptyValue(takeValue(index, arg), arg);
+        index += 1;
+        break;
+      case "--internal-disable-thinking":
+        parsed.internalDisableThinking = true;
+        break;
+      case "--internal-codex-reasoning-effort":
+        parsed.internalCodexReasoningEffort = parseReasoningEffort(
+          takeValue(index, arg),
+          arg,
+        );
         index += 1;
         break;
       case "--strong-system-provider":
@@ -679,6 +738,21 @@ function parseAmaProtocol(value: string): "default" | "recommended" {
   throw new Error('--ama-bench-judge-protocol must be "default" or "recommended".');
 }
 
+function parseReasoningEffort(
+  value: string,
+  flag: string,
+): NonNullable<ProviderConfig["reasoningEffort"]> {
+  if (
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "xhigh"
+  ) {
+    return value;
+  }
+  throw new Error(`${flag} must be "low", "medium", "high", or "xhigh".`);
+}
+
 function parseNonEmptyValue(value: string, flag: string): string {
   if (value.trim().length === 0) {
     throw new Error(`${flag} must not be empty.`);
@@ -748,6 +822,14 @@ Normal answerer / judge:
   --judge-model <model>
   --judge-base-url <url>
   --ama-bench-judge-protocol <default|recommended>
+
+Remnic internal LLM:
+  --internal-provider <provider>     Provider for Remnic extraction/summarization.
+  --internal-model <model>
+  --internal-base-url <url>
+  --internal-api-key <key>
+  --internal-disable-thinking
+  --internal-codex-reasoning-effort <low|medium|high|xhigh>
 
 Strong-answerer ablations:
   --strong-system-provider <provider>

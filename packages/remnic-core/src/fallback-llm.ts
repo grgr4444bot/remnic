@@ -8,6 +8,7 @@ import {
 } from "./openai-chat-compat.js";
 import { resolveProviderApiKey, getGatewayRuntimeAuthForModel } from "./resolve-provider-secret.js";
 import { loadModelsJsonProviders } from "./models-json.js";
+import { callCodexCliFallback } from "./codex-cli-fallback.js";
 
 export interface FallbackLlmOptions {
   temperature?: number;
@@ -368,9 +369,16 @@ export class FallbackLlmClient {
   ): Promise<{ content: string; usage?: FallbackLlmResponse["usage"] } | null> {
     // Try the gateway's native runtime auth first — it handles all provider-
     // specific transforms (OAuth exchange, base URL rewrite, etc.)
-    const runtimeAuth = await this.resolveRuntimeAuth(model);
+    const runtimeAuth = model.providerConfig.api === "codex-cli"
+      ? null
+      : await this.resolveRuntimeAuth(model);
     const effectiveBaseUrl = runtimeAuth?.baseUrl ?? model.providerConfig.baseUrl;
-    const resolvedApiKey = runtimeAuth?.apiKey ?? await this.resolveFallbackApiKey(model);
+    const resolvedApiKey = runtimeAuth?.apiKey
+      ?? (
+        model.providerConfig.api === "codex-cli" && model.providerConfig.apiKey === undefined
+          ? undefined
+          : await this.resolveFallbackApiKey(model)
+      );
 
     // If the raw key looks like an unresolved secret ref and resolution fails,
     // skip this provider entirely so the chain falls through to the next.
@@ -389,6 +397,19 @@ export class FallbackLlmClient {
 
     if (model.providerConfig.api === "anthropic-messages") {
       return await this.callAnthropic(effectiveConfig, model.modelId, messages, options);
+    }
+
+    if (model.providerConfig.api === "codex-cli") {
+      return await callCodexCliFallback(
+        effectiveConfig,
+        model.modelId,
+        messages,
+        { timeoutMs: options.timeoutMs },
+      );
+    }
+
+    if (model.providerConfig.api === "ollama-chat") {
+      return await this.callOllamaChat(effectiveConfig, model.modelId, messages, options);
     }
 
     if (
@@ -543,6 +564,70 @@ export class FallbackLlmClient {
             totalTokens: data.usage.total_tokens,
           }
         : undefined,
+    };
+  }
+
+  /**
+   * Call Ollama's native /api/chat transport. This lets benchmark-isolated
+   * gateway configs route Remnic's own internal LLM calls to Ollama Cloud
+   * without requiring an OpenAI-compatible shim.
+   */
+  private async callOllamaChat(
+    config: ModelProviderConfig,
+    modelId: string,
+    messages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
+    options: FallbackLlmOptions,
+  ): Promise<{ content: string; usage?: FallbackLlmResponse["usage"] } | null> {
+    const base = config.baseUrl.replace(/\/$/, "");
+    const url = base.endsWith("/api") ? `${base}/chat` : `${base}/api/chat`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...config.headers,
+    };
+    if (config.apiKey && typeof config.apiKey === "string" && config.authHeader !== false) {
+      headers.Authorization = `Bearer ${config.apiKey}`;
+    }
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: modelId,
+        messages,
+        stream: false,
+        ...(config.disableThinking ? { think: false } : {}),
+        options: {
+          temperature: options.temperature ?? 0.3,
+          num_predict: options.maxTokens ?? 4096,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Ollama API error: ${response.status} ${error}`);
+    }
+
+    const data = (await response.json()) as {
+      message?: { content?: string };
+      response?: string;
+      prompt_eval_count?: number;
+      eval_count?: number;
+    };
+    const content = data.message?.content ?? data.response;
+    if (!content) {
+      throw new Error("Empty response from Ollama API");
+    }
+
+    const inputTokens = data.prompt_eval_count ?? 0;
+    const outputTokens = data.eval_count ?? 0;
+    return {
+      content,
+      usage: {
+        inputTokens,
+        outputTokens,
+        totalTokens: inputTokens + outputTokens,
+      },
     };
   }
 

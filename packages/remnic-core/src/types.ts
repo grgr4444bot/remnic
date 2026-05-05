@@ -2872,7 +2872,13 @@ export type LlmTraceCallback = (event: EngramTraceEvent) => void;
 // Gateway Configuration Types (for fallback AI)
 // ============================================================================
 
-export type ModelApi = "openai-completions" | "anthropic-messages" | "google-generative" | string;
+export type ModelApi =
+  | "openai-completions"
+  | "anthropic-messages"
+  | "google-generative"
+  | "codex-cli"
+  | string;
+export type CodexCliReasoningEffort = "low" | "medium" | "high" | "xhigh";
 
 export type ModelProviderAuthMode = "bearer" | "header" | "query";
 
@@ -2893,6 +2899,14 @@ export interface ModelProviderConfig {
   api?: ModelApi;
   headers?: Record<string, string>;
   authHeader?: boolean;
+  disableThinking?: boolean;
+  executable?: string;
+  reasoningEffort?: CodexCliReasoningEffort;
+  codexCliExecutable?: string;
+  codexCliReasoningEffort?: CodexCliReasoningEffort;
+  retryOptions?: {
+    timeoutMs?: number;
+  };
   models: ModelDefinitionConfig[];
 }
 
