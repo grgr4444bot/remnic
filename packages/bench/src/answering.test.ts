@@ -290,6 +290,10 @@ test("unknown retry helper preserves the original prompt and answer format const
 test("unknown and explicit trajectory evidence helpers are conservative", () => {
   assert.equal(isUnknownOnlyAnswer("unknown"), true);
   assert.equal(isUnknownOnlyAnswer("\"The answer is unknown.\""), true);
+  assert.equal(
+    isUnknownOnlyAnswer(`${'"'.repeat(5_000)}unknown${'"'.repeat(5_000)}`),
+    true,
+  );
   assert.equal(isUnknownOnlyAnswer("unknown from the context"), false);
   assert.equal(
     hasExplicitTrajectoryEvidence(
@@ -308,6 +312,30 @@ test("unknown and explicit trajectory evidence helpers are conservative", () => 
       "## Remnic recall pipeline\n[Action 3]: up\n[Observation 3]: the key moved closer",
     ),
     false,
+  );
+  assert.equal(
+    hasExplicitTrajectoryEvidence(
+      "##Explicit Cue Evidence\n[Action 3]: up",
+    ),
+    false,
+  );
+  assert.equal(
+    hasExplicitTrajectoryEvidence(
+      "##\tExplicit Cue Evidence\r\n[Observation 12]: the key moved closer",
+    ),
+    true,
+  );
+  assert.equal(
+    hasExplicitTrajectoryEvidence(
+      "## Explicit Cue Evidence\n[Action\t12]: the key moved closer",
+    ),
+    true,
+  );
+  assert.equal(
+    hasExplicitTrajectoryEvidence(
+      "## Explicit Cue Evidence\n[Action  12]: the key moved closer",
+    ),
+    true,
   );
 });
 

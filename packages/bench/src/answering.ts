@@ -212,18 +212,116 @@ export function buildUnknownRetryQuestion(
 }
 
 export function isUnknownOnlyAnswer(answer: string): boolean {
-  const normalized = answer
-    .trim()
-    .toLowerCase()
-    .replace(/^["'`]+|["'`]+$/g, "")
-    .replace(/[.!?]+$/g, "")
-    .trim();
+  const normalized = stripTrailingSentencePunctuation(
+    stripWrappingQuotes(answer.trim().toLowerCase()),
+  ).trim();
   return normalized === "unknown" || normalized === "the answer is unknown";
 }
 
 export function hasExplicitTrajectoryEvidence(recalledText: string): boolean {
-  return /^##\s+Explicit Cue Evidence\b/m.test(recalledText)
-    && /\[(?:Action|Observation)\s+\d+\]/.test(recalledText);
+  return hasExplicitCueEvidenceHeading(recalledText) &&
+    (hasStepMarker(recalledText, "Action") ||
+      hasStepMarker(recalledText, "Observation"));
+}
+
+function stripWrappingQuotes(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && isWrappingQuote(value.charCodeAt(start))) {
+    start += 1;
+  }
+  while (end > start && isWrappingQuote(value.charCodeAt(end - 1))) {
+    end -= 1;
+  }
+  return value.slice(start, end);
+}
+
+function stripTrailingSentencePunctuation(value: string): string {
+  let end = value.length;
+  while (end > 0 && isSentencePunctuation(value.charCodeAt(end - 1))) {
+    end -= 1;
+  }
+  return value.slice(0, end);
+}
+
+function isWrappingQuote(code: number): boolean {
+  return code === 34 || code === 39 || code === 96;
+}
+
+function isSentencePunctuation(code: number): boolean {
+  return code === 33 || code === 46 || code === 63;
+}
+
+function hasExplicitCueEvidenceHeading(text: string): boolean {
+  const lines = text
+    .replaceAll("\r\n", "\n")
+    .replaceAll("\r", "\n")
+    .split("\n");
+  for (const line of lines) {
+    if (!line.startsWith("##") || line.startsWith("###")) {
+      continue;
+    }
+    const rawTitle = line.slice(2);
+    if (
+      rawTitle.length === 0 ||
+      !isAsciiWhitespace(rawTitle.charCodeAt(0))
+    ) {
+      continue;
+    }
+    const title = rawTitle.trimStart();
+    if (
+      title === "Explicit Cue Evidence" ||
+      title.startsWith("Explicit Cue Evidence ") ||
+      title.startsWith("Explicit Cue Evidence\t")
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasStepMarker(text: string, label: "Action" | "Observation"): boolean {
+  const prefix = `[${label}`;
+  let offset = 0;
+  while (offset < text.length) {
+    const start = text.indexOf(prefix, offset);
+    if (start === -1) {
+      return false;
+    }
+    let index = start + prefix.length;
+    if (!isAsciiWhitespace(text.charCodeAt(index))) {
+      offset = start + 1;
+      continue;
+    }
+    while (index < text.length && isAsciiWhitespace(text.charCodeAt(index))) {
+      index += 1;
+    }
+    let sawDigit = false;
+    while (index < text.length && isAsciiDigit(text.charCodeAt(index))) {
+      sawDigit = true;
+      index += 1;
+    }
+    if (sawDigit && text[index] === "]") {
+      return true;
+    }
+    offset = start + 1;
+  }
+  return false;
+}
+
+function isAsciiDigit(code: number): boolean {
+  return code >= 48 && code <= 57;
+}
+
+function isAsciiWhitespace(code: number): boolean {
+  return (
+    code === 9 ||
+    code === 10 ||
+    code === 11 ||
+    code === 12 ||
+    code === 13 ||
+    code === 32
+  );
 }
 
 function formatQuestionContext(context: BenchmarkQuestionContext | undefined): string[] {
