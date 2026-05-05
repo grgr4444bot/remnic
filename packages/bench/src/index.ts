@@ -158,6 +158,28 @@ export {
   serializeJsonl,
   writeLeaderboardArtifactsForResult,
 } from "./leaderboard-export.js";
+export {
+  AMA_BENCH_DIAGNOSTIC_VARIANTS,
+  buildAmaBenchDiagnosticMatrixArtifact,
+  buildAmaBenchDiagnosticVariantSummary,
+  buildOracleTrajectoryRecall,
+  createAmaBenchDiagnosticAdapter,
+  extractMarkdownSectionsByTitle,
+  isAmaBenchUnknownLikeAnswer,
+  selectAmaBenchDiagnosticVariants,
+} from "./benchmarks/published/ama-bench/diagnostics.js";
+export type {
+  AmaBenchDiagnosticAdapterOptions,
+  AmaBenchDiagnosticAnswererMode,
+  AmaBenchDiagnosticBreakdown,
+  AmaBenchDiagnosticMatrixArtifact,
+  AmaBenchDiagnosticRecallMode,
+  AmaBenchDiagnosticRunContext,
+  AmaBenchDiagnosticTaskRow,
+  AmaBenchDiagnosticVariant,
+  AmaBenchDiagnosticVariantSummary,
+  SanitizedDiagnosticProvider,
+} from "./benchmarks/published/ama-bench/diagnostics.js";
 export type {
   LeaderboardArtifactWrite,
 } from "./leaderboard-export.js";
