@@ -207,6 +207,7 @@ import {
   type CausalTrajectorySearchResult,
 } from "./causal-trajectory.js";
 import {
+  objectiveStateStoreOverrideForNamespace,
   searchObjectiveStateSnapshots,
   type ObjectiveStateSearchResult,
 } from "./objective-state.js";
@@ -6866,9 +6867,12 @@ export class Orchestrator {
             memoryDir: this.config.namespacesEnabled
               ? storage!.dir
               : this.config.memoryDir,
-            objectiveStateStoreDir: !this.config.namespacesEnabled
-              ? this.config.objectiveStateStoreDir
-              : undefined,
+            objectiveStateStoreDir: objectiveStateStoreOverrideForNamespace({
+              memoryDir: this.config.memoryDir,
+              configuredStoreDir: this.config.objectiveStateStoreDir,
+              namespacesEnabled: this.config.namespacesEnabled,
+              namespace,
+            }),
             query: retrievalQuery,
             maxResults,
             sessionKey: namespace !== this.config.defaultNamespace && sessionKey

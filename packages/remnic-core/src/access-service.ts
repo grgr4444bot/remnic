@@ -119,6 +119,7 @@ import {
   type MemoryOutcomeKind,
   type RecordMemoryOutcomeResult,
 } from "./memory-worth-outcomes.js";
+import { objectiveStateStoreOverrideForNamespace } from "./objective-state.js";
 import { recordObjectiveStateSnapshotsFromObservedMessages } from "./objective-state-writers.js";
 import {
   importCapsule as importCapsuleFn,
@@ -988,7 +989,15 @@ export class EngramAccessService {
       };
     }
     const storage = await this.orchestrator.getStorage(namespace);
-    return { memoryDir: storage.dir };
+    return {
+      memoryDir: storage.dir,
+      objectiveStateStoreDir: objectiveStateStoreOverrideForNamespace({
+        memoryDir: this.orchestrator.config.memoryDir,
+        configuredStoreDir: this.orchestrator.config.objectiveStateStoreDir,
+        namespacesEnabled: this.orchestrator.config.namespacesEnabled,
+        namespace,
+      }),
+    };
   }
 
   private resolveReadableNamespace(namespace: string | undefined, principal?: string): string {

@@ -269,3 +269,70 @@ test("recall searches objective-state snapshots from routed default namespace st
     await rm(memoryDir, { recursive: true, force: true });
   }
 });
+
+test("recall searches namespaced objective-state snapshots from configured store override", async () => {
+  const memoryDir = await mkdtemp(path.join(os.tmpdir(), "engram-objective-state-recall-override-ns-"));
+  const overrideDir = await mkdtemp(path.join(os.tmpdir(), "engram-objective-state-recall-override-store-"));
+  await mkdir(path.join(memoryDir, "namespaces", "global"), { recursive: true });
+  const cfg = parseConfig({
+    openaiApiKey: "test-openai-key",
+    memoryDir,
+    qmdEnabled: false,
+    transcriptEnabled: false,
+    sharedContextEnabled: false,
+    conversationIndexEnabled: false,
+    hourlySummariesEnabled: false,
+    injectQuestions: false,
+    namespacesEnabled: true,
+    defaultNamespace: "global",
+    sharedNamespace: "shared",
+    defaultRecallNamespaces: ["self"],
+    objectiveStateMemoryEnabled: true,
+    objectiveStateSnapshotWritesEnabled: true,
+    objectiveStateRecallEnabled: true,
+    objectiveStateStoreDir: overrideDir,
+    recallPipeline: [
+      {
+        id: "objective-state",
+        enabled: true,
+        maxResults: 2,
+        maxChars: 1200,
+      },
+    ],
+  });
+  const orchestrator = new Orchestrator(cfg);
+
+  try {
+    const defaultStorage = await orchestrator.getStorage("global");
+    await recordObjectiveStateSnapshot({
+      memoryDir: defaultStorage.dir,
+      objectiveStateStoreDir: path.join(overrideDir, "namespaces", "global"),
+      snapshot: {
+        schemaVersion: 1,
+        snapshotId: "snap-override-default-validation",
+        recordedAt: "2026-03-07T10:01:00.000Z",
+        sessionKey: "agent:main",
+        source: "tool_result",
+        kind: "process",
+        changeKind: "failed",
+        scope: "npm run validation",
+        summary: "Override default validation failed in the configured store.",
+        toolName: "exec_command",
+        command: "npm run validation",
+        outcome: "failure",
+        tags: ["validation"],
+      },
+    });
+
+    const context = await (orchestrator as any).recallInternal(
+      "Why did validation fail?",
+      "agent:main",
+    );
+
+    assert.match(context, /## Objective State/);
+    assert.match(context, /configured store/i);
+  } finally {
+    await rm(memoryDir, { recursive: true, force: true });
+    await rm(overrideDir, { recursive: true, force: true });
+  }
+});

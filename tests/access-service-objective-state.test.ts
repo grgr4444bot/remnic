@@ -29,6 +29,7 @@ function createObjectiveStateObserveService(
     ) => string;
     objectiveStateMemoryEnabled?: boolean;
     objectiveStateSnapshotWritesEnabled?: boolean;
+    objectiveStateStoreDir?: string;
   } = {},
 ): EngramAccessService {
   const codingContexts = new Map<string, unknown>();
@@ -55,6 +56,9 @@ function createObjectiveStateObserveService(
         options.objectiveStateMemoryEnabled ?? true,
       objectiveStateSnapshotWritesEnabled:
         options.objectiveStateSnapshotWritesEnabled ?? true,
+      ...(options.objectiveStateStoreDir
+        ? { objectiveStateStoreDir: options.objectiveStateStoreDir }
+        : {}),
     },
     lcmEngine: null,
     getStorage: async (namespace?: string) => ({
@@ -262,6 +266,72 @@ test("observe writes default namespace snapshots through routed storage", async 
   } finally {
     await rm(memoryDir, { recursive: true, force: true });
     await rm(routedDir, { recursive: true, force: true });
+  }
+});
+
+test("observe preserves configured objective-state store override with namespaces", async () => {
+  const memoryDir = await mkdtemp(path.join(os.tmpdir(), "remnic-access-objective-state-root-"));
+  const routedDir = await mkdtemp(path.join(os.tmpdir(), "remnic-access-objective-state-routed-"));
+  const overrideDir = await mkdtemp(path.join(os.tmpdir(), "remnic-access-objective-state-override-"));
+  const service = createObjectiveStateObserveService(memoryDir, {
+    namespacesEnabled: true,
+    storageDirs: { global: routedDir },
+    objectiveStateStoreDir: overrideDir,
+  });
+
+  try {
+    const response = await service.observe({
+      sessionKey: "agent:main",
+      skipExtraction: true,
+      messages: [
+        {
+          role: "assistant",
+          content: "Ran the override validation command.",
+          parts: [
+            {
+              ordinal: 0,
+              kind: "tool_call",
+              toolName: "exec_command",
+              payload: {
+                id: "call-override-validate",
+                name: "exec_command",
+                arguments: { cmd: "npm run override-validate" },
+              },
+            },
+            {
+              ordinal: 1,
+              kind: "tool_result",
+              payload: {
+                id: "call-override-validate",
+                output: { exitCode: 0, stdout: "all checks passed" },
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    assert.equal(response.accepted, 1);
+
+    const routedStatus = await getObjectiveStateStoreStatus({
+      memoryDir: routedDir,
+      enabled: true,
+      writesEnabled: true,
+    });
+    const overrideStatus = await getObjectiveStateStoreStatus({
+      memoryDir: routedDir,
+      objectiveStateStoreDir: path.join(overrideDir, "namespaces", "global"),
+      enabled: true,
+      writesEnabled: true,
+    });
+
+    assert.equal(routedStatus.snapshots.total, 0);
+    assert.equal(overrideStatus.snapshots.total, 1);
+    assert.equal(overrideStatus.latestSnapshot?.scope, "npm run override-validate");
+  } finally {
+    await rm(memoryDir, { recursive: true, force: true });
+    await rm(routedDir, { recursive: true, force: true });
+    await rm(overrideDir, { recursive: true, force: true });
   }
 });
 
