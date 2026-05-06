@@ -723,7 +723,6 @@ function observedPartsToAgentMessages(options: {
       synthetic.push(buildSyntheticAssistantToolCall(id, toolName, args));
       const nextEntry = entries[entryIndex + 1];
       const nextIsIdlessToolResult =
-        nextEntry?.messageIndex === entry.messageIndex &&
         nextEntry?.part.kind === "tool_result" &&
         partToolCallId(nextEntry.part) === undefined;
       pendingIdlessToolCallId = nextIsIdlessToolResult

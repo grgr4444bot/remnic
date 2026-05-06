@@ -953,7 +953,49 @@ test("deriveObjectiveStateSnapshotsFromObservedMessages ignores status-only tool
   assert.equal(snapshots.length, 0);
 });
 
-test("deriveObjectiveStateSnapshotsFromObservedMessages pairs idless results only when adjacent in the same message", () => {
+test("deriveObjectiveStateSnapshotsFromObservedMessages pairs adjacent idless results across observed messages", () => {
+  const snapshots = deriveObjectiveStateSnapshotsFromObservedMessages({
+    sessionKey: "agent:main",
+    recordedAt: "2026-03-07T12:06:58.000Z",
+    messages: [
+      {
+        role: "assistant",
+        content: "Running tests.",
+        parts: [
+          {
+            ordinal: 0,
+            kind: "tool_call",
+            toolName: "exec_command",
+            payload: {
+              name: "exec_command",
+              arguments: { cmd: "npm test" },
+            },
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: "Tool result: tests passed.",
+        parts: [
+          {
+            ordinal: 0,
+            kind: "tool_result",
+            payload: {
+              output: { exitCode: 0, stdout: "ok" },
+            },
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(snapshots.length, 1);
+  assert.equal(snapshots[0]?.kind, "process");
+  assert.equal(snapshots[0]?.scope, "npm test");
+  assert.equal(snapshots[0]?.outcome, "success");
+});
+
+test("deriveObjectiveStateSnapshotsFromObservedMessages pairs idless results only when adjacent", () => {
   const snapshots = deriveObjectiveStateSnapshotsFromObservedMessages({
     sessionKey: "agent:main",
     recordedAt: "2026-03-07T12:07:00.000Z",
