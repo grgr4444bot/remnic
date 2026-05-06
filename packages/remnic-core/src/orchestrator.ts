@@ -1892,6 +1892,7 @@ export class Orchestrator {
           const result = this.config.modelSource === "gateway" && this._fastGatewayLlm
             ? await this._fastGatewayLlm.chatCompletion(messages, {
                 maxTokens: targetTokens * 2,
+                timeoutMs: this.config.localLlmFastTimeoutMs,
                 agentId:
                   this.config.fastGatewayAgentId ||
                   this.config.gatewayAgentId ||

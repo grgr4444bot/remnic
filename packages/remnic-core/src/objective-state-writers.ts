@@ -555,7 +555,8 @@ function observedPartsToAgentMessages(options: {
     ) {
       const toolName = partToolName(part);
       if (!toolName) continue;
-      const id = partToolCallId(part) ??
+      const observedToolCallId = partToolCallId(part);
+      const id = observedToolCallId ??
         syntheticPartId({
           sessionKey: options.sessionKey,
           messageIndex: entry.messageIndex,
@@ -565,7 +566,11 @@ function observedPartsToAgentMessages(options: {
       const args = toolArgumentsFromPart(part);
       synthetic.push(buildSyntheticAssistantToolCall(id, toolName, args));
 
-      if ((part.kind === "file_write" || part.kind === "patch") && !resultIds.has(id)) {
+      if (
+        (part.kind === "file_write" || part.kind === "patch") &&
+        !observedToolCallId &&
+        !resultIds.has(id)
+      ) {
         synthetic.push({
           role: "tool",
           tool_call_id: id,

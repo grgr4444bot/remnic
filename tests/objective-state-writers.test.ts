@@ -236,6 +236,36 @@ test("deriveObjectiveStateSnapshotsFromObservedMessages correlates OpenAI respon
   assert.equal(snapshots[0]?.metadata?.toolCallId, "call-openai-raw");
 });
 
+test("deriveObjectiveStateSnapshotsFromObservedMessages does not synthesize provider file-call success without output", () => {
+  const snapshots = deriveObjectiveStateSnapshotsFromObservedMessages({
+    sessionKey: "agent:main",
+    recordedAt: "2026-03-07T12:00:44.000Z",
+    messages: [
+      {
+        role: "assistant",
+        content: "Attempted to write a file.",
+        sourceFormat: "openai",
+        rawContent: {
+          output: [
+            {
+              type: "function_call",
+              id: "fc-response-item",
+              call_id: "call-write-raw",
+              name: "write_file",
+              arguments: JSON.stringify({
+                path: "workspace/pending.txt",
+                content: "pending write",
+              }),
+            },
+          ],
+        },
+      },
+    ],
+  });
+
+  assert.equal(snapshots.length, 0);
+});
+
 test("deriveObjectiveStateSnapshotsFromObservedMessages uses stable ids for observed parts", () => {
   const input = {
     sessionKey: "agent:main",

@@ -4,18 +4,20 @@ import os from "node:os";
 import path from "node:path";
 import { mkdtemp, rm } from "node:fs/promises";
 
+import { setCodexCliFallbackRunnerForProcess } from "@remnic/core";
+
 import { Orchestrator } from "../src/orchestrator.js";
 import { parseConfig } from "../src/config.js";
-import { __codexCliFallbackTestHooks } from "../packages/remnic-core/src/codex-cli-fallback.js";
 
 test("LCM summarization uses gateway internal LLM when modelSource is gateway", async () => {
   const memoryDir = await mkdtemp(path.join(os.tmpdir(), "remnic-lcm-gateway-"));
-  const calls: Array<{ modelId: string; agentPrompt: string }> = [];
-  const restoreRunner = __codexCliFallbackTestHooks.setRunCodexCliForTest(
+  const calls: Array<{ modelId: string; agentPrompt: string; timeoutMs?: number }> = [];
+  const restoreRunner = setCodexCliFallbackRunnerForProcess(
     async (request) => {
       calls.push({
         modelId: request.modelId,
         agentPrompt: request.messages.map((message) => message.content).join("\n"),
+        timeoutMs: request.options.timeoutMs,
       });
       return {
         content: "Codex gateway summary.",
@@ -30,6 +32,7 @@ test("LCM summarization uses gateway internal LLM when modelSource is gateway", 
       lcmLeafBatchSize: 2,
       lcmRollupFanIn: 100,
       localLlmEnabled: false,
+      localLlmFastTimeoutMs: 1234,
       modelSource: "gateway",
       gatewayAgentId: "remnic-bench-internal",
       fastGatewayAgentId: "remnic-bench-internal",
@@ -80,6 +83,7 @@ test("LCM summarization uses gateway internal LLM when modelSource is gateway", 
     assert.equal(stats.totalSummaryNodes, 1);
     assert.equal(calls.length, 1);
     assert.equal(calls[0]?.modelId, "gpt-5.5");
+    assert.equal(calls[0]?.timeoutMs, 1234);
     assert.match(calls[0]?.agentPrompt ?? "", /gateway too/);
   } finally {
     restoreRunner();
