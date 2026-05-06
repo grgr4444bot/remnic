@@ -3355,6 +3355,13 @@ export class EngramAccessService {
     // Validate namespace authorization BEFORE attaching coding context so
     // a failed auth check doesn't leave orphaned context on the session
     // (Codex review P2).
+    const hasExplicitNamespace =
+      typeof request.namespace === "string" &&
+      request.namespace.trim().length > 0;
+    const principal = this.resolveWritePrincipal(
+      request.sessionKey,
+      request.authenticatedPrincipal,
+    );
     const namespace = this.resolveWritableNamespace(
       request.namespace,
       request.sessionKey,
@@ -3369,14 +3376,14 @@ export class EngramAccessService {
       projectTag: request.projectTag,
     });
 
-    const hasExplicitNamespace =
-      typeof request.namespace === "string" &&
-      request.namespace.trim().length > 0;
+    const objectiveStateBaseNamespace = hasExplicitNamespace
+      ? namespace
+      : defaultNamespaceForPrincipal(principal, this.orchestrator.config);
     const objectiveStateNamespace = hasExplicitNamespace
       ? namespace
       : this.orchestrator.applyCodingNamespaceOverlay(
           request.sessionKey,
-          namespace,
+          objectiveStateBaseNamespace,
         );
     const objectiveStateSessionKey =
       objectiveStateNamespace !== this.orchestrator.config.defaultNamespace

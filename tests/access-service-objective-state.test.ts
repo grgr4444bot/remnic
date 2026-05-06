@@ -278,3 +278,91 @@ test("observe writes objective-state snapshots into the coding namespace overlay
     await rm(projectDir, { recursive: true, force: true });
   }
 });
+
+test("observe bases implicit objective-state snapshots on the principal namespace", async () => {
+  const memoryDir = await mkdtemp(path.join(os.tmpdir(), "remnic-access-objective-state-global-"));
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), "remnic-access-objective-state-principal-"));
+  const service = createObjectiveStateObserveService(memoryDir, {
+    namespacesEnabled: true,
+    storageDirs: { "alice-project-a": projectDir },
+    namespacePolicies: [
+      {
+        name: "alice",
+        readPrincipals: ["alice"],
+        writePrincipals: ["alice"],
+      },
+    ],
+    codingMode: {
+      projectScope: true,
+      branchScope: false,
+      globalFallback: false,
+    },
+    applyCodingNamespaceOverlay: (sessionKey, baseNamespace, codingContext) => {
+      assert.equal(sessionKey, "agent:main");
+      assert.equal(baseNamespace, "alice");
+      assert.deepEqual(codingContext, {
+        projectId: "tag:project-a",
+        branch: null,
+        rootPath: "tag:project-a",
+        defaultBranch: null,
+      });
+      return "alice-project-a";
+    },
+  });
+
+  try {
+    const response = await service.observe({
+      sessionKey: "agent:main",
+      authenticatedPrincipal: "alice",
+      projectTag: "project-a",
+      skipExtraction: true,
+      messages: [
+        {
+          role: "assistant",
+          content: "Ran the principal project validation command.",
+          parts: [
+            {
+              ordinal: 0,
+              kind: "tool_call",
+              toolName: "exec_command",
+              payload: {
+                id: "call-principal-project-validate",
+                name: "exec_command",
+                arguments: { cmd: "npm run principal-project-validate" },
+              },
+            },
+            {
+              ordinal: 1,
+              kind: "tool_result",
+              payload: {
+                id: "call-principal-project-validate",
+                output: { exitCode: 0, stdout: "all checks passed" },
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    assert.equal(response.accepted, 1);
+
+    const globalStatus = await getObjectiveStateStoreStatus({
+      memoryDir,
+      enabled: true,
+      writesEnabled: true,
+    });
+    const projectStatus = await getObjectiveStateStoreStatus({
+      memoryDir: projectDir,
+      enabled: true,
+      writesEnabled: true,
+    });
+
+    assert.equal(globalStatus.snapshots.total, 0);
+    assert.equal(projectStatus.snapshots.total, 1);
+    assert.equal(projectStatus.latestSnapshot?.sessionKey, "alice-project-a:agent:main");
+    assert.equal(projectStatus.latestSnapshot?.scope, "npm run principal-project-validate");
+  } finally {
+    await rm(memoryDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
