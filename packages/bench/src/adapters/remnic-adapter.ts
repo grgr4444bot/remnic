@@ -314,10 +314,15 @@ function createAdapterFactory(mode: "lightweight" | "direct") {
 
         const sections: string[] = [];
         let usedChars = 0;
-        const hasExplicitReferences =
-          collectExplicitTurnReferences(query).length > 0;
+        const explicitReferences = collectExplicitTurnReferences(query);
+        const hasExplicitReferences = explicitReferences.length > 0;
         const preferFocusedExplicitContext =
           hasExplicitReferences && sessionId.startsWith("ama-");
+        const focusedReferenceWindows = preferFocusedExplicitContext
+          ? buildFocusedReferenceWindows(
+            explicitReferences.map((reference) => reference.number),
+          )
+          : [];
 
         const exactReferenceEvidence = await buildExplicitCueRecallSection({
           engine,
@@ -355,10 +360,8 @@ function createAdapterFactory(mode: "lightweight" | "direct") {
           }
         }
 
-        if (preferFocusedExplicitContext && exactReferenceEvidence) {
-          const joined = sections.join("\n\n");
-          return joined.length > budget ? joined.slice(0, budget) : joined;
-        }
+        const suppressBroadSummary =
+          preferFocusedExplicitContext && !!exactReferenceEvidence;
 
         if (query) {
           const remainingAfterCore = Math.max(0, budget - usedChars);
@@ -383,7 +386,11 @@ function createAdapterFactory(mode: "lightweight" | "direct") {
             const seenTurns = new Set<string>();
 
             for (const result of searchResults) {
-              const windowRadius = useCoreMemoryPipeline ? 3 : 1;
+              const windowRadius = preferFocusedExplicitContext
+                ? 2
+                : useCoreMemoryPipeline
+                  ? 3
+                  : 1;
               const fromTurn = Math.max(0, result.turn_index - windowRadius);
               const toTurn = result.turn_index + windowRadius;
               const expanded = await engine.expandContext(
@@ -395,7 +402,15 @@ function createAdapterFactory(mode: "lightweight" | "direct") {
 
               if (expanded.length === 0) {
                 const id = `${result.session_id}:${result.turn_index}`;
-                if (!seenTurns.has(id)) {
+                if (
+                  !seenTurns.has(id) &&
+                  shouldIncludeFocusedSearchEvidence(
+                    result.content,
+                    query,
+                    preferFocusedExplicitContext,
+                    focusedReferenceWindows,
+                  )
+                ) {
                   seenTurns.add(id);
                   evidenceItems.push({
                     id,
@@ -414,6 +429,16 @@ function createAdapterFactory(mode: "lightweight" | "direct") {
               for (const message of expanded) {
                 const id = `${result.session_id}:${message.turn_index}`;
                 if (seenTurns.has(id)) continue;
+                if (
+                  !shouldIncludeFocusedSearchEvidence(
+                    message.content,
+                    query,
+                    preferFocusedExplicitContext,
+                    focusedReferenceWindows,
+                  )
+                ) {
+                  continue;
+                }
                 seenTurns.add(id);
                 evidenceItems.push({
                   id,
@@ -441,10 +466,12 @@ function createAdapterFactory(mode: "lightweight" | "direct") {
           }
         }
 
-        const summaryBudget = Math.max(0, budget - usedChars - 4);
-        const recallText = await engine.assembleRecall(sessionId, summaryBudget);
-        if (recallText) {
-          sections.push(recallText);
+        if (!suppressBroadSummary) {
+          const summaryBudget = Math.max(0, budget - usedChars - 4);
+          const recallText = await engine.assembleRecall(sessionId, summaryBudget);
+          if (recallText) {
+            sections.push(recallText);
+          }
         }
 
         if (sections.length === 0) {
@@ -575,6 +602,112 @@ function shouldUseCoreMemoryPipeline(
     }
     return value === true;
   });
+}
+
+const FOCUSED_SEARCH_STOP_WORDS = new Set([
+  "about",
+  "accomplish",
+  "accomplished",
+  "action",
+  "actions",
+  "after",
+  "and",
+  "agent",
+  "answer",
+  "answering",
+  "are",
+  "before",
+  "between",
+  "but",
+  "compare",
+  "did",
+  "does",
+  "done",
+  "during",
+  "for",
+  "from",
+  "how",
+  "into",
+  "matter",
+  "mattered",
+  "not",
+  "observation",
+  "observations",
+  "off",
+  "out",
+  "own",
+  "the",
+  "why",
+  "relevant",
+  "single",
+  "step",
+  "steps",
+  "that",
+  "think",
+  "this",
+  "turn",
+  "turns",
+  "what",
+  "when",
+  "where",
+  "which",
+  "with",
+]);
+
+function shouldIncludeFocusedSearchEvidence(
+  content: string,
+  query: string,
+  focusedExplicitContext: boolean,
+  referenceWindows: readonly { min: number; max: number }[],
+): boolean {
+  if (!focusedExplicitContext) {
+    return true;
+  }
+
+  const structuredNumber = extractStructuredTrajectoryCueNumber(content);
+  if (structuredNumber !== undefined) {
+    return referenceWindows.length === 0 ||
+      referenceWindows.some((window) =>
+        structuredNumber >= window.min && structuredNumber <= window.max,
+      );
+  }
+
+  if (/^\s*\[(?:Action|Observation|Thought|Reward|State|Environment|Result|Error|Test|Step|Turn)\b/i.test(content)) {
+    return true;
+  }
+
+  const contentLower = content.toLowerCase();
+  return extractFocusedSearchTerms(query).some((term) =>
+    contentLower.includes(term),
+  );
+}
+
+function extractFocusedSearchTerms(query: string): string[] {
+  const terms = query.toLowerCase().match(/[a-z][a-z0-9-]{2,}/g) ?? [];
+  return [...new Set(terms.filter((term) =>
+    !FOCUSED_SEARCH_STOP_WORDS.has(term) &&
+    !/^\d+$/.test(term),
+  ))];
+}
+
+function buildFocusedReferenceWindows(
+  numbers: readonly number[],
+): Array<{ min: number; max: number }> {
+  return numbers.map((number) => ({
+    min: Math.max(0, number - 1),
+    max: number,
+  }));
+}
+
+function extractStructuredTrajectoryCueNumber(content: string): number | undefined {
+  const match = content.match(
+    /^\s*\[(?:Action|Observation|Thought|Reward|State|Environment|Result|Error|Test|Step|Turn)\s+(\d+)\b/i,
+  );
+  if (!match?.[1]) {
+    return undefined;
+  }
+  const parsed = Number(match[1]);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
 
 function nextBenchTranscriptTurnId(

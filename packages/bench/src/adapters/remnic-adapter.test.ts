@@ -417,8 +417,204 @@ test("adapter recall keeps AMA explicit step prompts focused on the cited window
     assert.match(recalled, /## Explicit Cue Evidence/);
     assert.match(recalled, /\[Action 20\]: move-20/);
     assert.match(recalled, /\[Action 23\]: move-23/);
-    assert.doesNotMatch(recalled, /\[Action 24\]: move-24/);
+    assert.match(recalled, /## Search evidence/);
     assert.doesNotMatch(recalled, /\[Action 29\]: move-29/);
+  } finally {
+    await adapter.destroy();
+  }
+});
+
+test("adapter recall keeps bounded search evidence after AMA explicit step prompts", async () => {
+  const adapter = await createRemnicAdapter();
+
+  try {
+    const messages = [
+      {
+        role: "user" as const,
+        content: "Background note: the compact snack signal was trail mix.",
+      },
+      ...Array.from({ length: 12 }, (_, index) => [
+        {
+          role: "user" as const,
+          content: `[Action ${index}]: move-${index}`,
+        },
+        {
+          role: "assistant" as const,
+          content: `[Observation ${index}]: state-${index}`,
+        },
+      ]).flat(),
+    ];
+
+    await adapter.store("ama-ep-search", messages);
+    await adapter.drain?.();
+
+    const recalled = await adapter.recall(
+      "ama-ep-search",
+      "At Step 8, why did the compact snack signal matter?",
+      24_000,
+    );
+
+    assert.match(recalled, /## Explicit Cue Evidence/);
+    assert.match(recalled, /\[Action 8\]: move-8/);
+    assert.match(recalled, /## Search evidence/);
+    assert.match(recalled, /compact snack signal was trail mix/);
+    assert.ok(
+      recalled.indexOf("## Explicit Cue Evidence") <
+        recalled.indexOf("## Search evidence"),
+    );
+  } finally {
+    await adapter.destroy();
+  }
+});
+
+test("adapter recall keeps short lexical cues in focused AMA search evidence", async () => {
+  const adapter = await createRemnicAdapter();
+
+  try {
+    const messages = [
+      {
+        role: "user" as const,
+        content: "Background note: the red box unlocked the west door.",
+      },
+      ...Array.from({ length: 10 }, (_, index) => [
+        {
+          role: "user" as const,
+          content: `[Action ${index}]: move-${index}`,
+        },
+        {
+          role: "assistant" as const,
+          content: `[Observation ${index}]: state-${index}`,
+        },
+      ]).flat(),
+    ];
+
+    await adapter.store("ama-ep-short-cue", messages);
+    await adapter.drain?.();
+
+    const recalled = await adapter.recall(
+      "ama-ep-short-cue",
+      "At Step 8, why did the red box matter?",
+      24_000,
+    );
+
+    assert.match(recalled, /## Search evidence/);
+    assert.match(recalled, /red box unlocked the west door/);
+  } finally {
+    await adapter.destroy();
+  }
+});
+
+test("adapter recall filters common-word-only focused search hits", async () => {
+  const adapter = await createRemnicAdapter();
+
+  try {
+    const messages = [
+      {
+        role: "user" as const,
+        content: "Background note: why did the matter and the did why.",
+      },
+      {
+        role: "user" as const,
+        content: "Background note: the red box unlocked the west door.",
+      },
+      ...Array.from({ length: 10 }, (_, index) => [
+        {
+          role: "user" as const,
+          content: `[Action ${index}]: move-${index}`,
+        },
+        {
+          role: "assistant" as const,
+          content: `[Observation ${index}]: state-${index}`,
+        },
+      ]).flat(),
+    ];
+
+    await adapter.store("ama-ep-common-words", messages);
+    await adapter.drain?.();
+
+    const recalled = await adapter.recall(
+      "ama-ep-common-words",
+      "At Step 8, why did the red box matter?",
+      24_000,
+    );
+
+    assert.match(recalled, /red box unlocked the west door/);
+    assert.doesNotMatch(recalled, /why did the matter and the did why/);
+  } finally {
+    await adapter.destroy();
+  }
+});
+
+test("adapter recall does not treat quoted trajectory labels as structured focused hits", async () => {
+  const adapter = await createRemnicAdapter();
+
+  try {
+    const messages = [
+      {
+        role: "user" as const,
+        content: "Background note: someone quoted [Action 8] out of context.",
+      },
+      ...Array.from({ length: 10 }, (_, index) => [
+        {
+          role: "user" as const,
+          content: `[Action ${index}]: move-${index}`,
+        },
+        {
+          role: "assistant" as const,
+          content: `[Observation ${index}]: state-${index}`,
+        },
+      ]).flat(),
+    ];
+
+    await adapter.store("ama-ep-quoted-label", messages);
+    await adapter.drain?.();
+
+    const recalled = await adapter.recall(
+      "ama-ep-quoted-label",
+      "At Step 8, why did the action matter?",
+      24_000,
+    );
+
+    assert.match(recalled, /\[Action 8\]: move-8/);
+    assert.match(recalled, /## Search evidence/);
+    const searchEvidence = recalled.split("## Search evidence")[1] ?? "";
+    assert.doesNotMatch(searchEvidence, /quoted \[Action 8\] out of context/);
+  } finally {
+    await adapter.destroy();
+  }
+});
+
+test("adapter recall keeps disjoint AMA step search windows separate", async () => {
+  const adapter = await createRemnicAdapter();
+
+  try {
+    const messages = Array.from({ length: 42 }, (_, index) => [
+      {
+        role: "user" as const,
+        content:
+          index === 20
+            ? "[Action 20]: unrelated-noise bridge action"
+            : `[Action ${index}]: move-${index}`,
+      },
+      {
+        role: "assistant" as const,
+        content: `[Observation ${index}]: state-${index}`,
+      },
+    ]).flat();
+
+    await adapter.store("ama-ep-disjoint", messages);
+    await adapter.drain?.();
+
+    const recalled = await adapter.recall(
+      "ama-ep-disjoint",
+      "Compare steps 2 and 40 with unrelated-noise before answering.",
+      24_000,
+    );
+
+    assert.match(recalled, /## Explicit Cue Evidence/);
+    assert.match(recalled, /\[Action 2\]: move-2/);
+    assert.match(recalled, /\[Action 40\]: move-40/);
+    assert.doesNotMatch(recalled, /\[Action 20\]: unrelated-noise/);
   } finally {
     await adapter.destroy();
   }
