@@ -91,6 +91,8 @@ interface ParsedArgs {
   amaBenchCrossJudgeCodexReasoningEffort?: ProviderConfig["reasoningEffort"];
   variants?: string[];
   includeStrong: boolean;
+  includeTaskEvidence: boolean;
+  taskEvidenceMaxChars: number;
 }
 
 interface MatrixRunResult {
@@ -202,6 +204,8 @@ export async function runAmaBenchDiagnosticMatrix(
         buildAmaBenchDiagnosticVariantSummary(variant, result, {
           runtimeProfile: runtime.profile,
           hasResponder: system.responder !== undefined,
+          includeTaskEvidence: parsed.includeTaskEvidence,
+          taskEvidenceMaxChars: parsed.taskEvidenceMaxChars,
         }),
       );
     } finally {
@@ -223,6 +227,12 @@ export async function runAmaBenchDiagnosticMatrix(
       amaBenchCrossJudgeProvider: sanitizeProvider(crossJudge.provider),
       strongSystemProvider: sanitizeProvider(strongProviderConfig(parsed)),
       variantIds: variants.map((variant) => variant.id),
+      ...(parsed.includeTaskEvidence
+        ? {
+            includeTaskEvidence: true,
+            taskEvidenceMaxChars: parsed.taskEvidenceMaxChars,
+          }
+        : {}),
     },
     variants: summaries,
   });
@@ -527,6 +537,8 @@ function parseArgs(argv: string[]): ParsedArgs {
     internalDisableThinking: false,
     amaBenchJudgeProtocol: "default",
     includeStrong: false,
+    includeTaskEvidence: false,
+    taskEvidenceMaxChars: 6000,
   };
 
   const takeValue = (index: number, flag: string): string => {
@@ -749,6 +761,16 @@ function parseArgs(argv: string[]): ParsedArgs {
       case "--include-strong":
         parsed.includeStrong = true;
         break;
+      case "--include-task-evidence":
+        parsed.includeTaskEvidence = true;
+        break;
+      case "--task-evidence-max-chars":
+        parsed.taskEvidenceMaxChars = parsePositiveInteger(
+          takeValue(index, arg),
+          arg,
+        );
+        index += 1;
+        break;
       default:
         throw new Error(`Unknown argument: ${arg}`);
     }
@@ -875,6 +897,8 @@ Core options:
   --remnic-config <path>             Remnic config for --runtime-profile real.
   --openclaw-config <path>           OpenClaw config for --runtime-profile openclaw-chain.
   --variants <ids>                   Comma-separated variant ids.
+  --include-task-evidence            Include bounded raw question/answer/recall evidence for failure analysis.
+  --task-evidence-max-chars <n>       Max chars per evidence field when --include-task-evidence is set. Defaults to 6000.
 
 Normal answerer / judge:
   --system-provider <provider>       openai, anthropic, ollama, litellm, local-llm, or codex-cli.

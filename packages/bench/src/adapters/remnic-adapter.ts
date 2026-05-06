@@ -3,9 +3,11 @@
  */
 
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import {
   buildEvidencePack,
   buildExplicitCueRecallSection,
@@ -36,6 +38,18 @@ interface BenchAdapterBaseConfig {
   memoryDir: string;
   workspaceDir: string;
   lcmEnabled: true;
+  qmdCollection?: string;
+  qmdColdCollection?: string;
+  qmdPath?: string;
+}
+
+interface BenchQmdSandbox {
+  collection: string;
+  coldCollection: string;
+  cacheDir: string;
+  configDir: string;
+  indexName: string;
+  wrapperPath: string;
 }
 
 export const BENCH_ADAPTER_SHARED_CONFIG: Record<string, unknown> = {
@@ -105,6 +119,7 @@ const BENCH_TEARDOWN_DEFERRED_READY_WAIT_MS = 500;
 const CORE_EXPLICIT_CUE_MAX_CHARS = 18_000;
 const CORE_EXPLICIT_CUE_MAX_ITEM_CHARS = 2_400;
 const CORE_EXPLICIT_CUE_MAX_REFERENCES = 24;
+const execFileAsync = promisify(execFile);
 
 function cloneBenchConfig(config: Record<string, unknown>): Record<string, unknown> {
   return cloneBenchConfigValue(config) as Record<string, unknown>;
@@ -148,6 +163,9 @@ export function buildBenchAdapterConfig(
     memoryDir: baseConfig.memoryDir,
     workspaceDir: baseConfig.workspaceDir,
     lcmEnabled: baseConfig.lcmEnabled,
+    ...(baseConfig.qmdCollection ? { qmdCollection: baseConfig.qmdCollection } : {}),
+    ...(baseConfig.qmdColdCollection ? { qmdColdCollection: baseConfig.qmdColdCollection } : {}),
+    ...(baseConfig.qmdPath ? { qmdPath: baseConfig.qmdPath } : {}),
   };
   const modeConfig = {
     ...BENCH_ADAPTER_SHARED_CONFIG,
@@ -183,14 +201,18 @@ async function createBenchOrchestrator(
   mode: BenchAdapterMode,
   overrides?: Record<string, unknown>,
   preserveRuntimeDefaults = false,
-): Promise<{ tempDir: string; orchestrator: Orchestrator }> {
+): Promise<{ tempDir: string; orchestrator: Orchestrator; qmdSandbox: BenchQmdSandbox }> {
   const tempDir = await mkdtemp(path.join(tmpdir(), `remnic-bench-${mode}-`));
   await mkdir(path.join(tempDir, "state"), { recursive: true });
+  const qmdSandbox = await createBenchQmdSandbox(tempDir, overrides);
 
   const commonConfig: BenchAdapterBaseConfig = {
     memoryDir: tempDir,
     workspaceDir: tempDir,
     lcmEnabled: true,
+    qmdCollection: qmdSandbox.collection,
+    qmdColdCollection: qmdSandbox.coldCollection,
+    qmdPath: qmdSandbox.wrapperPath,
   };
 
   const orchestrator = new Orchestrator(
@@ -206,7 +228,107 @@ async function createBenchOrchestrator(
     throw new Error("Remnic benchmark adapter requires LCM to be enabled.");
   }
 
-  return { tempDir, orchestrator };
+  return { tempDir, orchestrator, qmdSandbox };
+}
+
+async function createBenchQmdSandbox(
+  tempDir: string,
+  overrides?: Record<string, unknown>,
+): Promise<BenchQmdSandbox> {
+  const collection = safeBenchQmdName(path.basename(tempDir));
+  const coldCollection = `${collection}-cold`;
+  const indexName = collection;
+  const wrapperPath = path.join(tempDir, "qmd-bench");
+  const qmdCacheDir = path.join(tempDir, "qmd-cache");
+  const qmdConfigDir = path.join(tempDir, "qmd-config");
+  const qmdIndexPath = path.join(qmdCacheDir, `${indexName}.sqlite`);
+  const qmdBinary = typeof overrides?.qmdPath === "string" && overrides.qmdPath.trim().length > 0
+    ? resolveConfiguredQmdBinary(overrides.qmdPath)
+    : "qmd";
+  await mkdir(qmdCacheDir, { recursive: true });
+  await mkdir(qmdConfigDir, { recursive: true });
+  await writeFile(
+    wrapperPath,
+    [
+      "#!/bin/sh",
+      `cd ${shellQuote(tempDir)} || exit 1`,
+      `export INDEX_PATH=${shellQuote(qmdIndexPath)}`,
+      `export XDG_CACHE_HOME=${shellQuote(qmdCacheDir)}`,
+      `export QMD_CONFIG_DIR=${shellQuote(qmdConfigDir)}`,
+      "unset XDG_CONFIG_HOME",
+      `exec ${shellQuote(qmdBinary)} --index ${shellQuote(indexName)} "$@"`,
+      "",
+    ].join("\n"),
+    { mode: 0o700 },
+  );
+  await chmod(wrapperPath, 0o700);
+
+  await registerBenchQmdCollection(wrapperPath, tempDir, collection);
+  await registerBenchQmdCollection(wrapperPath, tempDir, coldCollection);
+
+  return {
+    collection,
+    coldCollection,
+    cacheDir: qmdCacheDir,
+    configDir: qmdConfigDir,
+    indexName,
+    wrapperPath,
+  };
+}
+
+async function registerBenchQmdCollection(
+  wrapperPath: string,
+  tempDir: string,
+  collection: string,
+): Promise<void> {
+  try {
+    await execFileAsync(wrapperPath, [
+      "collection",
+      "add",
+      tempDir,
+      "--name",
+      collection,
+    ], {
+      cwd: tempDir,
+      env: { ...process.env, NO_COLOR: "1" },
+      timeout: 30_000,
+      maxBuffer: 1024 * 1024,
+    });
+  } catch {
+    // QMD is optional at runtime. If the CLI is unavailable, Remnic's normal
+    // probe path will mark it unavailable and the adapter will continue with
+    // non-QMD recall surfaces.
+  }
+}
+
+function safeBenchQmdName(value: string): string {
+  const safe = value.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 80);
+  return safe.startsWith("remnic-bench-") ? safe : `remnic-bench-${safe}`;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function resolveConfiguredQmdBinary(value: string): string {
+  const trimmed = value.trim();
+  if (
+    path.isAbsolute(trimmed) ||
+    (!trimmed.startsWith(".") && !trimmed.includes("/") && !trimmed.includes("\\"))
+  ) {
+    return trimmed;
+  }
+  return path.resolve(trimmed);
+}
+
+async function removeBenchQmdSandbox(sandbox: BenchQmdSandbox): Promise<void> {
+  if (!sandbox.indexName.startsWith("remnic-bench-")) {
+    return;
+  }
+  await Promise.all([
+    rm(sandbox.cacheDir, { recursive: true, force: true }),
+    rm(sandbox.configDir, { recursive: true, force: true }),
+  ]);
 }
 
 function createAdapterFactory(mode: "lightweight" | "direct") {
@@ -247,6 +369,12 @@ function createAdapterFactory(mode: "lightweight" | "direct") {
       ]);
       await orchestrator.qmd.dispose?.();
       orchestrator.lcmEngine?.close();
+      try {
+        await removeBenchQmdSandbox(state.qmdSandbox);
+      } catch {
+        // QMD sandbox cleanup is best-effort; the benchmark temp dir must
+        // still be removed even if a sqlite/config artifact is busy.
+      }
       await rm(state.tempDir, { recursive: true, force: true });
     };
 

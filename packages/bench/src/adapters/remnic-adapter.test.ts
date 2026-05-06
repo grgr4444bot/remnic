@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { parseConfig } from "@remnic/core";
 
@@ -14,6 +17,10 @@ const BASE_CONFIG = {
   workspaceDir: "/tmp/remnic-bench-workspace",
   lcmEnabled: true as const,
 };
+
+function shellQuoteForTest(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
 
 test("direct adapter keeps its recall-friendly defaults without overrides", () => {
   const config = buildBenchAdapterConfig("direct", BASE_CONFIG);
@@ -48,6 +55,73 @@ test("adapter sandbox paths cannot be overridden by runtime config", () => {
   assert.equal(lightweight.memoryDir, BASE_CONFIG.memoryDir);
   assert.equal(lightweight.workspaceDir, BASE_CONFIG.workspaceDir);
   assert.equal(lightweight.lcmEnabled, true);
+});
+
+test("adapter sandbox QMD index settings cannot be overridden by runtime config", () => {
+  const sandboxedConfig = {
+    ...BASE_CONFIG,
+    qmdCollection: "remnic-bench-hot",
+    qmdColdCollection: "remnic-bench-cold",
+    qmdPath: "/tmp/remnic-bench-qmd",
+  };
+  const overrides = {
+    qmdCollection: "openclaw-engram",
+    qmdColdCollection: "openclaw-engram-cold",
+    qmdPath: "/usr/local/bin/qmd",
+  };
+
+  const direct = buildBenchAdapterConfig("direct", sandboxedConfig, overrides);
+  const lightweight = buildBenchAdapterConfig("lightweight", sandboxedConfig, overrides);
+
+  assert.equal(direct.qmdCollection, "remnic-bench-hot");
+  assert.equal(direct.qmdColdCollection, "remnic-bench-cold");
+  assert.equal(direct.qmdPath, "/tmp/remnic-bench-qmd");
+  assert.equal(lightweight.qmdCollection, "remnic-bench-hot");
+  assert.equal(lightweight.qmdColdCollection, "remnic-bench-cold");
+  assert.equal(lightweight.qmdPath, "/tmp/remnic-bench-qmd");
+});
+
+test("adapter QMD wrapper resolves relative binaries and isolates QMD env", async () => {
+  const fakeRoot = await mkdtemp(path.join(tmpdir(), "remnic-fake-qmd-"));
+  const fakeQmdPath = path.join(fakeRoot, "qmd");
+  const markerPath = path.join(fakeRoot, "calls.log");
+  await writeFile(
+    fakeQmdPath,
+    [
+      "#!/bin/sh",
+      `{`,
+      `  echo "PWD=$PWD"`,
+      `  echo "INDEX_PATH=$INDEX_PATH"`,
+      `  echo "XDG_CACHE_HOME=$XDG_CACHE_HOME"`,
+      `  echo "QMD_CONFIG_DIR=$QMD_CONFIG_DIR"`,
+      `  echo "XDG_CONFIG_HOME=${"$"}{XDG_CONFIG_HOME-}"`,
+      `  echo "ARGS=$*"`,
+      `} >> ${shellQuoteForTest(markerPath)}`,
+      "exit 0",
+      "",
+    ].join("\n"),
+    { mode: 0o700 },
+  );
+  await chmod(fakeQmdPath, 0o700);
+
+  const adapter = await createRemnicAdapter({
+    configOverrides: {
+      qmdPath: path.relative(process.cwd(), fakeQmdPath),
+    },
+  });
+
+  try {
+    const marker = await readFile(markerPath, "utf8");
+    assert.match(marker, /ARGS=.* collection add .* --name remnic-bench-direct-/);
+    assert.match(marker, /INDEX_PATH=.*\/qmd-cache\/remnic-bench-direct-.*\.sqlite/);
+    assert.match(marker, /XDG_CACHE_HOME=.*\/qmd-cache/);
+    assert.match(marker, /QMD_CONFIG_DIR=.*\/qmd-config/);
+    assert.match(marker, /XDG_CONFIG_HOME=\n/);
+    assert.doesNotMatch(marker, /openclaw-engram/);
+  } finally {
+    await adapter.destroy();
+    await rm(fakeRoot, { recursive: true, force: true });
+  }
 });
 
 test("lightweight adapter keeps smoke-run guardrails even when overrides conflict", () => {
