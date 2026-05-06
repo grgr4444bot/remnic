@@ -165,6 +165,55 @@ test("deriveObjectiveStateSnapshotsFromObservedMessages ignores user-authored st
   assert.equal(snapshots.length, 0);
 });
 
+test("deriveObjectiveStateSnapshotsFromObservedMessages preserves Anthropic user-role tool results", () => {
+  const snapshots = deriveObjectiveStateSnapshotsFromObservedMessages({
+    sessionKey: "agent:main",
+    recordedAt: "2026-03-07T12:00:38.000Z",
+    messages: [
+      {
+        role: "assistant",
+        content: "I'll run validation.",
+        sourceFormat: "anthropic",
+        rawContent: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu-validate",
+              name: "exec_command",
+              input: { cmd: "npm run validate" },
+            },
+          ],
+        },
+      },
+      {
+        role: "user",
+        content: "Tool result",
+        sourceFormat: "anthropic",
+        rawContent: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "toolu-validate",
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify({ exitCode: 0, stdout: "ok" }),
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ],
+  });
+
+  assert.equal(snapshots.length, 1);
+  assert.equal(snapshots[0]?.kind, "process");
+  assert.equal(snapshots[0]?.changeKind, "executed");
+  assert.equal(snapshots[0]?.scope, "npm run validate");
+  assert.equal(snapshots[0]?.metadata?.toolCallId, "toolu-validate");
+});
+
 test("deriveObjectiveStateSnapshotsFromObservedMessages parses raw provider content", () => {
   const snapshots = deriveObjectiveStateSnapshotsFromObservedMessages({
     sessionKey: "agent:main",
@@ -497,6 +546,38 @@ test("deriveObjectiveStateSnapshotsFromObservedMessages uses inline file result 
   assert.equal(snapshots[0]?.changeKind, "failed");
   assert.equal(snapshots[0]?.outcome, "failure");
   assert.deepEqual(snapshots[0]?.after, { ref: "workspace/inline-failure.txt" });
+});
+
+test("deriveObjectiveStateSnapshotsFromObservedMessages does not treat file body content as inline result", () => {
+  const snapshots = deriveObjectiveStateSnapshotsFromObservedMessages({
+    sessionKey: "agent:main",
+    recordedAt: "2026-03-07T12:06:50.000Z",
+    messages: [
+      {
+        role: "assistant",
+        content: "Observed a completed write.",
+        parts: [
+          {
+            ordinal: 0,
+            kind: "file_write",
+            toolName: "write_file",
+            filePath: "workspace/content.txt",
+            payload: {
+              path: "workspace/content.txt",
+              content: "Error: this text is the file body, not a tool failure.",
+              ok: true,
+            },
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(snapshots.length, 1);
+  assert.equal(snapshots[0]?.kind, "file");
+  assert.equal(snapshots[0]?.changeKind, "updated");
+  assert.equal(snapshots[0]?.outcome, "success");
+  assert.equal(snapshots[0]?.scope, "workspace/content.txt");
 });
 
 test("deriveObjectiveStateSnapshotsFromObservedMessages pairs idless results only when adjacent in the same message", () => {

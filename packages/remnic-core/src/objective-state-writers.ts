@@ -388,6 +388,16 @@ function snapshotIdFor(
 function objectiveStatePartsForObservedMessage(
   message: ObservedMessageWithParts,
 ): LcmMessagePartInput[] {
+  if (message.role === "user") {
+    const rawContent = message.rawContent ?? message.content;
+    if (!containsProviderToolResultBlock(rawContent)) {
+      return [];
+    }
+    return parseMessageParts(rawContent, {
+      sourceFormat: message.sourceFormat,
+      renderedContent: message.content,
+    }).filter((part) => part.kind === "tool_result");
+  }
   if (message.role !== "assistant") {
     return [];
   }
@@ -415,6 +425,25 @@ function flattenObservedParts(messages: readonly ObservedMessageWithParts[]): Ob
     if (aOrdinal !== bOrdinal) return aOrdinal - bOrdinal;
     return a.partIndex - b.partIndex;
   });
+}
+
+function containsProviderToolResultBlock(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.some(containsProviderToolResultBlock);
+  }
+  if (!isRecord(value)) return false;
+  const type = optionalString(value.type ?? value.kind);
+  if (
+    type === "tool_result" ||
+    type === "function_call_output"
+  ) {
+    return true;
+  }
+  return (
+    containsProviderToolResultBlock(value.content) ||
+    containsProviderToolResultBlock(value.output) ||
+    containsProviderToolResultBlock(value.items)
+  );
 }
 
 function partPayload(part: LcmMessagePartInput): Record<string, unknown> {
@@ -507,6 +536,21 @@ function toolResultContentFromPart(part: LcmMessagePartInput): unknown {
   if ("result" in payload) return payload.result;
   if ("value" in payload) return payload.value;
   return payload;
+}
+
+function inlineToolResultContentFromPart(part: LcmMessagePartInput): unknown {
+  const payload = partPayload(part);
+  if (hasDefinedPayloadKey(payload, "output")) return payload.output;
+  if (hasDefinedPayloadKey(payload, "result")) return payload.result;
+  if (hasDefinedPayloadKey(payload, "value")) return payload.value;
+
+  const statusPayload: Record<string, unknown> = {};
+  for (const key of ["exitCode", "ok", "success", "error", "status", "stdout", "stderr"]) {
+    if (hasDefinedPayloadKey(payload, key)) {
+      statusPayload[key] = payload[key];
+    }
+  }
+  return Object.keys(statusPayload).length > 0 ? statusPayload : payload;
 }
 
 function hasDefinedPayloadKey(payload: Record<string, unknown>, key: string): boolean {
@@ -603,7 +647,7 @@ function observedPartsToAgentMessages(options: {
           role: "tool",
           tool_call_id: id,
           name: toolName,
-          content: toolResultContentFromPart(part),
+          content: inlineToolResultContentFromPart(part),
           ...(toolResultIsError(part) ? { isError: true } : {}),
         });
         pendingIdlessToolCallId = undefined;
