@@ -3364,6 +3364,21 @@ export class EngramAccessService {
       request.sessionKey,
       request.authenticatedPrincipal,
     );
+    const objectiveStateBaseNamespace = hasExplicitNamespace
+      ? namespace
+      : defaultNamespaceForPrincipal(principal, this.orchestrator.config);
+    if (
+      !hasExplicitNamespace &&
+      !canWriteNamespace(
+        principal,
+        objectiveStateBaseNamespace,
+        this.orchestrator.config,
+      )
+    ) {
+      throw new EngramAccessInputError(
+        `namespace is not writable: ${objectiveStateBaseNamespace}`,
+      );
+    }
 
     // Auto-resolve coding context from cwd/projectTag so observe writes
     // route to the correct project namespace (rule 42: same namespace layer
@@ -3373,9 +3388,6 @@ export class EngramAccessService {
       projectTag: request.projectTag,
     });
 
-    const objectiveStateBaseNamespace = hasExplicitNamespace
-      ? namespace
-      : defaultNamespaceForPrincipal(principal, this.orchestrator.config);
     const objectiveStateNamespace = hasExplicitNamespace
       ? namespace
       : this.orchestrator.applyCodingNamespaceOverlay(

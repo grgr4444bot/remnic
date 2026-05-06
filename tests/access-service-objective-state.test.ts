@@ -428,3 +428,64 @@ test("observe bases implicit objective-state snapshots on the principal namespac
     await rm(projectDir, { recursive: true, force: true });
   }
 });
+
+test("observe rejects implicit objective-state writes to unauthorized principal namespace", async () => {
+  const memoryDir = await mkdtemp(path.join(os.tmpdir(), "remnic-access-objective-state-denied-"));
+  const service = createObjectiveStateObserveService(memoryDir, {
+    namespacesEnabled: true,
+    namespacePolicies: [
+      {
+        name: "alice",
+        readPrincipals: ["alice"],
+        writePrincipals: ["bob"],
+      },
+    ],
+  });
+
+  try {
+    await assert.rejects(
+      () =>
+        service.observe({
+          sessionKey: "agent:main",
+          authenticatedPrincipal: "alice",
+          skipExtraction: true,
+          messages: [
+            {
+              role: "assistant",
+              content: "Ran a denied validation command.",
+              parts: [
+                {
+                  ordinal: 0,
+                  kind: "tool_call",
+                  toolName: "exec_command",
+                  payload: {
+                    id: "call-denied-validate",
+                    name: "exec_command",
+                    arguments: { cmd: "npm run denied-validate" },
+                  },
+                },
+                {
+                  ordinal: 1,
+                  kind: "tool_result",
+                  payload: {
+                    id: "call-denied-validate",
+                    output: { exitCode: 0, stdout: "all checks passed" },
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      /namespace is not writable: alice/,
+    );
+
+    const status = await getObjectiveStateStoreStatus({
+      memoryDir,
+      enabled: true,
+      writesEnabled: true,
+    });
+    assert.equal(status.snapshots.total, 0);
+  } finally {
+    await rm(memoryDir, { recursive: true, force: true });
+  }
+});
