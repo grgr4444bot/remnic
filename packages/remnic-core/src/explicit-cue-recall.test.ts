@@ -252,6 +252,84 @@ test("buildExplicitCueRecallSection does not leak the next action into step wind
   assert.doesNotMatch(section, /Action 24/);
 });
 
+test("buildExplicitCueRecallSection keeps loop-break action questions inside bounded ranges", async () => {
+  const messages = Array.from({ length: 54 }, (_, index) => ({
+    role: index % 2 === 0 ? "user" : "assistant",
+    content: `filler turn ${index}`,
+  }));
+  messages[40] = { role: "user", content: "[Action 20] right" };
+  messages[41] = { role: "assistant", content: "[Observation 20] loop started" };
+  messages[46] = { role: "user", content: "[Action 23] left" };
+  messages[47] = { role: "assistant", content: "[Observation 23] loop still continued" };
+  messages[48] = { role: "user", content: "[Action 24] down" };
+  messages[49] = { role: "assistant", content: "[Observation 24] successor state" };
+  const engine = new FakeCueEngine({ "bench-session": messages });
+
+  const section = await buildExplicitCueRecallSection({
+    engine,
+    sessionId: "bench-session",
+    query: "Between steps 20 and 23, which action broke the loop?",
+    maxChars: 4000,
+  });
+
+  assert.match(section, /Action 20/);
+  assert.match(section, /Action 23/);
+  assert.match(section, /Observation 23/);
+  assert.doesNotMatch(section, /Action 24/);
+  assert.doesNotMatch(section, /Observation 24/);
+});
+
+test("buildExplicitCueRecallSection treats hash-prefixed loop-break ranges as bounded", async () => {
+  const messages = Array.from({ length: 54 }, (_, index) => ({
+    role: index % 2 === 0 ? "user" : "assistant",
+    content: `filler turn ${index}`,
+  }));
+  messages[40] = { role: "user", content: "[Action 20] right" };
+  messages[41] = { role: "assistant", content: "[Observation 20] loop started" };
+  messages[46] = { role: "user", content: "[Action 23] left" };
+  messages[47] = { role: "assistant", content: "[Observation 23] loop still continued" };
+  messages[48] = { role: "user", content: "[Action 24] down" };
+  messages[49] = { role: "assistant", content: "[Observation 24] successor state" };
+  const engine = new FakeCueEngine({ "bench-session": messages });
+
+  const section = await buildExplicitCueRecallSection({
+    engine,
+    sessionId: "bench-session",
+    query: "Between actions #20-#23, which action broke the loop?",
+    maxChars: 4000,
+  });
+
+  assert.match(section, /Action 20/);
+  assert.match(section, /Action 23/);
+  assert.match(section, /Observation 23/);
+  assert.doesNotMatch(section, /Action 24/);
+  assert.doesNotMatch(section, /Observation 24/);
+});
+
+test("buildExplicitCueRecallSection keeps loop-break action questions inside single steps", async () => {
+  const messages = Array.from({ length: 54 }, (_, index) => ({
+    role: index % 2 === 0 ? "user" : "assistant",
+    content: `filler turn ${index}`,
+  }));
+  messages[46] = { role: "user", content: "[Action 23] left" };
+  messages[47] = { role: "assistant", content: "[Observation 23] loop still continued" };
+  messages[48] = { role: "user", content: "[Action 24] down" };
+  messages[49] = { role: "assistant", content: "[Observation 24] successor state" };
+  const engine = new FakeCueEngine({ "bench-session": messages });
+
+  const section = await buildExplicitCueRecallSection({
+    engine,
+    sessionId: "bench-session",
+    query: "In step 23, which action broke the loop?",
+    maxChars: 4000,
+  });
+
+  assert.match(section, /Action 23/);
+  assert.match(section, /Observation 23/);
+  assert.doesNotMatch(section, /Action 24/);
+  assert.doesNotMatch(section, /Observation 24/);
+});
+
 test("buildExplicitCueRecallSection includes successor trajectory evidence when requested", async () => {
   const messages = Array.from({ length: 54 }, (_, index) => ({
     role: index % 2 === 0 ? "user" : "assistant",
@@ -274,6 +352,98 @@ test("buildExplicitCueRecallSection includes successor trajectory evidence when 
   assert.match(section, /Observation 23/);
   assert.match(section, /Action 24/);
   assert.match(section, /Observation 24/);
+});
+
+test("buildExplicitCueRecallSection includes successor evidence for explicit loop breaks", async () => {
+  const messages = Array.from({ length: 54 }, (_, index) => ({
+    role: index % 2 === 0 ? "user" : "assistant",
+    content: `filler turn ${index}`,
+  }));
+  messages[40] = { role: "user", content: "[Action 20] right" };
+  messages[41] = { role: "assistant", content: "[Observation 20] start of loop" };
+  messages[42] = { role: "user", content: "[Action 21] left" };
+  messages[43] = { role: "assistant", content: "[Observation 21] loop returned" };
+  messages[44] = { role: "user", content: "[Action 22] right" };
+  messages[45] = { role: "assistant", content: "[Observation 22] loop repeated" };
+  messages[46] = { role: "user", content: "[Action 23] left" };
+  messages[47] = { role: "assistant", content: "[Observation 23] loop still continued" };
+  messages[48] = { role: "user", content: "[Action 24] down" };
+  messages[49] = { role: "assistant", content: "[Observation 24] the loop was broken" };
+  const engine = new FakeCueEngine({ "bench-session": messages });
+
+  const section = await buildExplicitCueRecallSection({
+    engine,
+    sessionId: "bench-session",
+    query:
+      "Steps 20-23 formed a right-left loop; what did the down action do to break this loop?",
+    maxChars: 4000,
+  });
+
+  assert.match(section, /Action 20/);
+  assert.match(section, /Action 23/);
+  assert.match(section, /Action 24/);
+  assert.match(section, /Observation 24/);
+});
+
+test("buildExplicitCueRecallSection includes successor evidence for break-out loop wording", async () => {
+  const messages = Array.from({ length: 54 }, (_, index) => ({
+    role: index % 2 === 0 ? "user" : "assistant",
+    content: `filler turn ${index}`,
+  }));
+  messages[40] = { role: "user", content: "[Action 20] right" };
+  messages[41] = { role: "assistant", content: "[Observation 20] start of loop" };
+  messages[46] = { role: "user", content: "[Action 23] left" };
+  messages[47] = { role: "assistant", content: "[Observation 23] loop still continued" };
+  messages[48] = { role: "user", content: "[Action 24] down" };
+  messages[49] = { role: "assistant", content: "[Observation 24] the loop was broken" };
+  const engine = new FakeCueEngine({ "bench-session": messages });
+
+  const section = await buildExplicitCueRecallSection({
+    engine,
+    sessionId: "bench-session",
+    query:
+      "Steps 20-23 formed a right-left loop; what did the down action do to break out of the loop?",
+    maxChars: 4000,
+  });
+
+  assert.match(section, /Action 23/);
+  assert.match(section, /Action 24/);
+  assert.match(section, /Observation 24/);
+});
+
+test("buildExplicitCueRecallSection includes successor evidence for end and stop loop wording", async () => {
+  const messages = Array.from({ length: 54 }, (_, index) => ({
+    role: index % 2 === 0 ? "user" : "assistant",
+    content: `filler turn ${index}`,
+  }));
+  messages[40] = { role: "user", content: "[Action 20] right" };
+  messages[41] = { role: "assistant", content: "[Observation 20] start of loop" };
+  messages[46] = { role: "user", content: "[Action 23] left" };
+  messages[47] = { role: "assistant", content: "[Observation 23] loop still continued" };
+  messages[48] = { role: "user", content: "[Action 24] down" };
+  messages[49] = { role: "assistant", content: "[Observation 24] the loop was stopped" };
+  const engine = new FakeCueEngine({ "bench-session": messages });
+
+  const endSection = await buildExplicitCueRecallSection({
+    engine,
+    sessionId: "bench-session",
+    query:
+      "Steps 20-23 formed a loop; what did the down action do to end the loop?",
+    maxChars: 4000,
+  });
+  const stopSection = await buildExplicitCueRecallSection({
+    engine,
+    sessionId: "bench-session",
+    query:
+      "Steps 20-23 formed a loop; what did the down action do to stop this loop?",
+    maxChars: 4000,
+  });
+
+  for (const section of [endSection, stopSection]) {
+    assert.match(section, /Action 23/);
+    assert.match(section, /Action 24/);
+    assert.match(section, /Observation 24/);
+  }
 });
 
 test("buildExplicitCueRecallSection does not treat broad break wording as successor intent", async () => {
