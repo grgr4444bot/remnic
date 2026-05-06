@@ -545,8 +545,10 @@ function observedPartsToAgentMessages(options: {
       .filter((id): id is string => id !== undefined),
   );
   const synthetic: Array<Record<string, unknown>> = [];
+  let pendingIdlessToolCallId: string | undefined;
 
-  for (const entry of entries) {
+  for (let entryIndex = 0; entryIndex < entries.length; entryIndex += 1) {
+    const entry = entries[entryIndex]!;
     const { part } = entry;
     if (
       part.kind === "tool_call" ||
@@ -565,10 +567,16 @@ function observedPartsToAgentMessages(options: {
         });
       const args = toolArgumentsFromPart(part);
       synthetic.push(buildSyntheticAssistantToolCall(id, toolName, args));
+      const nextEntry = entries[entryIndex + 1];
+      const nextIsIdlessToolResult =
+        nextEntry?.part.kind === "tool_result" &&
+        partToolCallId(nextEntry.part) === undefined;
+      pendingIdlessToolCallId = observedToolCallId ? undefined : id;
 
       if (
         (part.kind === "file_write" || part.kind === "patch") &&
         !observedToolCallId &&
+        !nextIsIdlessToolResult &&
         !resultIds.has(id)
       ) {
         synthetic.push({
@@ -577,12 +585,13 @@ function observedPartsToAgentMessages(options: {
           name: toolName,
           content: { ok: true, source: "message_part" },
         });
+        pendingIdlessToolCallId = undefined;
       }
       continue;
     }
 
     if (part.kind === "tool_result") {
-      const id = partToolCallId(part);
+      const id = partToolCallId(part) ?? pendingIdlessToolCallId;
       const toolName = partToolName(part);
       synthetic.push({
         role: "tool",
@@ -591,6 +600,7 @@ function observedPartsToAgentMessages(options: {
         content: toolResultContentFromPart(part),
         ...(toolResultIsError(part) ? { isError: true } : {}),
       });
+      pendingIdlessToolCallId = undefined;
     }
   }
 

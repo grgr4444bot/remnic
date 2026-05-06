@@ -266,6 +266,81 @@ test("deriveObjectiveStateSnapshotsFromObservedMessages does not synthesize prov
   assert.equal(snapshots.length, 0);
 });
 
+test("deriveObjectiveStateSnapshotsFromObservedMessages pairs adjacent idless structured tool results", () => {
+  const snapshots = deriveObjectiveStateSnapshotsFromObservedMessages({
+    sessionKey: "agent:main",
+    recordedAt: "2026-03-07T12:00:46.000Z",
+    messages: [
+      {
+        role: "assistant",
+        content: "Ran tests.",
+        parts: [
+          {
+            ordinal: 0,
+            kind: "tool_call",
+            toolName: "exec_command",
+            payload: {
+              name: "exec_command",
+              arguments: { cmd: "npm test" },
+            },
+          },
+          {
+            ordinal: 1,
+            kind: "tool_result",
+            payload: {
+              output: { exitCode: 0, stdout: "ok" },
+            },
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(snapshots.length, 1);
+  assert.equal(snapshots[0]?.kind, "process");
+  assert.equal(snapshots[0]?.changeKind, "executed");
+  assert.equal(snapshots[0]?.scope, "npm test");
+  assert.equal(snapshots[0]?.command, "npm test");
+  assert.ok(snapshots[0]?.metadata?.toolCallId);
+});
+
+test("deriveObjectiveStateSnapshotsFromObservedMessages uses adjacent idless file results instead of optimistic success", () => {
+  const snapshots = deriveObjectiveStateSnapshotsFromObservedMessages({
+    sessionKey: "agent:main",
+    recordedAt: "2026-03-07T12:00:48.000Z",
+    messages: [
+      {
+        role: "assistant",
+        content: "Tried to write a file.",
+        parts: [
+          {
+            ordinal: 0,
+            kind: "file_write",
+            toolName: "write_file",
+            filePath: "workspace/failure.txt",
+            payload: {
+              content: "never landed",
+            },
+          },
+          {
+            ordinal: 1,
+            kind: "tool_result",
+            payload: {
+              output: { ok: false, error: "disk full" },
+            },
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(snapshots.length, 1);
+  assert.equal(snapshots[0]?.kind, "file");
+  assert.equal(snapshots[0]?.changeKind, "failed");
+  assert.equal(snapshots[0]?.outcome, "failure");
+  assert.deepEqual(snapshots[0]?.after, { ref: "workspace/failure.txt" });
+});
+
 test("deriveObjectiveStateSnapshotsFromObservedMessages uses stable ids for observed parts", () => {
   const input = {
     sessionKey: "agent:main",
