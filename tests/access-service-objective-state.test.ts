@@ -27,6 +27,8 @@ function createObjectiveStateObserveService(
       baseNamespace: string,
       codingContext: unknown,
     ) => string;
+    objectiveStateMemoryEnabled?: boolean;
+    objectiveStateSnapshotWritesEnabled?: boolean;
   } = {},
 ): EngramAccessService {
   const codingContexts = new Map<string, unknown>();
@@ -49,8 +51,10 @@ function createObjectiveStateObserveService(
         branchScope: false,
         globalFallback: false,
       },
-      objectiveStateMemoryEnabled: true,
-      objectiveStateSnapshotWritesEnabled: true,
+      objectiveStateMemoryEnabled:
+        options.objectiveStateMemoryEnabled ?? true,
+      objectiveStateSnapshotWritesEnabled:
+        options.objectiveStateSnapshotWritesEnabled ?? true,
     },
     lcmEngine: null,
     getStorage: async (namespace?: string) => ({
@@ -478,6 +482,66 @@ test("observe rejects implicit objective-state writes to unauthorized principal 
         }),
       /namespace is not writable: alice/,
     );
+
+    const status = await getObjectiveStateStoreStatus({
+      memoryDir,
+      enabled: true,
+      writesEnabled: true,
+    });
+    assert.equal(status.snapshots.total, 0);
+  } finally {
+    await rm(memoryDir, { recursive: true, force: true });
+  }
+});
+
+test("observe skips objective-state namespace authorization when writes are disabled", async () => {
+  const memoryDir = await mkdtemp(path.join(os.tmpdir(), "remnic-access-objective-state-disabled-"));
+  const service = createObjectiveStateObserveService(memoryDir, {
+    namespacesEnabled: true,
+    objectiveStateSnapshotWritesEnabled: false,
+    namespacePolicies: [
+      {
+        name: "alice",
+        readPrincipals: ["alice"],
+        writePrincipals: ["bob"],
+      },
+    ],
+  });
+
+  try {
+    const response = await service.observe({
+      sessionKey: "agent:main",
+      authenticatedPrincipal: "alice",
+      skipExtraction: true,
+      messages: [
+        {
+          role: "assistant",
+          content: "Observed a command while objective-state writes are off.",
+          parts: [
+            {
+              ordinal: 0,
+              kind: "tool_call",
+              toolName: "exec_command",
+              payload: {
+                id: "call-disabled-objective-state",
+                name: "exec_command",
+                arguments: { cmd: "npm run disabled-objective-state" },
+              },
+            },
+            {
+              ordinal: 1,
+              kind: "tool_result",
+              payload: {
+                id: "call-disabled-objective-state",
+                output: { exitCode: 0, stdout: "all checks passed" },
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    assert.equal(response.accepted, 1);
 
     const status = await getObjectiveStateStoreStatus({
       memoryDir,

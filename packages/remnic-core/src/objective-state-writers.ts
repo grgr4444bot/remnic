@@ -658,7 +658,7 @@ function observedPartsToAgentMessages(options: {
         nextEntry?.messageIndex === entry.messageIndex &&
         nextEntry?.part.kind === "tool_result" &&
         partToolCallId(nextEntry.part) === undefined;
-      pendingIdlessToolCallId = !observedToolCallId && nextIsIdlessToolResult
+      pendingIdlessToolCallId = nextIsIdlessToolResult
         ? id
         : undefined;
 

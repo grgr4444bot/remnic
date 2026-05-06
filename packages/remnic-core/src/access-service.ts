@@ -3364,10 +3364,14 @@ export class EngramAccessService {
       request.sessionKey,
       request.authenticatedPrincipal,
     );
+    const shouldWriteObjectiveState =
+      this.orchestrator.config.objectiveStateMemoryEnabled === true &&
+      this.orchestrator.config.objectiveStateSnapshotWritesEnabled === true;
     const objectiveStateBaseNamespace = hasExplicitNamespace
       ? namespace
       : defaultNamespaceForPrincipal(principal, this.orchestrator.config);
     if (
+      shouldWriteObjectiveState &&
       !hasExplicitNamespace &&
       !canWriteNamespace(
         principal,
@@ -3405,10 +3409,7 @@ export class EngramAccessService {
       ? `${namespace}:${request.sessionKey}`
       : request.sessionKey;
 
-    if (
-      this.orchestrator.config.objectiveStateMemoryEnabled === true &&
-      this.orchestrator.config.objectiveStateSnapshotWritesEnabled === true
-    ) {
+    if (shouldWriteObjectiveState) {
       try {
         const objectiveStateLocation =
           await this.objectiveStateStoreLocationForNamespace(

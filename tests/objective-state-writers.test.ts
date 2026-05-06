@@ -400,6 +400,44 @@ test("deriveObjectiveStateSnapshotsFromObservedMessages pairs adjacent idless st
   assert.ok(snapshots[0]?.metadata?.toolCallId);
 });
 
+test("deriveObjectiveStateSnapshotsFromObservedMessages pairs idless results after identified tool calls", () => {
+  const snapshots = deriveObjectiveStateSnapshotsFromObservedMessages({
+    sessionKey: "agent:main",
+    recordedAt: "2026-03-07T12:00:47.000Z",
+    messages: [
+      {
+        role: "assistant",
+        content: "Ran tests.",
+        parts: [
+          {
+            ordinal: 0,
+            kind: "tool_call",
+            toolName: "exec_command",
+            payload: {
+              id: "call-known-id",
+              name: "exec_command",
+              arguments: { cmd: "npm test" },
+            },
+          },
+          {
+            ordinal: 1,
+            kind: "tool_result",
+            payload: {
+              output: { exitCode: 0, stdout: "ok" },
+            },
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(snapshots.length, 1);
+  assert.equal(snapshots[0]?.kind, "process");
+  assert.equal(snapshots[0]?.changeKind, "executed");
+  assert.equal(snapshots[0]?.scope, "npm test");
+  assert.equal(snapshots[0]?.metadata?.toolCallId, "call-known-id");
+});
+
 test("deriveObjectiveStateSnapshotsFromObservedMessages uses adjacent idless file results instead of optimistic success", () => {
   const snapshots = deriveObjectiveStateSnapshotsFromObservedMessages({
     sessionKey: "agent:main",
