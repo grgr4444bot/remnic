@@ -158,6 +158,7 @@ export interface BenchmarkResult {
     runtimeProfile?: BenchRuntimeProfile | null;
     systemProvider: ProviderConfig | null;
     judgeProvider: ProviderConfig | null;
+    internalProvider?: ProviderConfig | null;
     adapterMode: string;
     remnicConfig: Record<string, unknown>;
     benchmarkOptions?: Record<string, unknown>;
@@ -219,6 +220,7 @@ export interface RunBenchmarkOptions {
   ingestionAdapter?: import("./ingestion-types.js").IngestionBenchAdapter;
   systemProvider?: ProviderConfig | null;
   judgeProvider?: ProviderConfig | null;
+  internalProvider?: ProviderConfig | null;
   remnicConfig?: Record<string, unknown>;
   amaBenchJudgeProtocol?: AmaBenchJudgeProtocol;
   amaBenchCrossJudge?: import("./adapters/types.js").BenchJudge;

@@ -174,6 +174,42 @@ test("parseBenchArgs accepts codex-cli as a system and judge provider", () => {
   assert.equal(parsed.judgeModel, "gpt-5.5");
 });
 
+test("parseBenchArgs accepts internal Remnic LLM provider flags", () => {
+  const parsed = parseBenchArgs([
+    "run",
+    "ama-bench",
+    "--internal-provider",
+    "codex-cli",
+    "--internal-model",
+    "gpt-5.5",
+    "--internal-disable-thinking",
+    "--internal-codex-reasoning-effort",
+    "xhigh",
+  ]);
+
+  assert.equal(parsed.internalProvider, "codex-cli");
+  assert.equal(parsed.internalModel, "gpt-5.5");
+  assert.equal(parsed.internalDisableThinking, true);
+  assert.equal(parsed.internalCodexReasoningEffort, "xhigh");
+});
+
+test("parseBenchArgs rejects internal Codex reasoning effort for non-Codex providers", () => {
+  assert.throws(
+    () =>
+      parseBenchArgs([
+        "run",
+        "ama-bench",
+        "--internal-provider",
+        "ollama",
+        "--internal-model",
+        "gemma4:31b-cloud",
+        "--internal-codex-reasoning-effort",
+        "xhigh",
+      ]),
+    /--internal-codex-reasoning-effort requires --internal-provider codex-cli/,
+  );
+});
+
 test("parseBenchArgs accepts AMA-Bench recommended judge and cross-judge flags", () => {
   const parsed = parseBenchArgs([
     "run",

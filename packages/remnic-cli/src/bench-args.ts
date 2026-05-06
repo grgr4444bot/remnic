@@ -54,6 +54,12 @@ export interface ParsedBenchArgs {
   judgeModel?: string;
   judgeBaseUrl?: string;
   judgeApiKey?: string;
+  internalProvider?: BuiltInProvider;
+  internalModel?: string;
+  internalBaseUrl?: string;
+  internalApiKey?: string;
+  internalDisableThinking?: boolean;
+  internalCodexReasoningEffort?: "low" | "medium" | "high" | "xhigh";
   threshold?: number;
   baselineAction?: BenchBaselineAction;
   datasetAction?: BenchDatasetAction;
@@ -188,6 +194,11 @@ export function collectBenchmarks(argv: string[]): string[] {
       arg === "--judge-model" ||
       arg === "--judge-base-url" ||
       arg === "--judge-api-key" ||
+      arg === "--internal-provider" ||
+      arg === "--internal-model" ||
+      arg === "--internal-base-url" ||
+      arg === "--internal-api-key" ||
+      arg === "--internal-codex-reasoning-effort" ||
       arg === "--threshold" ||
       arg === "--custom" ||
       arg === "--format" ||
@@ -322,6 +333,14 @@ export function parseBenchArgs(argv: string[]): ParsedBenchArgs {
   const judgeModel = readBenchOptionValue(args, "--judge-model");
   const judgeBaseUrl = readBenchOptionValue(args, "--judge-base-url");
   const judgeApiKey = readBenchOptionValue(args, "--judge-api-key");
+  const internalProviderRaw = readBenchOptionValue(args, "--internal-provider");
+  const internalModel = readBenchOptionValue(args, "--internal-model");
+  const internalBaseUrl = readBenchOptionValue(args, "--internal-base-url");
+  const internalApiKey = readBenchOptionValue(args, "--internal-api-key");
+  const internalCodexReasoningEffortRaw = readBenchOptionValue(
+    args,
+    "--internal-codex-reasoning-effort",
+  );
   const thresholdRaw = readBenchOptionValue(args, "--threshold");
   const customRaw = readBenchOptionValue(args, "--custom");
   const formatRaw = readBenchOptionValue(args, "--format");
@@ -374,6 +393,26 @@ export function parseBenchArgs(argv: string[]): ParsedBenchArgs {
   let judgeProvider: BuiltInProvider | undefined;
   if (judgeProviderRaw !== undefined) {
     judgeProvider = parseBenchProvider(judgeProviderRaw, "--judge-provider");
+  }
+
+  let internalProvider: BuiltInProvider | undefined;
+  if (internalProviderRaw !== undefined) {
+    internalProvider = parseBenchProvider(internalProviderRaw, "--internal-provider");
+  }
+
+  let internalCodexReasoningEffort: ParsedBenchArgs["internalCodexReasoningEffort"];
+  if (internalCodexReasoningEffortRaw !== undefined) {
+    if (
+      internalCodexReasoningEffortRaw !== "low" &&
+      internalCodexReasoningEffortRaw !== "medium" &&
+      internalCodexReasoningEffortRaw !== "high" &&
+      internalCodexReasoningEffortRaw !== "xhigh"
+    ) {
+      throw new Error(
+        'ERROR: --internal-codex-reasoning-effort must be "low", "medium", "high", or "xhigh".',
+      );
+    }
+    internalCodexReasoningEffort = internalCodexReasoningEffortRaw;
   }
 
   let amaBenchJudgeProtocol: AmaBenchJudgeProtocol | undefined;
@@ -540,6 +579,21 @@ export function parseBenchArgs(argv: string[]): ParsedBenchArgs {
         "vLLM (http://localhost:8000/v1), LM Studio (http://localhost:1234/v1).",
     );
   }
+  if (internalProvider === "local-llm" && !internalBaseUrl) {
+    throw new Error(
+      "ERROR: --internal-provider local-llm requires --internal-base-url. " +
+        "Examples: llama.cpp (http://localhost:8080/v1), " +
+        "vLLM (http://localhost:8000/v1), LM Studio (http://localhost:1234/v1).",
+    );
+  }
+  if (
+    internalCodexReasoningEffort !== undefined &&
+    internalProvider !== "codex-cli"
+  ) {
+    throw new Error(
+      "ERROR: --internal-codex-reasoning-effort requires --internal-provider codex-cli.",
+    );
+  }
   if (
     amaBenchCrossJudgeProvider === "local-llm" &&
     !(amaBenchCrossJudgeBaseUrl ?? judgeBaseUrl)
@@ -594,6 +648,12 @@ export function parseBenchArgs(argv: string[]): ParsedBenchArgs {
     judgeModel,
     judgeBaseUrl,
     judgeApiKey,
+    internalProvider,
+    internalModel,
+    internalBaseUrl,
+    internalApiKey,
+    internalDisableThinking: args.includes("--internal-disable-thinking"),
+    internalCodexReasoningEffort,
     threshold,
     custom: customRaw ? path.resolve(expandTilde(customRaw)) : undefined,
     baselineAction,

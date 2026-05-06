@@ -331,3 +331,113 @@ test("provider-backed runtime resolution configures codex-cli with xhigh reasoni
   assert.equal(typeof resolved.adapterOptions.responder?.respond, "function");
   assert.equal(typeof resolved.adapterOptions.judge?.score, "function");
 });
+
+test("runtime profile can route Remnic internal LLM calls through codex-cli", async () => {
+  const resolved = await resolveBenchRuntimeProfile({
+    runtimeProfile: "baseline",
+    internalProvider: "codex-cli",
+    internalModel: "gpt-5.5",
+    internalCodexReasoningEffort: "xhigh",
+  });
+
+  assert.deepEqual(resolved.internalProvider, {
+    provider: "codex-cli",
+    model: "gpt-5.5",
+    baseUrl: "codex-cli://local",
+    reasoningEffort: "xhigh",
+  });
+  assert.equal(resolved.remnicConfig.modelSource, "gateway");
+  assert.equal(resolved.effectiveRemnicConfig.modelSource, "gateway");
+  assert.equal(resolved.remnicConfig.gatewayAgentId, "remnic-bench-internal");
+  const gatewayConfig = resolved.effectiveRemnicConfig.gatewayConfig as {
+    agents?: { defaults?: { model?: { primary?: string } } };
+    models?: { providers?: Record<string, { api?: string; codexCliReasoningEffort?: string }> };
+  };
+  assert.equal(
+    gatewayConfig.agents?.defaults?.model?.primary,
+    "remnic-bench-internal/gpt-5.5",
+  );
+  assert.equal(
+    gatewayConfig.models?.providers?.["remnic-bench-internal"]?.api,
+    "codex-cli",
+  );
+  assert.equal(
+    gatewayConfig.models?.providers?.["remnic-bench-internal"]?.codexCliReasoningEffort,
+    "xhigh",
+  );
+});
+
+test("runtime profile can route Remnic internal LLM calls through Ollama native chat", async () => {
+  const resolved = await resolveBenchRuntimeProfile({
+    runtimeProfile: "baseline",
+    internalProvider: "ollama",
+    internalModel: "gemma4:31b-cloud",
+    internalBaseUrl: "https://ollama.example/api",
+    internalApiKey: "secret-ollama-key",
+    internalDisableThinking: true,
+  });
+
+  assert.deepEqual(resolved.internalProvider, {
+    provider: "ollama",
+    model: "gemma4:31b-cloud",
+    baseUrl: "https://ollama.example/api",
+    apiKey: "[redacted]",
+    disableThinking: true,
+  });
+  const persistedGateway = resolved.remnicConfig.gatewayConfig as {
+    models?: { providers?: Record<string, { apiKey?: string; api?: string; disableThinking?: boolean }> };
+  };
+  assert.equal(
+    persistedGateway.models?.providers?.["remnic-bench-internal"]?.apiKey,
+    "[redacted]",
+  );
+  const effectiveGateway = resolved.effectiveRemnicConfig.gatewayConfig as {
+    models?: { providers?: Record<string, { apiKey?: string; api?: string; disableThinking?: boolean }> };
+  };
+  assert.equal(
+    effectiveGateway.models?.providers?.["remnic-bench-internal"]?.api,
+    "ollama-chat",
+  );
+  assert.equal(
+    effectiveGateway.models?.providers?.["remnic-bench-internal"]?.apiKey,
+    "secret-ollama-key",
+  );
+  assert.equal(
+    effectiveGateway.models?.providers?.["remnic-bench-internal"]?.disableThinking,
+    true,
+  );
+});
+
+test("runtime profile routes OpenAI internal LLM calls through Responses API", async () => {
+  const resolved = await resolveBenchRuntimeProfile({
+    runtimeProfile: "baseline",
+    internalProvider: "openai",
+    internalModel: "gpt-5.5",
+    internalApiKey: "secret-openai-key",
+  });
+
+  assert.deepEqual(resolved.internalProvider, {
+    provider: "openai",
+    model: "gpt-5.5",
+    baseUrl: "https://api.openai.com/v1",
+    apiKey: "[redacted]",
+  });
+  const persistedGateway = resolved.remnicConfig.gatewayConfig as {
+    models?: { providers?: Record<string, { apiKey?: string; api?: string }> };
+  };
+  assert.equal(
+    persistedGateway.models?.providers?.["remnic-bench-internal"]?.apiKey,
+    "[redacted]",
+  );
+  const effectiveGateway = resolved.effectiveRemnicConfig.gatewayConfig as {
+    models?: { providers?: Record<string, { apiKey?: string; api?: string }> };
+  };
+  assert.equal(
+    effectiveGateway.models?.providers?.["remnic-bench-internal"]?.api,
+    "openai-responses",
+  );
+  assert.equal(
+    effectiveGateway.models?.providers?.["remnic-bench-internal"]?.apiKey,
+    "secret-openai-key",
+  );
+});

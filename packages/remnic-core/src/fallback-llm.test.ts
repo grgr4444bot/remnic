@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { FallbackLlmClient } from "./fallback-llm.js";
+import { __codexCliFallbackTestHooks } from "./codex-cli-fallback.js";
 import { clearModelsJsonCache, __setModelsJsonForTest } from "./models-json.js";
 import { clearSecretCache } from "./resolve-provider-secret.js";
 
@@ -232,6 +233,159 @@ test("fallback llm prefers requested canonical models.json provider before legac
 
     assert.equal(response?.content, "ok from canonical codex");
     assert.equal(capturedUrl, "https://codex.example/v1/responses");
+  } finally {
+    globalThis.fetch = originalFetch;
+    clearModelsJsonCache();
+    clearSecretCache();
+  }
+});
+
+test("fallback llm invokes registered codex-cli fallback runner", { concurrency: false }, async () => {
+  clearModelsJsonCache();
+  clearSecretCache();
+
+  const captured: {
+    modelId?: string;
+    messages?: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+    apiKey?: string | Record<string, unknown>;
+    executable?: unknown;
+    reasoningEffort?: unknown;
+    timeoutMs?: number;
+  } = {};
+  const restoreRunner = __codexCliFallbackTestHooks.setRunCodexCliForTest(
+    async (request) => {
+      captured.modelId = request.modelId;
+      captured.messages = request.messages;
+      captured.apiKey = request.config.apiKey;
+      captured.executable = request.config.executable;
+      captured.reasoningEffort = request.config.reasoningEffort;
+      captured.timeoutMs = request.config.retryOptions?.timeoutMs as number | undefined;
+      return {
+        content: "final codex answer",
+        usage: {
+          inputTokens: 40,
+          outputTokens: 4,
+          totalTokens: 44,
+        },
+      };
+    },
+  );
+
+  const llm = new FallbackLlmClient({
+    agents: {
+      defaults: {
+        model: {
+          primary: "codex-cli/gpt-custom",
+        },
+      },
+    },
+    models: {
+      providers: {
+        "codex-cli": {
+          baseUrl: "",
+          api: "codex-cli",
+          apiKey: "codex-test-key",
+          executable: "codex-test-bin",
+          reasoningEffort: "high",
+          retryOptions: { timeoutMs: 1234 },
+          models: [],
+        },
+      },
+    },
+  });
+
+  try {
+    const response = await llm.chatCompletion(
+      [
+        { role: "system", content: "Return concise JSON." },
+        { role: "user", content: "Say OK" },
+      ],
+      { temperature: 0, maxTokens: 16, timeoutMs: 5000 },
+    );
+
+    assert.equal(response?.content, "final codex answer");
+    assert.equal(response?.modelUsed, "codex-cli/gpt-custom");
+    assert.equal(response?.usage?.totalTokens, 44);
+    assert.equal(captured.modelId, "gpt-custom");
+    assert.deepEqual(captured.messages, [
+      { role: "system", content: "Return concise JSON." },
+      { role: "user", content: "Say OK" },
+    ]);
+    assert.equal(captured.apiKey, "codex-test-key");
+    assert.equal(captured.executable, "codex-test-bin");
+    assert.equal(captured.reasoningEffort, "high");
+    assert.equal(captured.timeoutMs, 1234);
+  } finally {
+    restoreRunner();
+    clearModelsJsonCache();
+    clearSecretCache();
+  }
+});
+
+test("fallback llm can call Ollama native chat and suppress thinking", { concurrency: false }, async () => {
+  clearModelsJsonCache();
+  clearSecretCache();
+
+  const llm = new FallbackLlmClient({
+    agents: {
+      defaults: {
+        model: {
+          primary: "ollama-internal/gemma4:31b-cloud",
+        },
+      },
+    },
+    models: {
+      providers: {
+        "ollama-internal": {
+          baseUrl: "https://ollama.example/api",
+          api: "ollama-chat",
+          apiKey: "ollama-key",
+          disableThinking: true,
+          models: [],
+        },
+      },
+    },
+  });
+
+  const originalFetch = globalThis.fetch;
+  let capturedUrl = "";
+  let capturedAuth = "";
+  let capturedBody = "";
+  globalThis.fetch = (async (url, init) => {
+    capturedUrl = String(url);
+    capturedAuth = String((init?.headers as Record<string, string> | undefined)?.Authorization ?? "");
+    capturedBody = String(init?.body ?? "");
+    return new Response(
+      JSON.stringify({
+        message: { content: "ok from ollama" },
+        prompt_eval_count: 7,
+        eval_count: 3,
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  }) as typeof fetch;
+
+  try {
+    const response = await llm.chatCompletion(
+      [{ role: "user", content: "Say OK" }],
+      { temperature: 0, maxTokens: 16 },
+    );
+
+    assert.equal(response?.content, "ok from ollama");
+    assert.equal(response?.usage?.totalTokens, 10);
+    assert.equal(capturedUrl, "https://ollama.example/api/chat");
+    assert.equal(capturedAuth, "Bearer ollama-key");
+    const parsedBody = JSON.parse(capturedBody) as {
+      model?: string;
+      think?: boolean;
+      options?: { num_predict?: number };
+    };
+    assert.equal(parsedBody.model, "gemma4:31b-cloud");
+    assert.equal(parsedBody.think, false);
+    assert.equal(parsedBody.options?.num_predict, 16);
   } finally {
     globalThis.fetch = originalFetch;
     clearModelsJsonCache();

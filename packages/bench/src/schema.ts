@@ -95,6 +95,20 @@ export const BENCHMARK_RESULT_SCHEMA = {
             },
           ],
         },
+        internalProvider: {
+          anyOf: [
+            { type: "null" },
+            {
+              type: "object",
+              required: ["provider", "model"],
+              properties: {
+                provider: { type: "string" },
+                model: { type: "string" },
+                baseUrl: { type: "string" },
+              },
+            },
+          ],
+        },
         adapterMode: { type: "string" },
         remnicConfig: { type: "object" },
       },

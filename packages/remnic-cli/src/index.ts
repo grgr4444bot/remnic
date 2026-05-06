@@ -337,6 +337,7 @@ type PackageBenchModule = {
     runtimeProfile?: BenchRuntimeProfile | null;
     systemProvider?: PackageBenchProviderConfig | null;
     judgeProvider?: PackageBenchProviderConfig | null;
+    internalProvider?: PackageBenchProviderConfig | null;
     remnicConfig?: Record<string, unknown>;
     amaBenchJudgeProtocol?: "default" | "recommended";
     amaBenchCrossJudge?: unknown;
@@ -352,6 +353,7 @@ type PackageBenchModule = {
       runtimeProfile?: BenchRuntimeProfile | null;
       systemProvider?: PackageBenchProviderConfig | null;
       judgeProvider?: PackageBenchProviderConfig | null;
+      internalProvider?: PackageBenchProviderConfig | null;
       adapterMode: string;
       remnicConfig: Record<string, unknown>;
       benchmarkOptions?: Record<string, unknown>;
@@ -370,11 +372,25 @@ type PackageBenchModule = {
       provider: string;
       model: string;
       baseUrl?: string;
+      apiKey?: string;
+      disableThinking?: boolean;
+      reasoningEffort?: "low" | "medium" | "high" | "xhigh";
     } | null;
     judgeProvider?: {
       provider: string;
       model: string;
       baseUrl?: string;
+      apiKey?: string;
+      disableThinking?: boolean;
+      reasoningEffort?: "low" | "medium" | "high" | "xhigh";
+    } | null;
+    internalProvider?: {
+      provider: string;
+      model: string;
+      baseUrl?: string;
+      apiKey?: string;
+      disableThinking?: boolean;
+      reasoningEffort?: "low" | "medium" | "high" | "xhigh";
     } | null;
     remnicConfig?: Record<string, unknown>;
     system: {
@@ -393,6 +409,17 @@ type PackageBenchModule = {
         provider: string;
         model: string;
         baseUrl?: string;
+        apiKey?: string;
+        disableThinking?: boolean;
+        reasoningEffort?: "low" | "medium" | "high" | "xhigh";
+      } | null;
+      internalProvider?: {
+        provider: string;
+        model: string;
+        baseUrl?: string;
+        apiKey?: string;
+        disableThinking?: boolean;
+        reasoningEffort?: "low" | "medium" | "high" | "xhigh";
       } | null;
       adapterMode: string;
       remnicConfig: Record<string, unknown>;
@@ -413,6 +440,17 @@ type PackageBenchModule = {
         provider: string;
         model: string;
         baseUrl?: string;
+        apiKey?: string;
+        disableThinking?: boolean;
+        reasoningEffort?: "low" | "medium" | "high" | "xhigh";
+      } | null;
+      internalProvider?: {
+        provider: string;
+        model: string;
+        baseUrl?: string;
+        apiKey?: string;
+        disableThinking?: boolean;
+        reasoningEffort?: "low" | "medium" | "high" | "xhigh";
       } | null;
       adapterMode: string;
       remnicConfig: Record<string, unknown>;
@@ -552,6 +590,12 @@ interface ResolveBenchRuntimeProfileOptions {
   judgeModel?: string;
   judgeBaseUrl?: string;
   judgeApiKey?: string;
+  internalProvider?: string;
+  internalModel?: string;
+  internalBaseUrl?: string;
+  internalApiKey?: string;
+  internalDisableThinking?: boolean;
+  internalCodexReasoningEffort?: "low" | "medium" | "high" | "xhigh";
   amaBenchJudgeProtocol?: "default" | "recommended";
   amaBenchCrossJudgeProvider?: string;
   amaBenchCrossJudgeModel?: string;
@@ -574,6 +618,7 @@ interface ResolvedBenchRuntimeProfile {
   };
   systemProvider: BenchProviderConfig | null;
   judgeProvider: BenchProviderConfig | null;
+  internalProvider: BenchProviderConfig | null;
 }
 
 interface BenchSummaryResult {
@@ -657,6 +702,16 @@ Options:
                            Use a direct provider-backed judge
   --judge-model <model>    Model name for the judge provider
   --judge-base-url <url>   Base URL for the judge provider
+  --internal-provider <openai|anthropic|ollama|litellm|local-llm|codex-cli>
+                           Provider for Remnic's internal extraction/summarization LLM
+  --internal-model <model> Model name for Remnic's internal LLM provider
+  --internal-base-url <url>
+                           Base URL for Remnic's internal LLM provider
+  --internal-api-key <key> API key for Remnic's internal LLM provider
+  --internal-disable-thinking
+                           Suppress thinking for Remnic's internal LLM when supported
+  --internal-codex-reasoning-effort <low|medium|high|xhigh>
+                           Codex CLI reasoning effort for Remnic's internal LLM
   --ama-bench-judge-protocol <default|recommended>
                            For ama-bench, use the recommended binary LLM-judge protocol
   --ama-bench-cross-judge-model <model>
@@ -743,6 +798,12 @@ export function buildBenchRuntimeProfileRequest(
     judgeModel: parsed.judgeModel,
     judgeBaseUrl: parsed.judgeBaseUrl,
     judgeApiKey: parsed.judgeApiKey,
+    internalProvider: parsed.internalProvider,
+    internalModel: parsed.internalModel,
+    internalBaseUrl: parsed.internalBaseUrl,
+    internalApiKey: parsed.internalApiKey,
+    internalDisableThinking: parsed.internalDisableThinking,
+    internalCodexReasoningEffort: parsed.internalCodexReasoningEffort,
     requestTimeout: parsed.requestTimeout,
     max429WaitMs: parsed.max429WaitMs,
     disableThinking: parsed.disableThinking,
@@ -926,6 +987,12 @@ async function runBenchViaFallback(
     parsed.judgeProvider !== undefined ||
     parsed.judgeModel !== undefined ||
     parsed.judgeBaseUrl !== undefined ||
+    parsed.internalProvider !== undefined ||
+    parsed.internalModel !== undefined ||
+    parsed.internalBaseUrl !== undefined ||
+    parsed.internalApiKey !== undefined ||
+    parsed.internalDisableThinking === true ||
+    parsed.internalCodexReasoningEffort !== undefined ||
     parsed.amaBenchJudgeProtocol !== undefined ||
     parsed.amaBenchCrossJudgeProvider !== undefined ||
     parsed.amaBenchCrossJudgeModel !== undefined ||
@@ -2272,6 +2339,7 @@ async function runBenchViaPackage(
       runtimeProfile: plan.runtime.profile,
       systemProvider: plan.runtime.systemProvider,
       judgeProvider: plan.runtime.judgeProvider,
+      internalProvider: plan.runtime.internalProvider,
       remnicConfig: plan.runtime.effectiveRemnicConfig,
       ...(amaBenchProtocol.judgeProtocol
         ? { amaBenchJudgeProtocol: amaBenchProtocol.judgeProtocol }
@@ -2302,6 +2370,7 @@ async function runBenchViaPackage(
       },
     });
     result.config.remnicConfig = plan.runtime.remnicConfig;
+    result.config.internalProvider = plan.runtime.internalProvider;
     const writtenPath = await benchModule.writeBenchmarkResult(result, outputDir);
     if (parsed.json) {
       console.log(JSON.stringify(redactBenchResultForStdout(benchModule, result), null, 2));
@@ -2462,6 +2531,7 @@ function buildPartialBenchmarkResult(
     config: {
       systemProvider: plan.runtime.systemProvider ?? null,
       judgeProvider: plan.runtime.judgeProvider ?? null,
+      internalProvider: plan.runtime.internalProvider ?? null,
       adapterMode: plan.adapterMode,
       remnicConfig: plan.runtime.remnicConfig ?? {},
     },
@@ -2519,10 +2589,12 @@ async function runCustomBenchViaPackage(parsed: ParsedBenchArgs): Promise<boolea
         runtimeProfile: plan.runtime.profile,
         systemProvider: plan.runtime.systemProvider,
         judgeProvider: plan.runtime.judgeProvider,
+        internalProvider: plan.runtime.internalProvider,
         remnicConfig: plan.runtime.effectiveRemnicConfig,
         system,
       });
       result.config.remnicConfig = plan.runtime.remnicConfig;
+      result.config.internalProvider = plan.runtime.internalProvider;
       customBenchmarkIds.push(result.meta.benchmark);
       const writtenPath = await benchModule.writeBenchmarkResult(result, outputDir);
       writtenPaths.push(writtenPath);
