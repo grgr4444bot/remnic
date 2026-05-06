@@ -282,6 +282,15 @@ export interface AmaBenchDiagnosticTaskRow {
   judgeModel?: string;
   crossJudgeModel?: string;
   crossJudgeScore?: number;
+  evidence?: AmaBenchDiagnosticTaskEvidence;
+}
+
+export interface AmaBenchDiagnosticTaskEvidence {
+  question: string;
+  expected: string;
+  actual: string;
+  recalledText: string;
+  truncatedFields?: string[];
 }
 
 export interface AmaBenchDiagnosticBreakdown {
@@ -330,6 +339,8 @@ export interface AmaBenchDiagnosticMatrixArtifact {
     amaBenchCrossJudgeProvider?: SanitizedDiagnosticProvider | null;
     strongSystemProvider?: SanitizedDiagnosticProvider | null;
     variantIds?: string[];
+    includeTaskEvidence?: boolean;
+    taskEvidenceMaxChars?: number;
   };
   variants: AmaBenchDiagnosticVariantSummary[];
 }
@@ -337,6 +348,8 @@ export interface AmaBenchDiagnosticMatrixArtifact {
 export interface AmaBenchDiagnosticRunContext {
   runtimeProfile?: string;
   hasResponder?: boolean;
+  includeTaskEvidence?: boolean;
+  taskEvidenceMaxChars?: number;
 }
 
 export function buildAmaBenchDiagnosticVariantSummary(
@@ -345,7 +358,10 @@ export function buildAmaBenchDiagnosticVariantSummary(
   context: AmaBenchDiagnosticRunContext = {},
 ): AmaBenchDiagnosticVariantSummary {
   const tasks = result.results.tasks.map((task) =>
-    taskToDiagnosticRow(variant.id, task),
+    taskToDiagnosticRow(variant.id, task, {
+      includeTaskEvidence: context.includeTaskEvidence === true,
+      maxChars: context.taskEvidenceMaxChars,
+    }),
   );
   const usesFullRemnicRecallProcess =
     context.runtimeProfile === "real" &&
@@ -405,6 +421,7 @@ export function isAmaBenchUnknownLikeAnswer(answer: string): boolean {
 function taskToDiagnosticRow(
   variantId: string,
   task: TaskResult,
+  options: { includeTaskEvidence?: boolean; maxChars?: number } = {},
 ): AmaBenchDiagnosticTaskRow {
   const details = task.details ?? {};
   return {
@@ -423,7 +440,52 @@ function taskToDiagnosticRow(
     judgeModel: asOptionalString(details.judgeModel),
     crossJudgeModel: asOptionalString(details.amaBenchCrossJudgeModel),
     crossJudgeScore: asOptionalNumber(details.amaBenchCrossJudgeScore),
+    ...(options.includeTaskEvidence === true
+      ? { evidence: buildTaskEvidence(task, options.maxChars) }
+      : {}),
   };
+}
+
+function buildTaskEvidence(
+  task: TaskResult,
+  maxChars: number | undefined,
+): AmaBenchDiagnosticTaskEvidence {
+  const budget = normalizeEvidenceMaxChars(maxChars);
+  const recalled = asOptionalString(task.details?.recalledText) ?? "";
+  const fields = {
+    question: truncateEvidenceField(task.question, budget),
+    expected: truncateEvidenceField(task.expected, budget),
+    actual: truncateEvidenceField(task.actual, budget),
+    recalledText: truncateEvidenceField(recalled, budget),
+  };
+  const truncatedFields = Object.entries(fields)
+    .filter(([, field]) => field.truncated)
+    .map(([name]) => name);
+
+  return {
+    question: fields.question.text,
+    expected: fields.expected.text,
+    actual: fields.actual.text,
+    recalledText: fields.recalledText.text,
+    ...(truncatedFields.length > 0 ? { truncatedFields } : {}),
+  };
+}
+
+function normalizeEvidenceMaxChars(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 6000;
+  }
+  return Math.max(1, Math.floor(value));
+}
+
+function truncateEvidenceField(
+  value: string,
+  maxChars: number,
+): { text: string; truncated: boolean } {
+  if (value.length <= maxChars) {
+    return { text: value, truncated: false };
+  }
+  return { text: value.slice(0, maxChars), truncated: true };
 }
 
 function truncateToBudget(text: string, budgetChars?: number): string {

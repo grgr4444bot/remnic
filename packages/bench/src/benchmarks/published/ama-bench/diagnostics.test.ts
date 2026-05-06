@@ -299,6 +299,81 @@ test("diagnostic summary groups domain and QA type without raw answer text", () 
   assert.equal(summary.tasks[0]?.crossJudgeScore, 1);
 });
 
+test("diagnostic summary can include bounded task evidence by opt-in", () => {
+  const variant = selectAmaBenchDiagnosticVariants({
+    ids: ["remnic-full-normal"],
+  })[0]!;
+  const result: BenchmarkResult = {
+    meta: {
+      id: "run-1",
+      benchmark: "ama-bench",
+      benchmarkTier: "published",
+      version: "2.0.0",
+      remnicVersion: "test",
+      gitSha: "abc",
+      timestamp: "2026-05-05T00:00:00.000Z",
+      mode: "full",
+      runCount: 1,
+      seeds: [0],
+    },
+    config: {
+      systemProvider: null,
+      judgeProvider: null,
+      adapterMode: "direct",
+      remnicConfig: {},
+    },
+    cost: {
+      totalTokens: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      estimatedCostUsd: 0,
+      totalLatencyMs: 0,
+      meanQueryLatencyMs: 0,
+    },
+    results: {
+      tasks: [
+        {
+          taskId: "q1",
+          question: "Which color was the small box?",
+          expected: "red",
+          actual: "The small box was red.",
+          scores: { f1: 1 },
+          latencyMs: 0,
+          tokens: { input: 0, output: 0 },
+          details: {
+            domain: "Game",
+            qaType: "A",
+            taskType: "babaisai",
+            recalledText: "## Explicit Cue Evidence\n[Action 1]: inspect small box",
+          },
+        },
+      ],
+      aggregates: {},
+    },
+    environment: {
+      os: "test",
+      nodeVersion: "test",
+    },
+  };
+
+  const summary = buildAmaBenchDiagnosticVariantSummary(variant, result, {
+    runtimeProfile: "real",
+    hasResponder: true,
+    includeTaskEvidence: true,
+    taskEvidenceMaxChars: 12,
+  });
+
+  assert.equal(summary.tasks[0]?.evidence?.question, "Which color ");
+  assert.equal(summary.tasks[0]?.evidence?.expected, "red");
+  assert.equal(summary.tasks[0]?.evidence?.actual, "The small bo");
+  assert.equal(summary.tasks[0]?.evidence?.recalledText, "## Explicit ");
+  assert.deepEqual(summary.tasks[0]?.evidence?.truncatedFields, [
+    "question",
+    "actual",
+    "recalledText",
+  ]);
+});
+
 test("diagnostic summary only marks primary full-system scores for full real Remnic runs", () => {
   const variant = selectAmaBenchDiagnosticVariants({
     ids: ["remnic-full-normal"],

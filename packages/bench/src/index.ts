@@ -175,6 +175,7 @@ export type {
   AmaBenchDiagnosticMatrixArtifact,
   AmaBenchDiagnosticRecallMode,
   AmaBenchDiagnosticRunContext,
+  AmaBenchDiagnosticTaskEvidence,
   AmaBenchDiagnosticTaskRow,
   AmaBenchDiagnosticVariant,
   AmaBenchDiagnosticVariantSummary,
