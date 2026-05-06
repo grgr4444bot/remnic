@@ -276,6 +276,30 @@ test("buildExplicitCueRecallSection includes successor trajectory evidence when 
   assert.match(section, /Observation 24/);
 });
 
+test("buildExplicitCueRecallSection does not treat broad break wording as successor intent", async () => {
+  const messages = Array.from({ length: 54 }, (_, index) => ({
+    role: index % 2 === 0 ? "user" : "assistant",
+    content: `filler turn ${index}`,
+  }));
+  messages[46] = { role: "user", content: "[Action 23] left" };
+  messages[47] = { role: "assistant", content: "[Observation 23] the rule broke" };
+  messages[48] = { role: "user", content: "[Action 24] down" };
+  messages[49] = { role: "assistant", content: "[Observation 24] successor state" };
+  const engine = new FakeCueEngine({ "bench-session": messages });
+
+  const section = await buildExplicitCueRecallSection({
+    engine,
+    sessionId: "bench-session",
+    query: "What broke in step 23?",
+    maxChars: 4000,
+  });
+
+  assert.match(section, /Action 23/);
+  assert.match(section, /Observation 23/);
+  assert.doesNotMatch(section, /Action 24/);
+  assert.doesNotMatch(section, /Observation 24/);
+});
+
 test("buildExplicitCueRecallSection resolves action and observation labels when transcript turns are offset", async () => {
   const messages = Array.from({ length: 130 }, (_, index) => ({
     role: index % 2 === 0 ? "user" : "assistant",

@@ -509,7 +509,12 @@ function contentLabelEvidenceWindow(hit: {
 
 function hasSuccessorTrajectoryIntent(query: string): boolean {
   const normalized = query.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  return /\b(?:after|next|following|subsequent|successor|later|breaking|breaks?|broke|interrupts?|interrupted)\b/.test(normalized);
+  return [
+    /\bafter\s+(?:step|action|observation|turn)\s+\d+\b/,
+    /\b(?:next|following|subsequent|successor)\s+(?:step|action|observation|turn)\b/,
+    /\b(?:step|action|observation|turn)\s+\d+\s+(?:then|and then)\b/,
+    /\bwhat\s+(?:happened|came|occurred)\s+next\b/,
+  ].some((pattern) => pattern.test(normalized));
 }
 
 function contentHasReferenceLabel(
