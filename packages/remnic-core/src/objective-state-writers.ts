@@ -36,6 +36,19 @@ interface ObservedPartEntry {
   part: LcmMessagePartInput;
 }
 
+const rawProviderParts = new WeakSet<LcmMessagePartInput>();
+
+function markRawProviderParts(parts: LcmMessagePartInput[]): LcmMessagePartInput[] {
+  for (const part of parts) {
+    rawProviderParts.add(part);
+  }
+  return parts;
+}
+
+function isRawProviderPart(part: LcmMessagePartInput): boolean {
+  return rawProviderParts.has(part);
+}
+
 function hashSha256(value: string): string {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
@@ -421,20 +434,22 @@ function userRawToolResultParts(message: ObservedMessageWithParts): LcmMessagePa
   if (!containsProviderToolResultBlock(rawContent)) {
     return [];
   }
-  return sanitizeUserRoleToolResultParts(parseMessageParts(rawContent, {
-    sourceFormat: message.sourceFormat,
-    allowRenderedFallback: false,
-  }));
+  return markRawProviderParts(
+    sanitizeUserRoleToolResultParts(parseMessageParts(rawContent, {
+      sourceFormat: message.sourceFormat,
+      allowRenderedFallback: false,
+    })),
+  );
 }
 
 function assistantRawObjectiveStateParts(message: ObservedMessageWithParts): LcmMessagePartInput[] {
   if (message.rawContent === undefined || message.rawContent === null) {
     return [];
   }
-  return parseMessageParts(message.rawContent, {
+  return markRawProviderParts(parseMessageParts(message.rawContent, {
     sourceFormat: message.sourceFormat,
     allowRenderedFallback: false,
-  });
+  }));
 }
 
 function mergeObservedEvidenceParts(
@@ -746,7 +761,8 @@ function observedPartsToAgentMessages(options: {
         (part.kind === "file_write" || part.kind === "patch") &&
         !observedToolCallId &&
         !nextIsIdlessToolResult &&
-        !resultIds.has(id)
+        !resultIds.has(id) &&
+        !isRawProviderPart(part)
       ) {
         synthetic.push({
           role: "tool",

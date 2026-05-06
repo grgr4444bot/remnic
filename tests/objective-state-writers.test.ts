@@ -346,6 +346,30 @@ test("deriveObjectiveStateSnapshotsFromObservedMessages parses raw provider cont
   assert.equal(snapshots[0]?.metadata?.toolCallId, "raw-call");
 });
 
+test("deriveObjectiveStateSnapshotsFromObservedMessages does not fabricate success for raw idless file calls", () => {
+  const snapshots = deriveObjectiveStateSnapshotsFromObservedMessages({
+    sessionKey: "agent:main",
+    recordedAt: "2026-03-07T12:00:41.000Z",
+    messages: [
+      {
+        role: "assistant",
+        content: "Writing a file.",
+        sourceFormat: "openclaw",
+        rawContent: {
+          role: "assistant",
+          toolName: "write_file",
+          input: {
+            path: "workspace/raw.txt",
+            content: "raw provider call without result",
+          },
+        },
+      },
+    ],
+  });
+
+  assert.equal(snapshots.length, 0);
+});
+
 test("deriveObjectiveStateSnapshotsFromObservedMessages reads raw provider content when rendered parts are present", () => {
   const snapshots = deriveObjectiveStateSnapshotsFromObservedMessages({
     sessionKey: "agent:main",
