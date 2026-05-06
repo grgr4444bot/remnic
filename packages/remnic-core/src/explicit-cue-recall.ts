@@ -304,6 +304,7 @@ async function collectTurnReferenceEvidence(options: {
   await collectContentLabelReferenceEvidence({
     engine: options.engine,
     sessionId: options.sessionId,
+    query: options.query,
     references,
     evidenceItems: options.evidenceItems,
     seenTurns: options.seenTurns,
@@ -343,6 +344,7 @@ async function collectTurnReferenceEvidence(options: {
 async function collectContentLabelReferenceEvidence(options: {
   engine: ExplicitCueRecallEngine;
   sessionId?: string;
+  query: string;
   references: ExplicitTurnReference[];
   evidenceItems: Array<{
     id: string;
@@ -376,7 +378,9 @@ async function collectContentLabelReferenceEvidence(options: {
         break;
       }
 
-      const { fromTurn, toTurn } = contentLabelEvidenceWindow(hit);
+      const { fromTurn, toTurn } = contentLabelEvidenceWindow(hit, {
+        includeSuccessor: hasSuccessorTrajectoryIntent(options.query),
+      });
       const expanded = await options.engine.expandContext(
         hit.session_id,
         fromTurn,
@@ -488,18 +492,24 @@ function nearestTurnDistance(turnIndex: number, candidates: readonly number[]): 
 function contentLabelEvidenceWindow(hit: {
   turn_index: number;
   labelKind: "action" | "observation";
-}): { fromTurn: number; toTurn: number } {
+}, options: { includeSuccessor?: boolean } = {}): { fromTurn: number; toTurn: number } {
+  const successorTurns = options.includeSuccessor === true ? 2 : 0;
   if (hit.labelKind === "action") {
     return {
       fromTurn: Math.max(0, hit.turn_index - 1),
-      toTurn: hit.turn_index + 1,
+      toTurn: hit.turn_index + 1 + successorTurns,
     };
   }
 
   return {
     fromTurn: Math.max(0, hit.turn_index - 1),
-    toTurn: hit.turn_index,
+    toTurn: hit.turn_index + successorTurns,
   };
+}
+
+function hasSuccessorTrajectoryIntent(query: string): boolean {
+  const normalized = query.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return /\b(?:after|next|following|subsequent|successor|later|breaking|breaks?|broke|interrupts?|interrupted)\b/.test(normalized);
 }
 
 function contentHasReferenceLabel(

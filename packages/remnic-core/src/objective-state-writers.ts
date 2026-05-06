@@ -5,6 +5,11 @@ import {
   type ObjectiveStateSnapshot,
   recordObjectiveStateSnapshot,
 } from "./objective-state.js";
+import {
+  parseMessageParts,
+  type LcmMessagePartInput,
+  type MessagePartSourceFormat,
+} from "./message-parts/index.js";
 
 interface ToolCallContext {
   toolName?: string;
@@ -15,6 +20,20 @@ interface ToolCallContext {
 interface DerivedObjectiveStateResult {
   snapshots: ObjectiveStateSnapshot[];
   filePaths: string[];
+}
+
+interface ObservedMessageWithParts {
+  role?: string;
+  content?: string;
+  parts?: LcmMessagePartInput[] | null;
+  rawContent?: unknown;
+  sourceFormat?: MessagePartSourceFormat;
+}
+
+interface ObservedPartEntry {
+  messageIndex: number;
+  partIndex: number;
+  part: LcmMessagePartInput;
 }
 
 function hashSha256(value: string): string {
@@ -55,6 +74,19 @@ function parseToolArguments(value: unknown): Record<string, unknown> | undefined
   }
 }
 
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableStringify(entry)).join(",")}]`;
+  }
+  if (isRecord(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? String(value);
+}
+
 function extractTextContent(value: unknown): string {
   if (typeof value === "string") return value.trim();
   if (Array.isArray(value)) {
@@ -88,7 +120,7 @@ function parseToolResultPayload(content: unknown): unknown {
 function resultHash(value: unknown): string | undefined {
   if (value === undefined) return undefined;
   const canonical =
-    typeof value === "string" ? value : JSON.stringify(value);
+    typeof value === "string" ? value : stableStringify(value);
   if (!canonical || canonical.length === 0) return undefined;
   return `sha256:${hashSha256(canonical)}`;
 }
@@ -339,13 +371,225 @@ function snapshotIdFor(
   index: number,
   toolName: string,
   scope: string,
+  stableKey?: string,
 ): string {
   const digest = crypto
     .createHash("sha256")
-    .update(`${sessionKey}|${recordedAt}|${index}|${toolName}|${scope}`)
+    .update(
+      stableKey
+        ? `${sessionKey}|stable|${stableKey}`
+        : `${sessionKey}|${recordedAt}|${index}|${toolName}|${scope}`,
+    )
     .digest("hex")
     .slice(0, 12);
   return `obj-${digest}`;
+}
+
+function objectiveStatePartsForObservedMessage(
+  message: ObservedMessageWithParts,
+): LcmMessagePartInput[] {
+  if (message.role !== "assistant") {
+    return [];
+  }
+  if (Array.isArray(message.parts) && message.parts.length > 0) {
+    return message.parts;
+  }
+  return parseMessageParts(message.rawContent ?? message.content, {
+    sourceFormat: message.sourceFormat,
+    renderedContent: message.content,
+  });
+}
+
+function flattenObservedParts(messages: readonly ObservedMessageWithParts[]): ObservedPartEntry[] {
+  const entries: ObservedPartEntry[] = [];
+  messages.forEach((message, messageIndex) => {
+    const parts = objectiveStatePartsForObservedMessage(message);
+    parts.forEach((part, partIndex) => {
+      entries.push({ messageIndex, partIndex, part });
+    });
+  });
+  return entries.sort((a, b) => {
+    if (a.messageIndex !== b.messageIndex) return a.messageIndex - b.messageIndex;
+    const aOrdinal = typeof a.part.ordinal === "number" ? a.part.ordinal : a.partIndex;
+    const bOrdinal = typeof b.part.ordinal === "number" ? b.part.ordinal : b.partIndex;
+    if (aOrdinal !== bOrdinal) return aOrdinal - bOrdinal;
+    return a.partIndex - b.partIndex;
+  });
+}
+
+function partPayload(part: LcmMessagePartInput): Record<string, unknown> {
+  return isRecord(part.payload) ? part.payload : {};
+}
+
+function partToolCallId(part: LcmMessagePartInput): string | undefined {
+  const payload = partPayload(part);
+  return (
+    optionalString(payload.id) ??
+    optionalString(payload.call_id) ??
+    optionalString(payload.callId) ??
+    optionalString(payload.tool_call_id) ??
+    optionalString(payload.toolCallId) ??
+    optionalString(payload.tool_use_id) ??
+    optionalString(payload.toolUseId)
+  );
+}
+
+function partToolName(part: LcmMessagePartInput): string | undefined {
+  const payload = partPayload(part);
+  return (
+    optionalString(part.toolName) ??
+    optionalString(part.tool_name) ??
+    optionalString(payload.name) ??
+    optionalString(payload.toolName) ??
+    optionalString(payload.tool_name) ??
+    (part.kind === "patch" ? "apply_patch" : undefined) ??
+    (part.kind === "file_write" ? "file_write" : undefined)
+  );
+}
+
+function partFilePath(part: LcmMessagePartInput): string | undefined {
+  const payload = partPayload(part);
+  return (
+    optionalString(part.filePath) ??
+    optionalString(part.file_path) ??
+    optionalString(payload.path) ??
+    optionalString(payload.filePath) ??
+    optionalString(payload.file_path)
+  );
+}
+
+function syntheticPartId(options: {
+  sessionKey: string;
+  messageIndex: number;
+  partIndex: number;
+  part: LcmMessagePartInput;
+}): string {
+  const digest = hashSha256(
+    [
+      options.sessionKey,
+      String(options.messageIndex),
+      String(options.part.ordinal ?? options.partIndex),
+      options.part.kind,
+      stableStringify(options.part.payload),
+    ].join("|"),
+  ).slice(0, 12);
+  return `part-${digest}`;
+}
+
+function toolArgumentsFromPart(part: LcmMessagePartInput): Record<string, unknown> {
+  const payload = partPayload(part);
+  const parsedArgs =
+    parseToolArguments(payload.arguments) ??
+    parseToolArguments(payload.input) ??
+    parseToolArguments(payload.args) ??
+    parseToolArguments(payload.params) ??
+    payload;
+  const args = { ...parsedArgs };
+  const filePath = partFilePath(part);
+  if (filePath && !pickString(args, ["path", "filePath", "file_path"])) {
+    args.path = filePath;
+  }
+  if (part.kind === "patch" && !pickString(args, ["patch", "diff", "text"])) {
+    const text = optionalString(payload.text) ?? optionalString(payload.patch);
+    if (text) args.patch = text;
+  }
+  return args;
+}
+
+function toolResultContentFromPart(part: LcmMessagePartInput): unknown {
+  const payload = partPayload(part);
+  if ("output" in payload) return payload.output;
+  if ("content" in payload) return payload.content;
+  if ("result" in payload) return payload.result;
+  if ("value" in payload) return payload.value;
+  return payload;
+}
+
+function toolResultIsError(part: LcmMessagePartInput): boolean {
+  const payload = partPayload(part);
+  return payload.isError === true ||
+    payload.is_error === true ||
+    payload.ok === false ||
+    payload.success === false ||
+    optionalString(payload.error) !== undefined;
+}
+
+function buildSyntheticAssistantToolCall(
+  id: string,
+  toolName: string,
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    role: "assistant",
+    tool_calls: [
+      {
+        id,
+        function: {
+          name: toolName,
+          arguments: JSON.stringify(args),
+        },
+      },
+    ],
+  };
+}
+
+function observedPartsToAgentMessages(options: {
+  sessionKey: string;
+  messages: readonly ObservedMessageWithParts[];
+}): Array<Record<string, unknown>> {
+  const entries = flattenObservedParts(options.messages);
+  const resultIds = new Set(
+    entries
+      .filter((entry) => entry.part.kind === "tool_result")
+      .map((entry) => partToolCallId(entry.part))
+      .filter((id): id is string => id !== undefined),
+  );
+  const synthetic: Array<Record<string, unknown>> = [];
+
+  for (const entry of entries) {
+    const { part } = entry;
+    if (
+      part.kind === "tool_call" ||
+      part.kind === "file_write" ||
+      part.kind === "patch"
+    ) {
+      const toolName = partToolName(part);
+      if (!toolName) continue;
+      const id = partToolCallId(part) ??
+        syntheticPartId({
+          sessionKey: options.sessionKey,
+          messageIndex: entry.messageIndex,
+          partIndex: entry.partIndex,
+          part,
+        });
+      const args = toolArgumentsFromPart(part);
+      synthetic.push(buildSyntheticAssistantToolCall(id, toolName, args));
+
+      if ((part.kind === "file_write" || part.kind === "patch") && !resultIds.has(id)) {
+        synthetic.push({
+          role: "tool",
+          tool_call_id: id,
+          name: toolName,
+          content: { ok: true, source: "message_part" },
+        });
+      }
+      continue;
+    }
+
+    if (part.kind === "tool_result") {
+      const id = partToolCallId(part);
+      const toolName = partToolName(part);
+      synthetic.push({
+        role: "tool",
+        ...(id ? { tool_call_id: id } : {}),
+        ...(toolName ? { name: toolName } : {}),
+        content: toolResultContentFromPart(part),
+        ...(toolResultIsError(part) ? { isError: true } : {}),
+      });
+    }
+  }
+
+  return synthetic;
 }
 
 export function deriveObjectiveStateSnapshotsFromAgentMessages(options: {
@@ -393,7 +637,14 @@ export function deriveObjectiveStateSnapshotsFromAgentMessages(options: {
 
     snapshots.push({
       schemaVersion: 1,
-      snapshotId: snapshotIdFor(options.sessionKey, options.recordedAt, snapshots.length, toolName, scope),
+      snapshotId: snapshotIdFor(
+        options.sessionKey,
+        options.recordedAt,
+        snapshots.length,
+        toolName,
+        scope,
+        toolCallId,
+      ),
       recordedAt: options.recordedAt,
       sessionKey: options.sessionKey,
       source: "tool_result",
@@ -414,6 +665,24 @@ export function deriveObjectiveStateSnapshotsFromAgentMessages(options: {
   return snapshots;
 }
 
+export function deriveObjectiveStateSnapshotsFromObservedMessages(options: {
+  sessionKey: string;
+  recordedAt: string;
+  messages: readonly ObservedMessageWithParts[];
+}): ObjectiveStateSnapshot[] {
+  const syntheticMessages = observedPartsToAgentMessages({
+    sessionKey: options.sessionKey,
+    messages: options.messages,
+  });
+  if (syntheticMessages.length === 0) return [];
+
+  return deriveObjectiveStateSnapshotsFromAgentMessages({
+    sessionKey: options.sessionKey,
+    recordedAt: options.recordedAt,
+    messages: syntheticMessages,
+  });
+}
+
 export async function recordObjectiveStateSnapshotsFromAgentMessages(options: {
   memoryDir: string;
   objectiveStateStoreDir?: string;
@@ -428,6 +697,39 @@ export async function recordObjectiveStateSnapshotsFromAgentMessages(options: {
   }
 
   const snapshots = deriveObjectiveStateSnapshotsFromAgentMessages({
+    sessionKey: options.sessionKey,
+    recordedAt: options.recordedAt,
+    messages: options.messages,
+  });
+
+  const filePaths: string[] = [];
+  for (const snapshot of snapshots) {
+    filePaths.push(
+      await recordObjectiveStateSnapshot({
+        memoryDir: options.memoryDir,
+        objectiveStateStoreDir: options.objectiveStateStoreDir,
+        snapshot,
+      }),
+    );
+  }
+
+  return { snapshots, filePaths };
+}
+
+export async function recordObjectiveStateSnapshotsFromObservedMessages(options: {
+  memoryDir: string;
+  objectiveStateStoreDir?: string;
+  objectiveStateMemoryEnabled: boolean;
+  objectiveStateSnapshotWritesEnabled: boolean;
+  sessionKey: string;
+  recordedAt: string;
+  messages: readonly ObservedMessageWithParts[];
+}): Promise<DerivedObjectiveStateResult> {
+  if (!options.objectiveStateMemoryEnabled || !options.objectiveStateSnapshotWritesEnabled) {
+    return { snapshots: [], filePaths: [] };
+  }
+
+  const snapshots = deriveObjectiveStateSnapshotsFromObservedMessages({
     sessionKey: options.sessionKey,
     recordedAt: options.recordedAt,
     messages: options.messages,

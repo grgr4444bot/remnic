@@ -1885,17 +1885,23 @@ export class Orchestrator {
           ? `Compress the following into bullet points. One bullet per distinct fact or decision. Maximum ${targetTokens} tokens total. No prose.`
           : `Compress the following conversation segment into a dense summary. Preserve: decisions made, code artifacts mentioned, errors encountered, open questions, and any commitments or next-steps. Omit: pleasantries, restatements, and anything the agent would not need to recall later. Output a single paragraph, maximum ${targetTokens} tokens.`;
         try {
-          const result = await this.localLlm.chatCompletion(
-            [
-              { role: "system", content: instructionText },
-              { role: "user", content: text.slice(0, 12000) },
-            ],
-            {
-              maxTokens: targetTokens * 2,
-              operation: "lcm-summarize",
-              priority: "background",
-            },
-          );
+          const messages = [
+            { role: "system" as const, content: instructionText },
+            { role: "user" as const, content: text.slice(0, 12000) },
+          ];
+          const result = this.config.modelSource === "gateway" && this._fastGatewayLlm
+            ? await this._fastGatewayLlm.chatCompletion(messages, {
+                maxTokens: targetTokens * 2,
+                agentId:
+                  this.config.fastGatewayAgentId ||
+                  this.config.gatewayAgentId ||
+                  undefined,
+              })
+            : await this.localLlm.chatCompletion(messages, {
+                maxTokens: targetTokens * 2,
+                operation: "lcm-summarize",
+                priority: "background",
+              });
           return result?.content ?? null;
         } catch {
           return null;

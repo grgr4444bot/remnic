@@ -119,6 +119,7 @@ import {
   type MemoryOutcomeKind,
   type RecordMemoryOutcomeResult,
 } from "./memory-worth-outcomes.js";
+import { recordObjectiveStateSnapshotsFromObservedMessages } from "./objective-state-writers.js";
 import {
   importCapsule as importCapsuleFn,
   type ImportCapsuleOptions,
@@ -3356,6 +3357,26 @@ export class EngramAccessService {
     const lcmSessionKey = namespace !== this.orchestrator.config.defaultNamespace
       ? `${namespace}:${request.sessionKey}`
       : request.sessionKey;
+
+    if (
+      this.orchestrator.config.objectiveStateMemoryEnabled === true &&
+      this.orchestrator.config.objectiveStateSnapshotWritesEnabled === true
+    ) {
+      try {
+        await recordObjectiveStateSnapshotsFromObservedMessages({
+          memoryDir: this.orchestrator.config.memoryDir,
+          objectiveStateStoreDir: this.orchestrator.config.objectiveStateStoreDir,
+          objectiveStateMemoryEnabled: this.orchestrator.config.objectiveStateMemoryEnabled,
+          objectiveStateSnapshotWritesEnabled:
+            this.orchestrator.config.objectiveStateSnapshotWritesEnabled,
+          sessionKey: lcmSessionKey,
+          recordedAt: new Date().toISOString(),
+          messages: request.messages,
+        });
+      } catch (err) {
+        log.error(`access-observe objective-state snapshot write failed: ${err}`);
+      }
+    }
 
     // lcmArchived in the response means "LCM archival was queued" (not
     // "completed"), matching extractionQueued semantics.  Both run async.
