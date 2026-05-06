@@ -200,6 +200,42 @@ test("deriveObjectiveStateSnapshotsFromObservedMessages parses raw provider cont
   assert.equal(snapshots[0]?.metadata?.toolCallId, "raw-call");
 });
 
+test("deriveObjectiveStateSnapshotsFromObservedMessages correlates OpenAI response item ids by call_id", () => {
+  const snapshots = deriveObjectiveStateSnapshotsFromObservedMessages({
+    sessionKey: "agent:main",
+    recordedAt: "2026-03-07T12:00:42.000Z",
+    messages: [
+      {
+        role: "assistant",
+        content: "Ran validation.",
+        sourceFormat: "openai",
+        rawContent: {
+          output: [
+            {
+              type: "function_call",
+              id: "fc-response-item",
+              call_id: "call-openai-raw",
+              name: "exec_command",
+              arguments: JSON.stringify({ cmd: "npm run validate" }),
+            },
+            {
+              type: "function_call_output",
+              call_id: "call-openai-raw",
+              output: JSON.stringify({ exitCode: 0, stdout: "ok" }),
+            },
+          ],
+        },
+      },
+    ],
+  });
+
+  assert.equal(snapshots.length, 1);
+  assert.equal(snapshots[0]?.kind, "process");
+  assert.equal(snapshots[0]?.changeKind, "executed");
+  assert.equal(snapshots[0]?.scope, "npm run validate");
+  assert.equal(snapshots[0]?.metadata?.toolCallId, "call-openai-raw");
+});
+
 test("deriveObjectiveStateSnapshotsFromObservedMessages uses stable ids for observed parts", () => {
   const input = {
     sessionKey: "agent:main",

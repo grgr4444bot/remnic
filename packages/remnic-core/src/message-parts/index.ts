@@ -146,8 +146,12 @@ export function parseOpenAiMessageParts(
     }
     if (type === "function_call") {
       const toolName = asNonEmptyString(item.name ?? item.tool_name);
+      const callId = asNonEmptyString(item.call_id ?? item.callId);
+      const itemId = asNonEmptyString(item.id);
       const payload = {
-        id: item.id ?? item.call_id,
+        id: callId ?? itemId,
+        ...(callId ? { call_id: callId } : {}),
+        ...(itemId && itemId !== callId ? { response_item_id: itemId } : {}),
         name: toolName,
         arguments: parseMaybeJson(item.arguments),
       };
@@ -156,7 +160,14 @@ export function parseOpenAiMessageParts(
     }
     if (type === "function_call_output") {
       const output = asNonEmptyString(item.output) ?? JSON.stringify(sanitizePayload(item.output ?? item));
-      parts.push(makePart("tool_result", { id: item.id ?? item.call_id, output }, {
+      const callId = asNonEmptyString(item.call_id ?? item.callId);
+      const itemId = asNonEmptyString(item.id);
+      parts.push(makePart("tool_result", {
+        id: callId ?? itemId,
+        ...(callId ? { call_id: callId } : {}),
+        ...(itemId && itemId !== callId ? { response_item_id: itemId } : {}),
+        output,
+      }, {
         filePath: firstFilePath(output),
       }));
       continue;

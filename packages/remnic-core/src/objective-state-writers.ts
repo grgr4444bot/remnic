@@ -424,9 +424,9 @@ function partPayload(part: LcmMessagePartInput): Record<string, unknown> {
 function partToolCallId(part: LcmMessagePartInput): string | undefined {
   const payload = partPayload(part);
   return (
-    optionalString(payload.id) ??
     optionalString(payload.call_id) ??
     optionalString(payload.callId) ??
+    optionalString(payload.id) ??
     optionalString(payload.tool_call_id) ??
     optionalString(payload.toolCallId) ??
     optionalString(payload.tool_use_id) ??
