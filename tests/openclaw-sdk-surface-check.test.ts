@@ -171,6 +171,7 @@ const expectedHooks = [
   "agent_turn_prepare",
   "before_agent_finalize",
   "before_agent_reply",
+  "before_agent_run",
   "before_agent_start",
   "before_compaction",
   "before_dispatch",
@@ -241,6 +242,7 @@ export type HookName =
   | "agent_turn_prepare"
   | "before_agent_finalize"
   | "before_agent_reply"
+  | "before_agent_run"
   | "before_agent_start"
   | "before_compaction"
   | "before_dispatch"
