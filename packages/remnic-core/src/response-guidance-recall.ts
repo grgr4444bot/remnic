@@ -161,19 +161,37 @@ export async function buildResponseGuidanceRecallSection(
   }
 
   const title = options.title ?? "Response guidance evidence";
+  const titleLine = `## ${title}`;
+  const cues = buildGuidanceCueSummary(ranked, intents, options.query);
+  const cueInsertion = budgetGuidanceCueInsertion(cues, budget);
   const evidence = buildEvidencePack(ranked, {
     title,
-    maxChars: budget,
+    maxChars: Math.max(0, budget - cueInsertion.length),
     maxItemChars: options.maxItemChars,
   });
   if (!evidence) {
     return "";
   }
 
-  const cues = buildGuidanceCueSummary(ranked, intents, options.query);
-  return cues
-    ? evidence.replace(`## ${title}`, `## ${title}\n\n${cues}`)
+  return cueInsertion
+    ? evidence.replace(titleLine, `${titleLine}${cueInsertion}`)
     : evidence;
+}
+
+function budgetGuidanceCueInsertion(cues: string, budget: number): string {
+  if (!cues) return "";
+  const prefix = "\n\n";
+  if (budget <= prefix.length) return "";
+  const maxCueChars = Math.max(0, Math.floor(budget * 0.35));
+  const clipped = clipGuidanceText(cues, Math.min(maxCueChars, budget - prefix.length));
+  return clipped ? `${prefix}${clipped}` : "";
+}
+
+function clipGuidanceText(text: string, maxChars: number): string {
+  if (maxChars <= 0) return "";
+  if (text.length <= maxChars) return text;
+  if (maxChars <= 3) return text.slice(0, maxChars);
+  return `${text.slice(0, maxChars - 3).trimEnd()}...`;
 }
 
 async function collectGuidanceItems(
@@ -591,7 +609,7 @@ function classifyGuidanceIntents(query: string): GuidanceIntent[] {
   }
   if (
     /\b(?:timeline|financial steps|savings plan|monthly costs?|prepare for buying|buying my home)\b/.test(normalized) &&
-    /\b(?:home|buying|savings|monthly|costs?|timeline|financial)\b/.test(normalized)
+    /\b(?:home|buying|savings|monthly|costs?|financial)\b/.test(normalized)
   ) {
     intents.push("home_buying_financial_steps");
   }
@@ -664,7 +682,7 @@ function classifyGuidanceIntents(query: string): GuidanceIntent[] {
   }
   if (
     /\b(?:thorough summary|complete summary|summary|preparing and selling my home|home selling|selling my home)\b/.test(normalized) &&
-    /\b(?:home|selling|sale|selim|staging|listing|process)\b/.test(normalized)
+    /\b(?:home|selling|sale|selim|staging|listing)\b/.test(normalized)
   ) {
     intents.push("selling_home_summary");
   }
@@ -711,8 +729,8 @@ function classifyGuidanceIntents(query: string): GuidanceIntent[] {
     intents.push("diy_paint_supply_spend");
   }
   if (
-    /\b(?:saved?|save|hiring|professionals?|plumber|painter|diy)\b/.test(normalized) &&
-    /\b(?:painting|plumbing|faucet|hire|over hiring|money|saved?|professionals?)\b/.test(normalized)
+    /\b(?:saved?|save|hiring|plumber|painter|diy)\b/.test(normalized) &&
+    /\b(?:painting|plumbing|faucet|hire|over hiring|money|saved?)\b/.test(normalized)
   ) {
     intents.push("diy_professional_savings");
   }
@@ -4328,7 +4346,7 @@ function isPotentialContradictionResolutionQuery(normalized: string): boolean {
   ) {
     return true;
   }
-  return /\b(?:usually|before|tested|worked with|spent time|spent|read(?:ing)?\s+articles?|articles?|feel|felt|timeline|grammar|accuracy|excel|contact form|api)\b/.test(
+  return /\b(?:usually|before|tested|worked with|spent time|spent|read(?:ing)?\s+articles?|articles?|feel|felt|grammar|accuracy|excel|contact form|api)\b/.test(
     normalized,
   ) || /\bimplement(?:ed|ing)?\b/.test(normalized) &&
     /\b(?:retry logic|http errors?|http\s+\d{3}|errors?)\b/.test(normalized);
