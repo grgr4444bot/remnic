@@ -5738,6 +5738,15 @@ export class Orchestrator {
     return entry.enabled !== false;
   }
 
+  private isSpecializedRecallSectionEnabled(
+    sectionId: string,
+    topLevelEnabled: boolean,
+  ): boolean {
+    const entry = this.getRecallSectionEntry(sectionId);
+    if (!entry) return topLevelEnabled;
+    return entry.enabled === true || (topLevelEnabled && entry.enabled !== false);
+  }
+
   private getRecallSectionMaxChars(
     sectionId: string,
   ): number | null | undefined {
@@ -8432,14 +8441,14 @@ export class Orchestrator {
       }
     }
 
-    const eventOrderEntry = this.getRecallSectionEntry("event-order");
     const eventOrderMaxChars =
       this.getRecallSectionMaxChars("event-order") ??
       this.config.eventOrderRecallMaxChars;
     if (
-      this.config.eventOrderRecallEnabled &&
-      eventOrderEntry &&
-      this.isRecallSectionEnabled("event-order") &&
+      this.isSpecializedRecallSectionEnabled(
+        "event-order",
+        this.config.eventOrderRecallEnabled,
+      ) &&
       eventOrderMaxChars !== 0 &&
       this.lcmEngine?.enabled &&
       (recallMode as RecallPlanMode) !== "no_recall"
@@ -8472,14 +8481,14 @@ export class Orchestrator {
       }
     }
 
-    const responseGuidanceEntry = this.getRecallSectionEntry("response-guidance");
     const responseGuidanceMaxChars =
       this.getRecallSectionMaxChars("response-guidance") ??
       this.config.responseGuidanceRecallMaxChars;
     if (
-      this.config.responseGuidanceRecallEnabled &&
-      responseGuidanceEntry &&
-      this.isRecallSectionEnabled("response-guidance") &&
+      this.isSpecializedRecallSectionEnabled(
+        "response-guidance",
+        this.config.responseGuidanceRecallEnabled,
+      ) &&
       responseGuidanceMaxChars !== 0 &&
       this.lcmEngine?.enabled &&
       (recallMode as RecallPlanMode) !== "no_recall"
