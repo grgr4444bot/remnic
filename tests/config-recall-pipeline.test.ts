@@ -18,7 +18,7 @@ test("parseConfig sets recall pipeline defaults", () => {
     cfg.recallPipeline.find((entry) => entry.id === "event-order"),
     {
       id: "event-order",
-      enabled: true,
+      enabled: false,
       maxChars: 2400,
       maxResults: 24,
       maxTurns: 12,
@@ -29,7 +29,7 @@ test("parseConfig sets recall pipeline defaults", () => {
     cfg.recallPipeline.find((entry) => entry.id === "response-guidance"),
     {
       id: "response-guidance",
-      enabled: true,
+      enabled: false,
       maxChars: 2400,
       maxResults: 48,
       maxTurns: 64,
@@ -38,22 +38,22 @@ test("parseConfig sets recall pipeline defaults", () => {
   );
 });
 
-test("parseConfig gates event and guidance recall defaults", () => {
+test("parseConfig accepts explicit event and guidance recall config", () => {
   const cfg = parseConfig({
     openaiApiKey: "sk-test",
-    eventOrderRecallEnabled: "false",
+    eventOrderRecallEnabled: "true",
     eventOrderRecallMaxChars: "1234",
     eventOrderRecallMaxResults: "0",
     eventOrderRecallScanWindowTurns: "5",
     eventOrderRecallScanWindowTokens: "6000",
-    responseGuidanceRecallEnabled: false,
+    responseGuidanceRecallEnabled: true,
     responseGuidanceRecallMaxChars: "4321",
     responseGuidanceRecallMaxResults: "7",
     responseGuidanceRecallScanWindowTurns: "8",
     responseGuidanceRecallScanWindowTokens: "9000",
   });
 
-  assert.equal(cfg.eventOrderRecallEnabled, false);
+  assert.equal(cfg.eventOrderRecallEnabled, true);
   assert.equal(cfg.eventOrderRecallMaxChars, 1234);
   assert.equal(cfg.eventOrderRecallMaxResults, 0);
   assert.equal(cfg.eventOrderRecallScanWindowTurns, 5);
@@ -62,7 +62,7 @@ test("parseConfig gates event and guidance recall defaults", () => {
     cfg.recallPipeline.find((entry) => entry.id === "event-order"),
     {
       id: "event-order",
-      enabled: false,
+      enabled: true,
       maxChars: 1234,
       maxResults: 0,
       maxTurns: 5,
@@ -70,7 +70,7 @@ test("parseConfig gates event and guidance recall defaults", () => {
     },
   );
 
-  assert.equal(cfg.responseGuidanceRecallEnabled, false);
+  assert.equal(cfg.responseGuidanceRecallEnabled, true);
   assert.equal(cfg.responseGuidanceRecallMaxChars, 4321);
   assert.equal(cfg.responseGuidanceRecallMaxResults, 7);
   assert.equal(cfg.responseGuidanceRecallScanWindowTurns, 8);
@@ -79,12 +79,40 @@ test("parseConfig gates event and guidance recall defaults", () => {
     cfg.recallPipeline.find((entry) => entry.id === "response-guidance"),
     {
       id: "response-guidance",
-      enabled: false,
+      enabled: true,
       maxChars: 4321,
       maxResults: 7,
       maxTurns: 8,
       maxTokens: 9000,
     },
+  );
+});
+
+test("parseConfig honors false-ish event and guidance recall gates", () => {
+  const cfg = parseConfig({
+    openaiApiKey: "sk-test",
+    eventOrderRecallEnabled: "false",
+    responseGuidanceRecallEnabled: "0",
+  });
+
+  assert.equal(cfg.eventOrderRecallEnabled, false);
+  assert.equal(cfg.responseGuidanceRecallEnabled, false);
+  assert.equal(cfg.recallPipeline.find((entry) => entry.id === "event-order")?.enabled, false);
+  assert.equal(cfg.recallPipeline.find((entry) => entry.id === "response-guidance")?.enabled, false);
+});
+
+test("parseConfig rejects invalid event and guidance recall numeric config", () => {
+  assert.throws(
+    () => parseConfig({ openaiApiKey: "sk-test", eventOrderRecallMaxResults: "abc" }),
+    /eventOrderRecallMaxResults must be an integer greater than or equal to 0/,
+  );
+  assert.throws(
+    () => parseConfig({ openaiApiKey: "sk-test", responseGuidanceRecallScanWindowTurns: "-5" }),
+    /responseGuidanceRecallScanWindowTurns must be an integer greater than or equal to 1/,
+  );
+  assert.throws(
+    () => parseConfig({ openaiApiKey: "sk-test", responseGuidanceRecallMaxResults: 1.5 }),
+    /responseGuidanceRecallMaxResults must be an integer greater than or equal to 0/,
   );
 });
 

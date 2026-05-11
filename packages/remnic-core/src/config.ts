@@ -68,14 +68,25 @@ function parseBoundedIntegerMs(
   return Math.min(max, Math.max(min, Math.floor(coerced)));
 }
 
-function parseClampedInteger(
+function parseIntegerAtLeast(
   value: unknown,
   fallback: number,
   min: number,
+  keyName: string,
 ): number {
+  if (value === undefined || value === null) return fallback;
   const coerced = coerceNumber(value);
-  if (coerced === undefined) return fallback;
-  return Math.max(min, Math.floor(coerced));
+  if (
+    coerced === undefined ||
+    !Number.isFinite(coerced) ||
+    !Number.isInteger(coerced) ||
+    coerced < min
+  ) {
+    throw new Error(
+      `${keyName} must be an integer greater than or equal to ${min}; got ${JSON.stringify(value)}`,
+    );
+  }
+  return coerced;
 }
 
 // Coerce common string/number representations of a boolean to a real boolean.
@@ -2767,25 +2778,25 @@ export function parseConfig(raw: unknown): PluginConfig {
         ? Math.max(0, Math.floor(coerceNumber(cfg.explicitCueRecallMaxReferences)!))
         : 24,
     eventOrderRecallEnabled:
-      coerceBool(cfg.eventOrderRecallEnabled) ?? true,
+      coerceBool(cfg.eventOrderRecallEnabled) === true,
     eventOrderRecallMaxChars:
-      parseClampedInteger(cfg.eventOrderRecallMaxChars, 2400, 0),
+      parseIntegerAtLeast(cfg.eventOrderRecallMaxChars, 2400, 0, "eventOrderRecallMaxChars"),
     eventOrderRecallMaxResults:
-      parseClampedInteger(cfg.eventOrderRecallMaxResults, 24, 0),
+      parseIntegerAtLeast(cfg.eventOrderRecallMaxResults, 24, 0, "eventOrderRecallMaxResults"),
     eventOrderRecallScanWindowTurns:
-      parseClampedInteger(cfg.eventOrderRecallScanWindowTurns, 12, 1),
+      parseIntegerAtLeast(cfg.eventOrderRecallScanWindowTurns, 12, 1, "eventOrderRecallScanWindowTurns"),
     eventOrderRecallScanWindowTokens:
-      parseClampedInteger(cfg.eventOrderRecallScanWindowTokens, 24_000, 1),
+      parseIntegerAtLeast(cfg.eventOrderRecallScanWindowTokens, 24_000, 1, "eventOrderRecallScanWindowTokens"),
     responseGuidanceRecallEnabled:
-      coerceBool(cfg.responseGuidanceRecallEnabled) ?? true,
+      coerceBool(cfg.responseGuidanceRecallEnabled) === true,
     responseGuidanceRecallMaxChars:
-      parseClampedInteger(cfg.responseGuidanceRecallMaxChars, 2400, 0),
+      parseIntegerAtLeast(cfg.responseGuidanceRecallMaxChars, 2400, 0, "responseGuidanceRecallMaxChars"),
     responseGuidanceRecallMaxResults:
-      parseClampedInteger(cfg.responseGuidanceRecallMaxResults, 48, 0),
+      parseIntegerAtLeast(cfg.responseGuidanceRecallMaxResults, 48, 0, "responseGuidanceRecallMaxResults"),
     responseGuidanceRecallScanWindowTurns:
-      parseClampedInteger(cfg.responseGuidanceRecallScanWindowTurns, 64, 1),
+      parseIntegerAtLeast(cfg.responseGuidanceRecallScanWindowTurns, 64, 1, "responseGuidanceRecallScanWindowTurns"),
     responseGuidanceRecallScanWindowTokens:
-      parseClampedInteger(cfg.responseGuidanceRecallScanWindowTokens, 16_000, 1),
+      parseIntegerAtLeast(cfg.responseGuidanceRecallScanWindowTokens, 16_000, 1, "responseGuidanceRecallScanWindowTokens"),
     // Lossless Context Management (LCM)
     lcmEnabled: cfg.lcmEnabled === true,
     lcmLeafBatchSize:
@@ -3404,19 +3415,19 @@ function buildDefaultRecallPipeline(cfg: Record<string, unknown>): RecallSection
     },
     {
       id: "event-order",
-      enabled: coerceBool(cfg.eventOrderRecallEnabled) ?? true,
-      maxChars: parseClampedInteger(cfg.eventOrderRecallMaxChars, 2400, 0),
-      maxResults: parseClampedInteger(cfg.eventOrderRecallMaxResults, 24, 0),
-      maxTurns: parseClampedInteger(cfg.eventOrderRecallScanWindowTurns, 12, 1),
-      maxTokens: parseClampedInteger(cfg.eventOrderRecallScanWindowTokens, 24_000, 1),
+      enabled: coerceBool(cfg.eventOrderRecallEnabled) === true,
+      maxChars: parseIntegerAtLeast(cfg.eventOrderRecallMaxChars, 2400, 0, "eventOrderRecallMaxChars"),
+      maxResults: parseIntegerAtLeast(cfg.eventOrderRecallMaxResults, 24, 0, "eventOrderRecallMaxResults"),
+      maxTurns: parseIntegerAtLeast(cfg.eventOrderRecallScanWindowTurns, 12, 1, "eventOrderRecallScanWindowTurns"),
+      maxTokens: parseIntegerAtLeast(cfg.eventOrderRecallScanWindowTokens, 24_000, 1, "eventOrderRecallScanWindowTokens"),
     },
     {
       id: "response-guidance",
-      enabled: coerceBool(cfg.responseGuidanceRecallEnabled) ?? true,
-      maxChars: parseClampedInteger(cfg.responseGuidanceRecallMaxChars, 2400, 0),
-      maxResults: parseClampedInteger(cfg.responseGuidanceRecallMaxResults, 48, 0),
-      maxTurns: parseClampedInteger(cfg.responseGuidanceRecallScanWindowTurns, 64, 1),
-      maxTokens: parseClampedInteger(cfg.responseGuidanceRecallScanWindowTokens, 16_000, 1),
+      enabled: coerceBool(cfg.responseGuidanceRecallEnabled) === true,
+      maxChars: parseIntegerAtLeast(cfg.responseGuidanceRecallMaxChars, 2400, 0, "responseGuidanceRecallMaxChars"),
+      maxResults: parseIntegerAtLeast(cfg.responseGuidanceRecallMaxResults, 48, 0, "responseGuidanceRecallMaxResults"),
+      maxTurns: parseIntegerAtLeast(cfg.responseGuidanceRecallScanWindowTurns, 64, 1, "responseGuidanceRecallScanWindowTurns"),
+      maxTokens: parseIntegerAtLeast(cfg.responseGuidanceRecallScanWindowTokens, 16_000, 1, "responseGuidanceRecallScanWindowTokens"),
     },
     {
       id: "profile",
