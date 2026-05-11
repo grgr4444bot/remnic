@@ -3373,6 +3373,22 @@ function buildDefaultRecallPipeline(cfg: Record<string, unknown>): RecallSection
           : 24,
     },
     {
+      id: "event-order",
+      enabled: true,
+      maxChars: 2400,
+      maxResults: 24,
+      maxTurns: 12,
+      maxTokens: 24000,
+    },
+    {
+      id: "response-guidance",
+      enabled: true,
+      maxChars: 2400,
+      maxResults: 48,
+      maxTurns: 64,
+      maxTokens: 16000,
+    },
+    {
       id: "profile",
       enabled: true,
       consolidateTriggerLines: 100,
