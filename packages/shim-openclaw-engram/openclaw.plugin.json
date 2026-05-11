@@ -2340,7 +2340,7 @@
       },
       "eventOrderRecallEnabled": {
         "type": "boolean",
-        "default": true,
+        "default": false,
         "description": "Enable chronological event-order evidence recall."
       },
       "eventOrderRecallMaxChars": {
@@ -2369,7 +2369,7 @@
       },
       "responseGuidanceRecallEnabled": {
         "type": "boolean",
-        "default": true,
+        "default": false,
         "description": "Enable response-guidance evidence recall."
       },
       "responseGuidanceRecallMaxChars": {
