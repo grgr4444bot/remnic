@@ -2338,63 +2338,121 @@
         "minimum": 0,
         "description": "Maximum query-visible cues expanded by explicit cue recall."
       },
-      "eventOrderRecallEnabled": {
+      "targetedFactRecallEnabled": {
         "type": "boolean",
         "default": false,
-        "description": "Enable chronological event-order evidence recall."
+        "description": "Enable targeted fact evidence recall for direct answer questions."
       },
-      "eventOrderRecallMaxChars": {
+      "targetedFactRecallMaxChars": {
         "type": "integer",
         "default": 2400,
         "minimum": 0,
-        "description": "Character budget for the chronological event-order evidence recall section."
+        "description": "Character budget for the targeted fact evidence recall section."
       },
-      "eventOrderRecallMaxResults": {
+      "targetedFactRecallMaxResults": {
         "type": "integer",
-        "default": 24,
+        "default": 48,
         "minimum": 0,
-        "description": "Maximum chronological event-order evidence items injected per recall."
+        "description": "Maximum recalled items for targeted fact evidence."
       },
-      "eventOrderRecallScanWindowTurns": {
+      "targetedFactRecallScanWindowTurns": {
         "type": "integer",
-        "default": 12,
+        "default": 8,
         "minimum": 1,
-        "description": "Number of turns scanned per chronological event-order expansion window."
+        "description": "Recent-turn scan window for targeted fact evidence."
       },
-      "eventOrderRecallScanWindowTokens": {
+      "targetedFactRecallScanWindowTokens": {
         "type": "integer",
-        "default": 24000,
+        "default": 12000,
         "minimum": 1,
-        "description": "Token budget per chronological event-order expansion window."
+        "description": "Recent-token scan window for targeted fact evidence."
+      },
+      "focusedListRecallEnabled": {
+        "type": "boolean",
+        "default": false,
+        "description": "Enable focused list evidence recall for count, relation, and recommendation questions."
+      },
+      "focusedListRecallMaxChars": {
+        "type": "integer",
+        "default": 2600,
+        "minimum": 0,
+        "description": "Character budget for the focused list evidence recall section."
+      },
+      "focusedListRecallMaxResults": {
+        "type": "integer",
+        "default": 40,
+        "minimum": 0,
+        "description": "Maximum recalled items for focused list evidence."
+      },
+      "focusedListRecallScanWindowTurns": {
+        "type": "integer",
+        "default": 64,
+        "minimum": 1,
+        "description": "Recent-turn scan window for focused list evidence."
+      },
+      "focusedListRecallScanWindowTokens": {
+        "type": "integer",
+        "default": 14000,
+        "minimum": 1,
+        "description": "Recent-token scan window for focused list evidence."
       },
       "responseGuidanceRecallEnabled": {
         "type": "boolean",
         "default": false,
-        "description": "Enable response-guidance evidence recall."
+        "description": "Enable response guidance recall for user answer-shape preferences."
       },
       "responseGuidanceRecallMaxChars": {
         "type": "integer",
         "default": 2400,
         "minimum": 0,
-        "description": "Character budget for the response-guidance evidence recall section."
+        "description": "Character budget for the response guidance recall section."
       },
       "responseGuidanceRecallMaxResults": {
         "type": "integer",
         "default": 48,
         "minimum": 0,
-        "description": "Maximum response-guidance evidence items injected per recall."
+        "description": "Maximum recalled items for response guidance."
       },
       "responseGuidanceRecallScanWindowTurns": {
         "type": "integer",
         "default": 64,
         "minimum": 1,
-        "description": "Number of turns scanned per response-guidance expansion window."
+        "description": "Recent-turn scan window for response guidance."
       },
       "responseGuidanceRecallScanWindowTokens": {
         "type": "integer",
         "default": 16000,
         "minimum": 1,
-        "description": "Token budget per response-guidance expansion window."
+        "description": "Recent-token scan window for response guidance."
+      },
+      "eventOrderRecallEnabled": {
+        "type": "boolean",
+        "default": false,
+        "description": "Enable event-order evidence recall for chronology questions."
+      },
+      "eventOrderRecallMaxChars": {
+        "type": "integer",
+        "default": 2400,
+        "minimum": 0,
+        "description": "Character budget for the event-order evidence recall section."
+      },
+      "eventOrderRecallMaxResults": {
+        "type": "integer",
+        "default": 24,
+        "minimum": 0,
+        "description": "Maximum recalled items for event-order evidence."
+      },
+      "eventOrderRecallScanWindowTurns": {
+        "type": "integer",
+        "default": 12,
+        "minimum": 1,
+        "description": "Recent-turn scan window for event-order evidence."
+      },
+      "eventOrderRecallScanWindowTokens": {
+        "type": "integer",
+        "default": 24000,
+        "minimum": 1,
+        "description": "Recent-token scan window for event-order evidence."
       },
       "queryExpansionEnabled": {
         "type": "boolean",
@@ -3074,6 +3132,11 @@
         ],
         "default": "low",
         "description": "Minimum locally-scored importance level required to persist an extracted fact. Facts below this level are dropped before write and counted toward the importance_gated metric. Default \"low\" drops only trivial turn-level chatter (greetings, single-word replies); raise to \"normal\" or higher for a stricter gate."
+      },
+      "extractionTelemetryPrefilterEnabled": {
+        "type": "boolean",
+        "default": true,
+        "description": "Skip semantic durable-memory extraction for mechanical action/state telemetry transcripts that contain no durable-memory cue. Raw transcript storage and recall still run. Disable this if you intentionally want fact extraction from action logs."
       },
       "extractionScopeClassificationEnabled": {
         "type": "boolean",
@@ -4408,6 +4471,9 @@
             },
             "maxPatterns": {
               "type": "number"
+            },
+            "forceGeneric": {
+              "type": "boolean"
             }
           },
           "required": [
@@ -4464,6 +4530,11 @@
         "type": "number",
         "default": 512,
         "description": "Max tokens for deterministic (non-LLM) summaries"
+      },
+      "lcmTelemetryPrefilterEnabled": {
+        "type": "boolean",
+        "default": true,
+        "description": "Use deterministic LCM compression for mechanical action/state telemetry without durable-memory cues."
       },
       "lcmArchiveRetentionDays": {
         "type": "number",

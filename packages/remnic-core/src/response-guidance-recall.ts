@@ -11,6 +11,7 @@ export interface ResponseGuidanceRecallOptions {
   maxScanWindowTurns?: number;
   maxScanWindowTokens?: number;
   title?: string;
+  forceGeneric?: boolean;
 }
 
 interface RankedGuidanceItem extends EvidencePackItem {
@@ -147,15 +148,18 @@ export async function buildResponseGuidanceRecallSection(
     options.maxSearchResults ?? DEFAULT_MAX_SEARCH_RESULTS,
   );
   const intents = classifyGuidanceIntents(options.query);
-  if (!options.engine || budget <= 0 || maxResults <= 0 || intents.length === 0) {
+  const forceGeneric = options.forceGeneric === true;
+  if (
+    !options.engine ||
+    budget <= 0 ||
+    maxResults <= 0 ||
+    (!forceGeneric && intents.length === 0)
+  ) {
     return "";
   }
-
   const items = await collectGuidanceItems(options, intents);
-  const ranked = rankAndDedupeGuidanceItems(items, options.query, intents).slice(
-    0,
-    maxResults,
-  );
+  const ranked = rankAndDedupeGuidanceItems(items, options.query, intents)
+    .slice(0, maxResults);
   if (ranked.length === 0) {
     return "";
   }
@@ -249,7 +253,7 @@ async function collectGuidanceItems(
 
     for (const candidate of candidates) {
       if (seen.has(candidate.id)) continue;
-      if (!isGuidanceEvidence(candidate.content, options.query, intents)) continue;
+      if (!isGuidanceEvidence(candidate.content, options.query, intents, options.forceGeneric === true)) continue;
       seen.add(candidate.id);
       items.push(candidate);
     }
@@ -294,25 +298,24 @@ async function collectGuidanceScanItems(
     normalizePositiveInteger(options.maxScanWindowTokens ?? DEFAULT_SCAN_WINDOW_TOKENS),
   );
   const items: EvidencePackItem[] = [];
+  const fromTurn = Math.max(0, maxTurn - windowTurns + 1);
+  const toTurn = maxTurn;
 
-  for (let fromTurn = 0; fromTurn <= maxTurn; fromTurn += windowTurns) {
-    const toTurn = Math.min(maxTurn, fromTurn + windowTurns - 1);
-    const messages = await engine.expandContext(
-      options.sessionId,
-      fromTurn,
-      toTurn,
-      windowTokens,
-    );
-    for (const message of messages) {
-      if (!isGuidanceEvidence(message.content, options.query, intents)) continue;
-      items.push({
-        id: `${options.sessionId}:${message.turn_index}`,
-        sessionId: options.sessionId,
-        turnIndex: message.turn_index,
-        role: message.role,
-        content: message.content,
-      });
-    }
+  const messages = await engine.expandContext(
+    options.sessionId,
+    fromTurn,
+    toTurn,
+    windowTokens,
+  );
+  for (const message of messages) {
+    if (!isGuidanceEvidence(message.content, options.query, intents, options.forceGeneric === true)) continue;
+    items.push({
+      id: `${options.sessionId}:${message.turn_index}`,
+      sessionId: options.sessionId,
+      turnIndex: message.turn_index,
+      role: message.role,
+      content: message.content,
+    });
   }
 
   return items;
@@ -1381,10 +1384,12 @@ function isGuidanceEvidence(
   content: string,
   query: string,
   intents: readonly GuidanceIntent[],
+  forceGeneric = false,
 ): boolean {
   const normalized = content.toLowerCase();
   if (hasInstructionOrPreferenceCue(normalized)) {
-    return hasGuidanceIntentCue(normalized, intents) ||
+    return forceGeneric ||
+      hasGuidanceIntentCue(normalized, intents) ||
       countGuidanceTermOverlap(normalized, query) >= 1;
   }
 

@@ -55,6 +55,7 @@ export {
   buildTrajectoryAnalysisRecallSection,
   collectExplicitTurnReferences,
   collectBenchmarkAnchorCues,
+  collectContentLexicalCues,
   collectLexicalCues,
   collectQuestionSlotCues,
   collectStructuredPlanCues,
@@ -66,15 +67,25 @@ export {
   type TrajectoryAnalysisRecallOptions,
 } from "./explicit-cue-recall.js";
 export {
-  buildEventOrderRecallSection,
-  shouldRecallEventOrderEvidence,
-  type EventOrderRecallOptions,
-} from "./event-order-recall.js";
+  buildTargetedFactRecallSection,
+  shouldRecallTargetedFactEvidence,
+  type TargetedFactRecallOptions,
+} from "./targeted-fact-recall.js";
+export {
+  buildFocusedListRecallSection,
+  shouldRecallFocusedListEvidence,
+  type FocusedListRecallOptions,
+} from "./focused-list-recall.js";
 export {
   buildResponseGuidanceRecallSection,
   shouldRecallResponseGuidance,
   type ResponseGuidanceRecallOptions,
 } from "./response-guidance-recall.js";
+export {
+  buildEventOrderRecallSection,
+  shouldRecallEventOrderEvidence,
+  type EventOrderRecallOptions,
+} from "./event-order-recall.js";
 
 // ---------------------------------------------------------------------------
 // Storage
@@ -187,59 +198,6 @@ export {
 } from "./direct-answer.js";
 
 // ---------------------------------------------------------------------------
-// User-aware agent model
-// ---------------------------------------------------------------------------
-
-export {
-  USER_MODEL_CORE_QUESTION,
-  USER_MODEL_DIMENSIONS,
-  USER_CONTEXT_SCOPES,
-  USER_BOUNDARY_SCOPES,
-  facetHasBoundary,
-  isUserBoundaryScope,
-  isUserContextScope,
-  isUserModelDimension,
-  normalizeUserContextScope,
-  normalizeUserModelDimension,
-  summarizeUserModelCoverage,
-  type UserBoundaryScope,
-  type UserContextScope,
-  type UserModelCoverage,
-  type UserModelDimension,
-  type UserModelFacet,
-} from "./user-model.js";
-
-export {
-  buildRetrievedMemoryProvenance,
-  normalizeRetrievedMemoryProvenance,
-  summarizeRetrievedMemoryProvenance,
-  type BuildRetrievedMemoryProvenanceOptions,
-  type RetrievedMemoryCorrectionState,
-  type RetrievedMemoryProvenance,
-  type RetrievedMemorySafety,
-} from "./memory-provenance.js";
-
-export {
-  ACTION_CONFIDENCE_CONTEXT_READINESS,
-  ACTION_CONFIDENCE_DECISIONS,
-  ACTION_CONFIDENCE_RISK_CATEGORIES,
-  ACTION_CONFIDENCE_RULE_KINDS,
-  buildActionConfidenceInputFromOptions,
-  evaluateActionConfidence,
-  renderActionConfidenceText,
-  type ActionConfidenceContextReadiness,
-  type ActionConfidenceDecision,
-  type ActionConfidenceFactor,
-  type ActionConfidenceInput,
-  type ActionConfidenceMemoryInput,
-  type ActionConfidenceOptionInput,
-  type ActionConfidenceResult,
-  type ActionConfidenceRiskCategory,
-  type ActionConfidenceRule,
-  type ActionConfidenceRuleKind,
-} from "./action-confidence.js";
-
-// ---------------------------------------------------------------------------
 // Hot/cold tier routing (issue #686)
 // ---------------------------------------------------------------------------
 
@@ -279,6 +237,39 @@ export {
   type MessagePartSourceFormat,
   type ParseMessagePartsOptions,
 } from "./message-parts/index.js";
+
+// ---------------------------------------------------------------------------
+// User-aware memory provenance
+// ---------------------------------------------------------------------------
+
+export {
+  USER_MODEL_CORE_QUESTION,
+  USER_MODEL_DIMENSIONS,
+  USER_CONTEXT_SCOPES,
+  USER_BOUNDARY_SCOPES,
+  isUserModelDimension,
+  normalizeUserModelDimension,
+  isUserContextScope,
+  normalizeUserContextScope,
+  isUserBoundaryScope,
+  facetHasBoundary,
+  summarizeUserModelCoverage,
+  type UserModelDimension,
+  type UserContextScope,
+  type UserBoundaryScope,
+  type UserModelFacet,
+  type UserModelCoverage,
+} from "./user-model.js";
+
+export {
+  buildRetrievedMemoryProvenance,
+  normalizeRetrievedMemoryProvenance,
+  summarizeRetrievedMemoryProvenance,
+  type RetrievedMemoryProvenance,
+  type BuildRetrievedMemoryProvenanceOptions,
+  type RetrievedMemoryCorrectionState,
+  type RetrievedMemorySafety,
+} from "./memory-provenance.js";
 
 // ---------------------------------------------------------------------------
 // Inline source attribution (issue #369)
@@ -333,18 +324,6 @@ export {
 export { EngramAccessService, EngramAccessInputError } from "./access-service.js";
 export { EngramAccessHttpServer } from "./access-http.js";
 export { EngramMcpServer } from "./access-mcp.js";
-export {
-  REMNIC_CHATGPT_MEMORY_INSPECTOR_CANONICAL_TOOL,
-  REMNIC_CHATGPT_MEMORY_INSPECTOR_MIME_TYPE,
-  REMNIC_CHATGPT_MEMORY_INSPECTOR_TOOL,
-  REMNIC_CHATGPT_MEMORY_INSPECTOR_WIDGET_HTML,
-  REMNIC_CHATGPT_MEMORY_INSPECTOR_WIDGET_URI,
-  buildChatGptMemoryInspectorActionRequest,
-  buildChatGptMemoryInspectorResult,
-  type RemnicChatGptMemoryCard,
-  type RemnicChatGptMemoryInspectorInput,
-  type RemnicChatGptMemoryInspectorResult,
-} from "./mcp-memory-inspector-app.js";
 
 // agentAccessHttp.authToken SecretRef resolution (issue #757). Exposed so
 // host-specific bootstrap code (the OpenClaw plugin in `src/index.ts`, the
@@ -382,6 +361,20 @@ export type {
   RecallXrayServedBy,
   RecallFilterTrace,
 } from "./recall-xray.js";
+
+// ChatGPT Apps-compatible memory inspector demo.
+export {
+  REMNIC_CHATGPT_MEMORY_INSPECTOR_TOOL,
+  REMNIC_CHATGPT_MEMORY_INSPECTOR_CANONICAL_TOOL,
+  REMNIC_CHATGPT_MEMORY_INSPECTOR_WIDGET_URI,
+  REMNIC_CHATGPT_MEMORY_INSPECTOR_MIME_TYPE,
+  REMNIC_CHATGPT_MEMORY_INSPECTOR_WIDGET_HTML,
+  buildChatGptMemoryInspectorActionRequest,
+  buildChatGptMemoryInspectorResult,
+  type RemnicChatGptMemoryInspectorInput,
+  type RemnicChatGptMemoryCard,
+  type RemnicChatGptMemoryInspectorResult,
+} from "./mcp-memory-inspector-app.js";
 
 // Coding-agent subsystem (issue #569)
 export {
@@ -454,6 +447,30 @@ export {
   type ActiveMemorySearchOutput,
   type ActiveMemorySearchResult,
 } from "./active-memory-bridge.js";
+
+// ---------------------------------------------------------------------------
+// Action confidence
+// ---------------------------------------------------------------------------
+
+export {
+  ACTION_CONFIDENCE_CONTEXT_READINESS,
+  ACTION_CONFIDENCE_DECISIONS,
+  ACTION_CONFIDENCE_RISK_CATEGORIES,
+  ACTION_CONFIDENCE_RULE_KINDS,
+  buildActionConfidenceInputFromOptions,
+  evaluateActionConfidence,
+  renderActionConfidenceText,
+  type ActionConfidenceContextReadiness,
+  type ActionConfidenceDecision,
+  type ActionConfidenceFactor,
+  type ActionConfidenceInput,
+  type ActionConfidenceMemoryInput,
+  type ActionConfidenceOptionInput,
+  type ActionConfidenceResult,
+  type ActionConfidenceRiskCategory,
+  type ActionConfidenceRule,
+  type ActionConfidenceRuleKind,
+} from "./action-confidence.js";
 
 // ---------------------------------------------------------------------------
 // Daily Context Briefing (#370)

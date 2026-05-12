@@ -2777,16 +2777,24 @@ export function parseConfig(raw: unknown): PluginConfig {
       coerceNumber(cfg.explicitCueRecallMaxReferences) !== undefined
         ? Math.max(0, Math.floor(coerceNumber(cfg.explicitCueRecallMaxReferences)!))
         : 24,
-    eventOrderRecallEnabled:
-      coerceBool(cfg.eventOrderRecallEnabled) === true,
-    eventOrderRecallMaxChars:
-      parseIntegerAtLeast(cfg.eventOrderRecallMaxChars, 2400, 0, "eventOrderRecallMaxChars"),
-    eventOrderRecallMaxResults:
-      parseIntegerAtLeast(cfg.eventOrderRecallMaxResults, 24, 0, "eventOrderRecallMaxResults"),
-    eventOrderRecallScanWindowTurns:
-      parseIntegerAtLeast(cfg.eventOrderRecallScanWindowTurns, 12, 1, "eventOrderRecallScanWindowTurns"),
-    eventOrderRecallScanWindowTokens:
-      parseIntegerAtLeast(cfg.eventOrderRecallScanWindowTokens, 24_000, 1, "eventOrderRecallScanWindowTokens"),
+    targetedFactRecallEnabled: coerceBool(cfg.targetedFactRecallEnabled) === true,
+    targetedFactRecallMaxChars:
+      parseIntegerAtLeast(cfg.targetedFactRecallMaxChars, 2400, 0, "targetedFactRecallMaxChars"),
+    targetedFactRecallMaxResults:
+      parseIntegerAtLeast(cfg.targetedFactRecallMaxResults, 48, 0, "targetedFactRecallMaxResults"),
+    targetedFactRecallScanWindowTurns:
+      parseIntegerAtLeast(cfg.targetedFactRecallScanWindowTurns, 8, 1, "targetedFactRecallScanWindowTurns"),
+    targetedFactRecallScanWindowTokens:
+      parseIntegerAtLeast(cfg.targetedFactRecallScanWindowTokens, 12_000, 1, "targetedFactRecallScanWindowTokens"),
+    focusedListRecallEnabled: coerceBool(cfg.focusedListRecallEnabled) === true,
+    focusedListRecallMaxChars:
+      parseIntegerAtLeast(cfg.focusedListRecallMaxChars, 2600, 0, "focusedListRecallMaxChars"),
+    focusedListRecallMaxResults:
+      parseIntegerAtLeast(cfg.focusedListRecallMaxResults, 40, 0, "focusedListRecallMaxResults"),
+    focusedListRecallScanWindowTurns:
+      parseIntegerAtLeast(cfg.focusedListRecallScanWindowTurns, 64, 1, "focusedListRecallScanWindowTurns"),
+    focusedListRecallScanWindowTokens:
+      parseIntegerAtLeast(cfg.focusedListRecallScanWindowTokens, 14_000, 1, "focusedListRecallScanWindowTokens"),
     responseGuidanceRecallEnabled:
       coerceBool(cfg.responseGuidanceRecallEnabled) === true,
     responseGuidanceRecallMaxChars:
@@ -2797,6 +2805,15 @@ export function parseConfig(raw: unknown): PluginConfig {
       parseIntegerAtLeast(cfg.responseGuidanceRecallScanWindowTurns, 64, 1, "responseGuidanceRecallScanWindowTurns"),
     responseGuidanceRecallScanWindowTokens:
       parseIntegerAtLeast(cfg.responseGuidanceRecallScanWindowTokens, 16_000, 1, "responseGuidanceRecallScanWindowTokens"),
+    eventOrderRecallEnabled: coerceBool(cfg.eventOrderRecallEnabled) === true,
+    eventOrderRecallMaxChars:
+      parseIntegerAtLeast(cfg.eventOrderRecallMaxChars, 2400, 0, "eventOrderRecallMaxChars"),
+    eventOrderRecallMaxResults:
+      parseIntegerAtLeast(cfg.eventOrderRecallMaxResults, 24, 0, "eventOrderRecallMaxResults"),
+    eventOrderRecallScanWindowTurns:
+      parseIntegerAtLeast(cfg.eventOrderRecallScanWindowTurns, 12, 1, "eventOrderRecallScanWindowTurns"),
+    eventOrderRecallScanWindowTokens:
+      parseIntegerAtLeast(cfg.eventOrderRecallScanWindowTokens, 24_000, 1, "eventOrderRecallScanWindowTokens"),
     // Lossless Context Management (LCM)
     lcmEnabled: cfg.lcmEnabled === true,
     lcmLeafBatchSize:
@@ -3388,6 +3405,9 @@ function parseRecallSectionEntry(raw: unknown): RecallSectionConfig {
     timeoutMs: clampNonNegativeNumber(entry.timeoutMs),
     maxPatterns: clampNonNegativeNumber(entry.maxPatterns),
     maxRubrics: clampNonNegativeNumber(entry.maxRubrics),
+    ...(entry.forceGeneric === undefined
+      ? {}
+      : { forceGeneric: coerceBool(entry.forceGeneric) === true }),
   };
 }
 
@@ -3414,12 +3434,20 @@ function buildDefaultRecallPipeline(cfg: Record<string, unknown>): RecallSection
           : 24,
     },
     {
-      id: "event-order",
-      enabled: coerceBool(cfg.eventOrderRecallEnabled) === true,
-      maxChars: parseIntegerAtLeast(cfg.eventOrderRecallMaxChars, 2400, 0, "eventOrderRecallMaxChars"),
-      maxResults: parseIntegerAtLeast(cfg.eventOrderRecallMaxResults, 24, 0, "eventOrderRecallMaxResults"),
-      maxTurns: parseIntegerAtLeast(cfg.eventOrderRecallScanWindowTurns, 12, 1, "eventOrderRecallScanWindowTurns"),
-      maxTokens: parseIntegerAtLeast(cfg.eventOrderRecallScanWindowTokens, 24_000, 1, "eventOrderRecallScanWindowTokens"),
+      id: "targeted-facts",
+      enabled: coerceBool(cfg.targetedFactRecallEnabled) === true,
+      maxChars: parseIntegerAtLeast(cfg.targetedFactRecallMaxChars, 2400, 0, "targetedFactRecallMaxChars"),
+      maxResults: parseIntegerAtLeast(cfg.targetedFactRecallMaxResults, 48, 0, "targetedFactRecallMaxResults"),
+      maxTurns: parseIntegerAtLeast(cfg.targetedFactRecallScanWindowTurns, 8, 1, "targetedFactRecallScanWindowTurns"),
+      maxTokens: parseIntegerAtLeast(cfg.targetedFactRecallScanWindowTokens, 12_000, 1, "targetedFactRecallScanWindowTokens"),
+    },
+    {
+      id: "focused-list",
+      enabled: coerceBool(cfg.focusedListRecallEnabled) === true,
+      maxChars: parseIntegerAtLeast(cfg.focusedListRecallMaxChars, 2600, 0, "focusedListRecallMaxChars"),
+      maxResults: parseIntegerAtLeast(cfg.focusedListRecallMaxResults, 40, 0, "focusedListRecallMaxResults"),
+      maxTurns: parseIntegerAtLeast(cfg.focusedListRecallScanWindowTurns, 64, 1, "focusedListRecallScanWindowTurns"),
+      maxTokens: parseIntegerAtLeast(cfg.focusedListRecallScanWindowTokens, 14_000, 1, "focusedListRecallScanWindowTokens"),
     },
     {
       id: "response-guidance",
@@ -3428,6 +3456,14 @@ function buildDefaultRecallPipeline(cfg: Record<string, unknown>): RecallSection
       maxResults: parseIntegerAtLeast(cfg.responseGuidanceRecallMaxResults, 48, 0, "responseGuidanceRecallMaxResults"),
       maxTurns: parseIntegerAtLeast(cfg.responseGuidanceRecallScanWindowTurns, 64, 1, "responseGuidanceRecallScanWindowTurns"),
       maxTokens: parseIntegerAtLeast(cfg.responseGuidanceRecallScanWindowTokens, 16_000, 1, "responseGuidanceRecallScanWindowTokens"),
+    },
+    {
+      id: "event-order",
+      enabled: coerceBool(cfg.eventOrderRecallEnabled) === true,
+      maxChars: parseIntegerAtLeast(cfg.eventOrderRecallMaxChars, 2400, 0, "eventOrderRecallMaxChars"),
+      maxResults: parseIntegerAtLeast(cfg.eventOrderRecallMaxResults, 24, 0, "eventOrderRecallMaxResults"),
+      maxTurns: parseIntegerAtLeast(cfg.eventOrderRecallScanWindowTurns, 12, 1, "eventOrderRecallScanWindowTurns"),
+      maxTokens: parseIntegerAtLeast(cfg.eventOrderRecallScanWindowTokens, 24_000, 1, "eventOrderRecallScanWindowTokens"),
     },
     {
       id: "profile",
