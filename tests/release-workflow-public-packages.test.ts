@@ -92,7 +92,7 @@ test("OpenClaw security scan wrapper handles minified scanner exports", async ()
     await mkdir(pluginDir, { recursive: true });
     await writeFile(
       path.join(openclawDir, "package.json"),
-      JSON.stringify({ name: "openclaw", version: "2026.5.12-beta.4" }),
+      JSON.stringify({ name: "openclaw", version: "2026.5.12-beta.4", type: "module" }),
     );
     await writeFile(
       path.join(openclawDistDir, "skill-scanner-fake.js"),
