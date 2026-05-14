@@ -936,6 +936,12 @@ function unpackMemoryArenaWebshopRecords(
     if (Array.isArray(value)) {
       return value.map((item) => ({ value: item }));
     }
+    if (isPlainRecord(value)) {
+      return Object.entries(value).map(([defaultAsin, item]) => ({
+        value: item,
+        defaultAsin,
+      }));
+    }
   }
 
   return Object.entries(parsed).map(([defaultAsin, value]) => ({
@@ -1833,7 +1839,8 @@ function itemSelectionExpectationMatches(
     const predictedExplicitAsins =
       extractItemSelectionAsinReferences(predictedNormalized);
     if (predictedExplicitAsins.length > 0) {
-      return predictedExplicitAsins.includes(normalizedExpectedAsin);
+      return predictedExplicitAsins.length === 1
+        && predictedExplicitAsins[0] === normalizedExpectedAsin;
     }
     if (predictedNormalized.includes(normalizedExpectedAsin)) {
       return true;

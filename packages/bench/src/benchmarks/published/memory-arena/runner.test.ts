@@ -644,6 +644,113 @@ test("MemoryArena matches WebShop sidecar observations for ASIN-only options", a
   }
 });
 
+test("MemoryArena loads WebShop sidecar wrapper product maps", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "remnic-memory-arena-"));
+  const datasetPath = path.join(tempDir, "bundled_shopping.jsonl");
+  const sidecarPath = path.join(tempDir, "webshop-products.json");
+  const previousSidecarPath =
+    process.env.REMNIC_BENCH_MEMORY_ARENA_WEBSHOP_PRODUCTS;
+  let responderContext = "";
+
+  try {
+    await writeFile(
+      datasetPath,
+      JSON.stringify({
+        id: 21,
+        category: "bundled_shopping",
+        questions: [
+          [
+            "Product 1:",
+            "### Select Sprinkles",
+            "**Goal:** Buy the dessert rose sprinkle mix.",
+            "**Available Options:**",
+            "- B08957C9ZH",
+          ].join("\n"),
+        ],
+        answers: [
+          {
+            target_asin: "B08957C9ZH",
+            attributes: ["dessert rose", "sprinkle mix"],
+          },
+        ],
+      }) + "\n",
+      "utf8",
+    );
+    await writeFile(
+      sidecarPath,
+      JSON.stringify({
+        products: {
+          B08957C9ZH: {
+            name: "Dessert Rose Sprinkle Mix for cupcakes and baked goods",
+            price: "$12.00",
+          },
+        },
+      }),
+      "utf8",
+    );
+    process.env.REMNIC_BENCH_MEMORY_ARENA_WEBSHOP_PRODUCTS = sidecarPath;
+
+    const result = await runMemoryArenaBenchmark({
+      benchmark: memoryArenaDefinition,
+      mode: "full",
+      datasetDir: tempDir,
+      system: {
+        async store() {},
+        async recall() {
+          return "";
+        },
+        async search() {
+          return [];
+        },
+        async reset() {},
+        async drain() {},
+        async destroy() {},
+        async getStats() {
+          return { totalMessages: 0, totalSummaryNodes: 0, maxDepth: 0 };
+        },
+        responder: {
+          async respond(_question, context) {
+            responderContext = context;
+            return {
+              text: "target_asin: B08957C9ZH; attributes: dessert rose, sprinkle mix",
+              tokens: { input: 1, output: 1 },
+              latencyMs: 1,
+              model: "responder-smoke",
+            };
+          },
+        },
+        judge: {
+          async score() {
+            return 0;
+          },
+          async scoreWithMetrics() {
+            return {
+              score: 0,
+              tokens: { input: 0, output: 0 },
+              latencyMs: 0,
+              model: "judge-smoke",
+            };
+          },
+        },
+      },
+    });
+
+    assert.match(responderContext, /WebShop environment observations/);
+    assert.match(responderContext, /B08957C9ZH/);
+    assert.match(responderContext, /Dessert Rose Sprinkle Mix/);
+    assert.match(responderContext, /\$12\.00/);
+    assert.equal(result.results.tasks[0]?.scores.item_selection_match, 1);
+  } finally {
+    if (previousSidecarPath === undefined) {
+      delete process.env.REMNIC_BENCH_MEMORY_ARENA_WEBSHOP_PRODUCTS;
+    } else {
+      process.env.REMNIC_BENCH_MEMORY_ARENA_WEBSHOP_PRODUCTS =
+        previousSidecarPath;
+    }
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("MemoryArena ranks WebShop price preferences from currency price fields", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "remnic-memory-arena-"));
   const datasetPath = path.join(tempDir, "bundled_shopping.jsonl");
@@ -1050,6 +1157,81 @@ test("MemoryArena accepts exact ASIN matches without requiring secondary attribu
     const task = result.results.tasks[0]!;
     assert.equal(task.scores.item_selection_match, 1);
     assert.equal(task.scores.process_score, 1);
+    assert.equal(task.scores.llm_judge, 0);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("MemoryArena rejects exact ASIN matches with extra conflicting ASINs", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "remnic-memory-arena-"));
+  const datasetPath = path.join(tempDir, "shopping.jsonl");
+
+  try {
+    await writeFile(
+      datasetPath,
+      JSON.stringify({
+        id: 22,
+        category: "shopping",
+        questions: [
+          "Options include target_asin B000RIGHT1, a red cotton bag. Which item should be selected?",
+        ],
+        answers: [
+          {
+            target_asin: "B000RIGHT1",
+            attributes: ["red", "cotton"],
+          },
+        ],
+      }) + "\n",
+      "utf8",
+    );
+
+    const result = await runMemoryArenaBenchmark({
+      benchmark: memoryArenaDefinition,
+      mode: "full",
+      datasetDir: tempDir,
+      system: {
+        async store() {},
+        async recall() {
+          return "The selected item is target_asin B000RIGHT1.";
+        },
+        async search() {
+          return [];
+        },
+        async reset() {},
+        async destroy() {},
+        async getStats() {
+          return { totalMessages: 0, totalSummaryNodes: 0, maxDepth: 0 };
+        },
+        responder: {
+          async respond() {
+            return {
+              text: "target_asin: B000RIGHT1; also references B000WRONG1",
+              tokens: { input: 1, output: 1 },
+              latencyMs: 1,
+              model: "memory-arena-test-responder",
+            };
+          },
+        },
+        judge: {
+          async score() {
+            return 0;
+          },
+          async scoreWithMetrics() {
+            return {
+              score: 0,
+              tokens: { input: 0, output: 0 },
+              latencyMs: 0,
+              model: "judge-smoke",
+            };
+          },
+        },
+      },
+    });
+
+    const task = result.results.tasks[0]!;
+    assert.equal(task.scores.item_selection_match, 0);
+    assert.equal(task.scores.process_score, 0);
     assert.equal(task.scores.llm_judge, 0);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
