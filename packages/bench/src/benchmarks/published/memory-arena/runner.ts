@@ -1624,11 +1624,12 @@ function extractMemoryArenaWebshopAsins(value: string): string[] {
 }
 
 function parseMemoryArenaPrice(value: string): number | undefined {
-  const match = /\$?\s*([0-9]+(?:\.[0-9]+)?)/.exec(value);
+  const match =
+    /\$?\s*((?:(?:\d{1,3}(?:,\d{3})+)|\d+)(?:\.\d+)?)/.exec(value);
   if (match?.[1] === undefined) {
     return undefined;
   }
-  const parsed = Number(match[1]);
+  const parsed = Number(match[1].replace(/,/g, ""));
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
