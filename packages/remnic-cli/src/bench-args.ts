@@ -75,6 +75,7 @@ export interface ParsedBenchArgs {
   custom?: string;
   target?: BenchPublishTarget;
   requestTimeout?: number;
+  drainTimeout?: number;
   /** Max wall-clock time (ms) to keep retrying 429 rate-limit responses. */
   max429WaitMs?: number;
   /** Suppress thinking/reasoning tokens for thinking-capable models (Gemma 4, Qwen 3.5, DeepSeek). */
@@ -262,6 +263,7 @@ export function collectBenchmarks(argv: string[]): string[] {
       arg === "--provider" ||
       arg === "--base-url" ||
       arg === "--request-timeout" ||
+      arg === "--drain-timeout" ||
       arg === "--max-429-wait" ||
       arg === "--ama-bench-judge-protocol" ||
       arg === "--ama-bench-cross-judge-provider" ||
@@ -413,6 +415,7 @@ export function parseBenchArgs(argv: string[]): ParsedBenchArgs {
   const output = readBenchOptionValue(args, "--output");
   const targetRaw = readBenchOptionValue(args, "--target");
   const requestTimeoutRaw = readBenchOptionValue(args, "--request-timeout");
+  const drainTimeoutRaw = readBenchOptionValue(args, "--drain-timeout");
   const max429WaitRaw = readBenchOptionValue(args, "--max-429-wait");
   const amaBenchJudgeProtocolRaw = readBenchOptionValue(args, "--ama-bench-judge-protocol");
   const amaBenchCrossJudgeProviderRaw = readBenchOptionValue(args, "--ama-bench-cross-judge-provider");
@@ -553,6 +556,21 @@ export function parseBenchArgs(argv: string[]): ParsedBenchArgs {
     if (requestTimeout > 3600_000) {
       throw new Error(
         "ERROR: --request-timeout must not exceed 3,600,000 ms (1 hour).",
+      );
+    }
+  }
+
+  let drainTimeout: number | undefined;
+  if (drainTimeoutRaw !== undefined) {
+    drainTimeout = Number(drainTimeoutRaw);
+    if (!Number.isInteger(drainTimeout) || drainTimeout <= 0) {
+      throw new Error(
+        "ERROR: --drain-timeout must be a positive integer (milliseconds).",
+      );
+    }
+    if (drainTimeout > 3600_000) {
+      throw new Error(
+        "ERROR: --drain-timeout must not exceed 3,600,000 ms (1 hour).",
       );
     }
   }
@@ -890,6 +908,7 @@ export function parseBenchArgs(argv: string[]): ParsedBenchArgs {
       : undefined,
     publishedDryRun: args.includes("--dry-run"),
     requestTimeout,
+    drainTimeout,
     max429WaitMs,
     disableThinking: args.includes("--disable-thinking"),
     amaBenchJudgeProtocol,

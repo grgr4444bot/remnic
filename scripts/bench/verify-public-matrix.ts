@@ -61,6 +61,7 @@ interface ReproManifest {
     mode?: string;
     runtimeProfiles?: string[];
     selectedBenchmarks?: string[];
+    limit?: number;
   };
   datasets?: Array<{
     benchmark?: string;
@@ -231,6 +232,12 @@ function validateResultEnvelope(
   if (Object.keys(result.results.aggregates).length === 0) {
     addIssue(options.issues, benchmark, resultPath, "empty-aggregates", "Result has no aggregate metrics.");
   }
+  validateFullDatasetRunOptions(
+    benchmark,
+    resultPath,
+    result.config.benchmarkOptions,
+    options.issues,
+  );
   for (const [metric, aggregate] of Object.entries(result.results.aggregates)) {
     if (!Number.isFinite(aggregate.mean)) {
       addIssue(options.issues, benchmark, resultPath, "non-finite-metric", `Aggregate ${metric}.mean is not finite.`);
@@ -241,6 +248,29 @@ function validateResultEnvelope(
   validateProviderRole(result, resultPath, "judgeProvider", result.config.judgeProvider, options);
   if (options.requireInternalProvider || result.config.internalProvider) {
     validateProviderRole(result, resultPath, "internalProvider", result.config.internalProvider ?? null, options);
+  }
+}
+
+function validateFullDatasetRunOptions(
+  benchmark: string,
+  resultPath: string,
+  benchmarkOptions: BenchmarkResult["config"]["benchmarkOptions"],
+  issues: PublicMatrixEvidenceIssue[],
+): void {
+  if (!benchmarkOptions || typeof benchmarkOptions !== "object") {
+    return;
+  }
+  const disallowedKeys = ["limit", "trialLimit", "taskFilter"] as const;
+  for (const key of disallowedKeys) {
+    if (Object.prototype.hasOwnProperty.call(benchmarkOptions, key)) {
+      addIssue(
+        issues,
+        benchmark,
+        resultPath,
+        "limited-result",
+        `Full public-matrix evidence must not use benchmarkOptions.${key}.`,
+      );
+    }
   }
 }
 
@@ -320,6 +350,13 @@ async function validateManifest(
       code: "manifest-not-full-mode",
       path: manifestPath,
       message: `Expected manifest run.mode=full, got ${String(manifest.run?.mode)}.`,
+    });
+  }
+  if (manifest.run && Object.prototype.hasOwnProperty.call(manifest.run, "limit")) {
+    options.issues.push({
+      code: "manifest-limited-run",
+      path: manifestPath,
+      message: "Repro manifest records run.limit; full public-matrix evidence must use the full dataset.",
     });
   }
   if (!manifest.run?.runtimeProfiles?.includes(options.expectedRuntimeProfile)) {

@@ -129,6 +129,44 @@ test("parseBenchArgs accepts published --trial-limit", () => {
   assert.equal(parsed.publishedTrialLimit, 25);
 });
 
+test("parseBenchArgs accepts independent provider and drain timeouts", () => {
+  const parsed = parseBenchArgs([
+    "run",
+    "locomo",
+    "--request-timeout",
+    "120000",
+    "--drain-timeout",
+    "600000",
+  ]);
+
+  assert.deepEqual(parsed.benchmarks, ["locomo"]);
+  assert.equal(parsed.requestTimeout, 120000);
+  assert.equal(parsed.drainTimeout, 600000);
+});
+
+test("parseBenchArgs rejects invalid --drain-timeout", () => {
+  assert.throws(
+    () =>
+      parseBenchArgs([
+        "run",
+        "locomo",
+        "--drain-timeout",
+        "0",
+      ]),
+    /--drain-timeout must be a positive integer/,
+  );
+  assert.throws(
+    () =>
+      parseBenchArgs([
+        "run",
+        "locomo",
+        "--drain-timeout",
+        "1.5",
+      ]),
+    /--drain-timeout must be a positive integer/,
+  );
+});
+
 test("parseBenchArgs accepts published --trial-limit for MemoryAgentBench", () => {
   const parsed = parseBenchArgs([
     "published",

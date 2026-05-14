@@ -819,6 +819,8 @@ Options:
   --custom <path>          Run a YAML-defined custom benchmark file
   --results-dir <path>     Override the stored benchmark results directory
   --baselines-dir <path>   Override the named baseline directory
+  --request-timeout <ms>   Provider request timeout in milliseconds
+  --drain-timeout <ms>     Memory drain timeout in milliseconds (defaults to --request-timeout when unset)
   --threshold <value>      Regression threshold for compare (default: 0.05)
   --trial-limit <n>        Cap scored LoCoMo or MemoryAgentBench QA trials for staged published runs
   --task-filter <pattern>  BEAM diagnostic filter; match task id, ability, or question text
@@ -916,6 +918,7 @@ export function buildBenchRuntimeProfileRequest(
     internalDisableThinking: parsed.internalDisableThinking,
     internalCodexReasoningEffort: parsed.internalCodexReasoningEffort,
     requestTimeout: parsed.requestTimeout,
+    drainTimeout: parsed.drainTimeout,
     max429WaitMs: parsed.max429WaitMs,
     disableThinking: parsed.disableThinking,
   };

@@ -450,6 +450,23 @@ test("runtime profile can route Remnic internal LLM calls through codex-cli", as
   );
 });
 
+test("runtime profile can decouple provider request timeout from drain timeout", async () => {
+  const resolved = await resolveBenchRuntimeProfile({
+    runtimeProfile: "baseline",
+    internalProvider: "codex-cli",
+    internalModel: "gpt-5.5",
+    requestTimeout: 120_000,
+    drainTimeout: 900_000,
+  });
+
+  assert.equal(resolved.adapterOptions.drainTimeoutMs, 900_000);
+  assert.deepEqual(resolved.internalProvider?.retryOptions, {
+    timeoutMs: 120_000,
+  });
+  assert.equal(resolved.remnicConfig.localLlmTimeoutMs, 120_000);
+  assert.equal(resolved.effectiveRemnicConfig.localLlmTimeoutMs, 120_000);
+});
+
 test("runtime profile can route Remnic internal LLM calls through Ollama native chat", async () => {
   const resolved = await resolveBenchRuntimeProfile({
     runtimeProfile: "baseline",

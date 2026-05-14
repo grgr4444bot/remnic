@@ -143,6 +143,7 @@ async function writeManifest(
   resultsDir: string,
   benchmarks: readonly string[],
   gitSha = "abc123",
+  limit?: number,
 ): Promise<void> {
   await writeJson(path.join(resultsDir, "MANIFEST.json"), {
     git: {
@@ -153,6 +154,7 @@ async function writeManifest(
       mode: "full",
       runtimeProfiles: ["real"],
       selectedBenchmarks: benchmarks,
+      ...(limit !== undefined ? { limit } : {}),
     },
     datasets: benchmarks.map((benchmark) => ({
       benchmark,
@@ -233,9 +235,13 @@ test("reports missing and wrong public matrix evidence", async (t) => {
           model: "gpt-4.1",
           reasoningEffort: "high",
         },
+        benchmarkOptions: {
+          limit: 1,
+        },
       },
     }),
   );
+  await writeManifest(resultsDir, ["longmemeval", "locomo"], "abc123", 1);
   await writeDiagnostic(diagnosticsDir, {
     serviceTier: "auto",
   });
@@ -245,13 +251,14 @@ test("reports missing and wrong public matrix evidence", async (t) => {
     resultsDir,
     benchmarks: ["longmemeval", "locomo"],
     expectedGitSha: "abc123",
-    requireManifest: false,
   });
   const issueCodes = new Set(report.issues.map((issue) => issue.code));
 
   assert.equal(report.ok, false);
   assert.equal(issueCodes.has("wrong-runtime-profile"), true);
   assert.equal(issueCodes.has("wrong-systemProvider-provider"), true);
+  assert.equal(issueCodes.has("limited-result"), true);
+  assert.equal(issueCodes.has("manifest-limited-run"), true);
   assert.equal(issueCodes.has("wrong-diagnostic-service-tier"), true);
   assert.equal(issueCodes.has("missing-full-result"), true);
 });

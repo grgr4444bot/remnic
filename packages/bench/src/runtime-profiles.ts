@@ -58,6 +58,7 @@ export interface ResolveBenchRuntimeProfileOptions {
   internalDisableThinking?: boolean;
   internalCodexReasoningEffort?: ProviderConfig["reasoningEffort"];
   requestTimeout?: number;
+  drainTimeout?: number;
   max429WaitMs?: number;
   disableThinking?: boolean;
 }
@@ -134,7 +135,9 @@ export async function resolveBenchRuntimeProfile(
     internalProvider,
     { disableThinking: options.internalDisableThinking === true },
   );
-  const drainTimeoutMs = normalizeDrainTimeoutMs(options.requestTimeout);
+  const drainTimeoutMs = normalizeDrainTimeoutMs(
+    options.drainTimeout ?? options.requestTimeout,
+  );
   registerCodexCliFallbackRunnerIfNeeded(internalProvider);
   const responderFactoryConfig = systemProvider
     ? asProviderFactoryConfig(systemProvider)
@@ -442,7 +445,7 @@ function normalizeDrainTimeoutMs(value: number | undefined): number | undefined 
   }
   if (!Number.isInteger(value) || value <= 0) {
     throw new Error(
-      `request timeout must be a positive integer when used for benchmark drain; received ${value}`,
+      `benchmark drain timeout must be a positive integer; received ${value}`,
     );
   }
   return value;
