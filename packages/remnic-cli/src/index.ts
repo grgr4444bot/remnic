@@ -1167,6 +1167,30 @@ const MEMORY_ARENA_WEBSHOP_PRODUCT_SIDECAR_FILENAMES = [
   "memory-arena-webshop-products.json",
 ] as const;
 
+const MEMORY_AGENT_BENCH_BUNDLE_FILENAMES = [
+  "memoryagentbench.json",
+  "memoryagentbench.jsonl",
+  "MemoryAgentBench.json",
+  "MemoryAgentBench.jsonl",
+] as const;
+
+const MEMORY_AGENT_BENCH_SPLIT_FILENAMES = [
+  "Accurate_Retrieval.json",
+  "Accurate_Retrieval.jsonl",
+  "Test_Time_Learning.json",
+  "Test_Time_Learning.jsonl",
+  "Long_Range_Understanding.json",
+  "Long_Range_Understanding.jsonl",
+  "Conflict_Resolution.json",
+  "Conflict_Resolution.jsonl",
+] as const;
+
+const MEMORY_AGENT_BENCH_ENTITY_MAPPING_CANDIDATES = [
+  "entity2id.json",
+  path.join("processed_data", "Recsys_Redial", "entity2id.json"),
+  path.join("Recsys_Redial", "entity2id.json"),
+] as const;
+
 type DownloadedDatasetMarker = {
   anyOf?: string[];
   allOf?: string[];
@@ -1244,20 +1268,9 @@ const DOWNLOADED_DATASET_MARKERS: Record<string, DownloadedDatasetMarker> = {
     ],
   },
   memoryagentbench: {
-    allOf: ["entity2id.json"],
     anyOf: [
-      "memoryagentbench.json",
-      "memoryagentbench.jsonl",
-      "MemoryAgentBench.json",
-      "MemoryAgentBench.jsonl",
-      "Accurate_Retrieval.json",
-      "Accurate_Retrieval.jsonl",
-      "Test_Time_Learning.json",
-      "Test_Time_Learning.jsonl",
-      "Long_Range_Understanding.json",
-      "Long_Range_Understanding.jsonl",
-      "Conflict_Resolution.json",
-      "Conflict_Resolution.jsonl",
+      ...MEMORY_AGENT_BENCH_BUNDLE_FILENAMES,
+      ...MEMORY_AGENT_BENCH_SPLIT_FILENAMES,
     ],
   },
 };
@@ -1396,6 +1409,49 @@ function isPersonaMemDatasetComplete(datasetPath: string): boolean {
   }
 }
 
+function hasDatasetFile(datasetPath: string, relativePath: string): boolean {
+  try {
+    return fs.statSync(path.join(datasetPath, relativePath)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function hasMemoryAgentBenchEntityMapping(datasetPath: string): boolean {
+  const absoluteDatasetPath = path.resolve(datasetPath);
+  const roots = [absoluteDatasetPath, path.dirname(absoluteDatasetPath)];
+  return (
+    hasDatasetFile(absoluteDatasetPath, "entity2id.json") ||
+    roots.some((root) =>
+      MEMORY_AGENT_BENCH_ENTITY_MAPPING_CANDIDATES
+        .filter((relativePath) => relativePath !== "entity2id.json")
+        .some((relativePath) => hasDatasetFile(root, relativePath)),
+    )
+  );
+}
+
+function memoryAgentBenchBundleHasRecSysSamples(datasetPath: string): boolean {
+  return MEMORY_AGENT_BENCH_BUNDLE_FILENAMES.some((filename) => {
+    const filePath = path.join(datasetPath, filename);
+    try {
+      if (!fs.statSync(filePath).isFile()) {
+        return false;
+      }
+      const raw = fs.readFileSync(filePath, "utf8");
+      return /"source"\s*:\s*"recsys[_-]/i.test(raw);
+    } catch {
+      return false;
+    }
+  });
+}
+
+function isMemoryAgentBenchDatasetComplete(datasetPath: string): boolean {
+  if (hasMemoryAgentBenchEntityMapping(datasetPath)) {
+    return true;
+  }
+  return !memoryAgentBenchBundleHasRecSysSamples(datasetPath);
+}
+
 function isDatasetDownloaded(datasetPath: string, benchmarkId: string): boolean {
   let stats: fs.Stats;
   try {
@@ -1440,6 +1496,9 @@ function isDatasetDownloaded(datasetPath: string, benchmarkId: string): boolean 
     }
     if (benchmarkId === "personamem") {
       return isPersonaMemDatasetComplete(datasetPath);
+    }
+    if (benchmarkId === "memoryagentbench") {
+      return isMemoryAgentBenchDatasetComplete(datasetPath);
     }
     return true;
   }

@@ -456,6 +456,61 @@ test("MemoryAgentBench trialLimit caps scored questions before extra adapter wor
   assert.equal(resetCount, 2);
 });
 
+test("MemoryAgentBench trialLimit null is treated as unlimited", async () => {
+  const result = await runMemoryAgentBenchBenchmark({
+    benchmark: memoryAgentBenchDefinition,
+    mode: "quick",
+    benchmarkOptions: { trialLimit: null },
+    system: {
+      async reset() {},
+      async store() {},
+      async recall() {
+        return "";
+      },
+      async search() {
+        return [];
+      },
+      async destroy() {},
+      async getStats() {
+        return { totalMessages: 0, totalSummaryNodes: 0, maxDepth: 0 };
+      },
+      responder: {
+        async respond() {
+          return {
+            text: "unknown",
+            tokens: { input: 1, output: 1 },
+            latencyMs: 1,
+            model: "mab-test-responder",
+          };
+        },
+      },
+      judge: {
+        async score() {
+          return 0;
+        },
+        async scoreWithMetrics() {
+          return {
+            score: 0,
+            tokens: { input: 0, output: 0 },
+            latencyMs: 0,
+            model: "mab-test-judge",
+          };
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(
+    result.results.tasks.map((task) => task.taskId),
+    [
+      "mab-smoke-ar-q1",
+      "mab-smoke-ttl-q1",
+      "mab-smoke-lru-q1",
+      "mab-smoke-cr-q1",
+    ],
+  );
+});
+
 test("MemoryAgentBench trialLimit 0 runs zero scored questions", async () => {
   let resetCalled = false;
 

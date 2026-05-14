@@ -60,11 +60,42 @@ test("resolveDownloadedBenchDatasetDir ignores MemoryArena WebShop sidecars as d
   );
 });
 
-test("resolveDownloadedBenchDatasetDir requires MemoryAgentBench ReDial entity mapping", async () => {
+test("resolveDownloadedBenchDatasetDir accepts non-ReDial MemoryAgentBench splits without entity mapping", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "remnic-bench-datasets-"));
   const datasetDir = path.join(root, "memoryagentbench");
   await mkdir(datasetDir, { recursive: true });
   await writeFile(path.join(datasetDir, "Test_Time_Learning.json"), "[]\n");
+
+  assert.equal(
+    __benchDatasetTestHooks.resolveDownloadedBenchDatasetDir(
+      "memoryagentbench",
+      false,
+      datasetDir,
+    ),
+    datasetDir,
+  );
+});
+
+test("resolveDownloadedBenchDatasetDir requires MemoryAgentBench ReDial entity mapping for ReDial bundles", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "remnic-bench-datasets-"));
+  const datasetDir = path.join(root, "memoryagentbench");
+  await mkdir(datasetDir, { recursive: true });
+  await writeFile(
+    path.join(datasetDir, "memoryagentbench.json"),
+    JSON.stringify([
+      {
+        context: "The user asked for cyberpunk action movies.",
+        questions: ["User: I want a cyberpunk action movie. Recommender:"],
+        answers: [["1"]],
+        metadata: {
+          source: "recsys_redial",
+          qa_pair_ids: ["redial-1"],
+          question_types: ["recommendation"],
+        },
+      },
+    ]),
+    "utf8",
+  );
 
   assert.equal(
     __benchDatasetTestHooks.resolveDownloadedBenchDatasetDir(

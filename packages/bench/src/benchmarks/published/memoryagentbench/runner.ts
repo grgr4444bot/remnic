@@ -354,7 +354,7 @@ export async function runMemoryAgentBenchBenchmark(
 }
 
 function resolveTrialLimit(raw: unknown): number | undefined {
-  if (raw === undefined) {
+  if (raw === undefined || raw === null) {
     return undefined;
   }
   const parsed = typeof raw === "number" ? raw : Number(raw);
