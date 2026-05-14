@@ -2137,7 +2137,7 @@ function countTokenOverlap(left: Set<string>, right: Set<string>): number {
 function tokenizeItemSelectionText(value: string): string[] {
   return normalizeItemSelectionText(value)
     .split(" ")
-    .map(canonicalizeItemSelectionToken)
+    .flatMap(canonicalizeItemSelectionToken)
     .filter(
       (token) =>
         token.length > 0
@@ -2145,14 +2145,17 @@ function tokenizeItemSelectionText(value: string): string[] {
     );
 }
 
-function canonicalizeItemSelectionToken(token: string): string {
+function canonicalizeItemSelectionToken(token: string): string[] {
   if (token.length > 4 && token.endsWith("ies")) {
-    return `${token.slice(0, -3)}y`;
+    return [
+      token.slice(0, -1),
+      `${token.slice(0, -3)}y`,
+    ];
   }
   if (token.length > 3 && token.endsWith("s") && !token.endsWith("ss")) {
-    return token.slice(0, -1);
+    return [token.slice(0, -1)];
   }
-  return token;
+  return [token];
 }
 
 function isGroupTravelPlannerCategory(category: string): boolean {
