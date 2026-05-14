@@ -342,6 +342,7 @@ class CodexCliProvider implements LlmProvider {
           reasoning: {
             effort: this.config.reasoningEffort ?? DEFAULT_REASONING_EFFORT,
           },
+          service_tier: DEFAULT_SERVICE_TIER,
           max_output_tokens: Math.max(1, Math.floor(opts.maxTokens ?? 1024)),
           store: false,
         }),
