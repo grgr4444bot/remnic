@@ -1756,10 +1756,15 @@ function scoreItemSelectionAnswer(
   const visibleOptions = question === undefined
     ? []
     : extractMemoryArenaVisibleOptions(question);
-  const hits = expectations.filter((expectation) =>
-    itemSelectionExpectationMatches(predictedNormalized, expectation)
-      || visibleOptionSelectionMatches(predicted, expectation, visibleOptions),
-  ).length;
+  const hits = expectations.filter((expectation) => {
+    if (itemSelectionExpectationMatches(predictedNormalized, expectation)) {
+      return true;
+    }
+    if (itemSelectionHasConflictingExplicitAsin(predictedNormalized, expectation)) {
+      return false;
+    }
+    return visibleOptionSelectionMatches(predicted, expectation, visibleOptions);
+  }).length;
   return {
     item_selection_match: hits / expectations.length,
   };
@@ -1821,6 +1826,22 @@ function itemSelectionExpectationMatches(
   return expectation.attributes.every((attribute) =>
     predictedNormalized.includes(normalizeItemSelectionText(attribute)),
   );
+}
+
+function itemSelectionHasConflictingExplicitAsin(
+  predictedNormalized: string,
+  expectation: ItemSelectionExpectation,
+): boolean {
+  if (!expectation.targetAsin) {
+    return false;
+  }
+  const normalizedExpectedAsin = normalizeItemSelectionText(
+    expectation.targetAsin,
+  );
+  const predictedExplicitAsins =
+    extractItemSelectionAsinReferences(predictedNormalized);
+  return predictedExplicitAsins.length > 0
+    && !predictedExplicitAsins.includes(normalizedExpectedAsin);
 }
 
 function extractItemSelectionAsinReferences(
