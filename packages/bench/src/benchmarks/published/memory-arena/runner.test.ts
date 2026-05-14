@@ -2137,6 +2137,165 @@ test("MemoryArena scores hidden-ASIN selections by unique visible option text", 
   }
 });
 
+test("MemoryArena scores exact visible selections when expected option ranking ties", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "remnic-memory-arena-"));
+  const datasetPath = path.join(tempDir, "shopping.jsonl");
+
+  try {
+    await writeFile(
+      datasetPath,
+      JSON.stringify({
+        id: 28,
+        category: "shopping",
+        questions: [
+          [
+            "Available Options:",
+            "- A Budget Rose Sprinkle Mix.",
+            "- A Premium Rose Sprinkle Mix.",
+            "Which item should be selected?",
+          ].join("\n"),
+        ],
+        answers: [
+          {
+            target_asin: "B08957C9ZH",
+            attributes: ["sprinkle mix"],
+          },
+        ],
+      }) + "\n",
+      "utf8",
+    );
+
+    const result = await runMemoryArenaBenchmark({
+      benchmark: memoryArenaDefinition,
+      mode: "full",
+      datasetDir: tempDir,
+      system: {
+        async store() {},
+        async recall() {
+          return "The selected visible option is the premium rose sprinkle mix.";
+        },
+        async search() {
+          return [];
+        },
+        async reset() {},
+        async destroy() {},
+        async getStats() {
+          return { totalMessages: 0, totalSummaryNodes: 0, maxDepth: 0 };
+        },
+        responder: {
+          async respond() {
+            return {
+              text: "item: A Premium Rose Sprinkle Mix.",
+              tokens: { input: 1, output: 1 },
+              latencyMs: 1,
+              model: "memory-arena-test-responder",
+            };
+          },
+        },
+        judge: {
+          async score() {
+            return 0;
+          },
+          async scoreWithMetrics() {
+            return {
+              score: 0,
+              tokens: { input: 0, output: 0 },
+              latencyMs: 0,
+              model: "judge-smoke",
+            };
+          },
+        },
+      },
+    });
+
+    const task = result.results.tasks[0]!;
+    assert.equal(task.scores.item_selection_match, 1);
+    assert.equal(task.scores.process_score, 1);
+    assert.equal(task.scores.llm_judge, 0);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("MemoryArena scores tied visible predictions when expectation is unique", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "remnic-memory-arena-"));
+  const datasetPath = path.join(tempDir, "shopping.jsonl");
+
+  try {
+    await writeFile(
+      datasetPath,
+      JSON.stringify({
+        id: 29,
+        category: "shopping",
+        questions: [
+          [
+            "Available Options:",
+            "- A Budget Rose Sprinkle Mix.",
+            "- A Premium Rose Sprinkle Mix.",
+            "Which item should be selected?",
+          ].join("\n"),
+        ],
+        answers: [
+          {
+            attributes: ["premium rose", "sprinkle mix"],
+          },
+        ],
+      }) + "\n",
+      "utf8",
+    );
+
+    const result = await runMemoryArenaBenchmark({
+      benchmark: memoryArenaDefinition,
+      mode: "full",
+      datasetDir: tempDir,
+      system: {
+        async store() {},
+        async recall() {
+          return "The selected item should be the rose sprinkle mix.";
+        },
+        async search() {
+          return [];
+        },
+        async reset() {},
+        async destroy() {},
+        async getStats() {
+          return { totalMessages: 0, totalSummaryNodes: 0, maxDepth: 0 };
+        },
+        responder: {
+          async respond() {
+            return {
+              text: "rose sprinkle mix",
+              tokens: { input: 1, output: 1 },
+              latencyMs: 1,
+              model: "memory-arena-test-responder",
+            };
+          },
+        },
+        judge: {
+          async score() {
+            return 0;
+          },
+          async scoreWithMetrics() {
+            return {
+              score: 0,
+              tokens: { input: 0, output: 0 },
+              latencyMs: 0,
+              model: "judge-smoke",
+            };
+          },
+        },
+      },
+    });
+
+    const task = result.results.tasks[0]!;
+    assert.equal(task.scores.item_selection_match, 1);
+    assert.equal(task.scores.process_score, 1);
+    assert.equal(task.scores.llm_judge, 0);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("MemoryArena scores explicit non-B0 ASIN selections case-insensitively", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "remnic-memory-arena-"));
   const datasetPath = path.join(tempDir, "shopping.jsonl");

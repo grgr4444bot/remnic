@@ -2060,30 +2060,41 @@ function visibleOptionSelectionMatches(
     return false;
   }
 
-  const expectedOption = selectVisibleOptionForExpectation(
+  const expectedOptions = selectVisibleOptionsForExpectation(
     visibleOptions,
     expectation,
   );
-  if (expectedOption === undefined) {
+  if (expectedOptions.length === 0) {
     return false;
   }
 
-  const predictedOption = selectVisibleOptionForPrediction(
+  const predictedOptions = selectVisibleOptionsForPrediction(
     visibleOptions,
     predicted,
   );
-  return predictedOption?.index === expectedOption.index;
+  if (predictedOptions.length === 0) {
+    return false;
+  }
+
+  if (expectedOptions.length > 1 && predictedOptions.length > 1) {
+    return false;
+  }
+
+  const expectedIndexes = new Set(
+    expectedOptions.map((option) => option.index),
+  );
+  return predictedOptions.some((option) => expectedIndexes.has(option.index));
 }
 
-function selectVisibleOptionForExpectation(
+function selectVisibleOptionsForExpectation(
   visibleOptions: VisibleItemOption[],
   expectation: ItemSelectionExpectation,
-): VisibleItemOption | undefined {
+): VisibleItemOption[] {
   const expectedTokens = new Set(
     tokenizeItemSelectionText(expectation.attributes.join(" ")),
   );
   if (expectedTokens.size === 0) {
-    return undefined;
+    return [];
   }
 
   const targetAsin = expectation.targetAsin === undefined
@@ -2106,16 +2117,16 @@ function selectVisibleOptionForExpectation(
     return score;
   });
   const threshold = Math.max(2, Math.ceil(Math.min(expectedTokens.size, 6) / 2));
-  return ranked.score >= threshold ? ranked.option : undefined;
+  return ranked.score >= threshold ? ranked.options : [];
 }
 
-function selectVisibleOptionForPrediction(
+function selectVisibleOptionsForPrediction(
   visibleOptions: VisibleItemOption[],
   predicted: string,
-): VisibleItemOption | undefined {
+): VisibleItemOption[] {
   const predictedTokens = new Set(tokenizeItemSelectionText(predicted));
   if (predictedTokens.size === 0) {
-    return undefined;
+    return [];
   }
 
   const predictedNormalized = normalizeItemSelectionText(predicted);
@@ -2133,27 +2144,25 @@ function selectVisibleOptionForPrediction(
     2,
     Math.min(4, Math.ceil(predictedTokens.size * 0.4)),
   );
-  return ranked.score >= threshold ? ranked.option : undefined;
+  return ranked.score >= threshold ? ranked.options : [];
 }
 
 function rankVisibleOptions(
   visibleOptions: VisibleItemOption[],
   scoreOption: (option: VisibleItemOption) => number,
-): { option?: VisibleItemOption; score: number } {
-  let bestOption: VisibleItemOption | undefined;
+): { options: VisibleItemOption[]; score: number } {
+  let bestOptions: VisibleItemOption[] = [];
   let bestScore = 0;
-  let tied = false;
   for (const option of visibleOptions) {
     const score = scoreOption(option);
     if (score > bestScore) {
-      bestOption = option;
+      bestOptions = [option];
       bestScore = score;
-      tied = false;
     } else if (score === bestScore && score > 0) {
-      tied = true;
+      bestOptions.push(option);
     }
   }
-  return tied ? { score: bestScore } : { option: bestOption, score: bestScore };
+  return { options: bestOptions, score: bestScore };
 }
 
 function countTokenOverlap(left: Set<string>, right: Set<string>): number {
