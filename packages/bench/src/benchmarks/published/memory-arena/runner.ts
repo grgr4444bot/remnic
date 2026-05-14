@@ -971,10 +971,11 @@ function parseMemoryArenaWebshopProduct(
   const priceText = cleanMemoryArenaWebshopString(
     readMemoryArenaStringField(record, "pricing")
       ?? readMemoryArenaStringField(record, "price_string")
+      ?? readMemoryArenaPriceTextField(record, "price")
       ?? selectedCustomization?.priceText
       ?? "",
   );
-  const price = readMemoryArenaNumberField(record, "price")
+  const price = readMemoryArenaPriceField(record, "price")
     ?? parseMemoryArenaPrice(priceText)
     ?? selectedCustomization?.price;
   const averageRating =
@@ -1441,9 +1442,11 @@ function extractSelectedMemoryArenaCustomization(
         continue;
       }
       const priceText = cleanMemoryArenaWebshopString(
-        readMemoryArenaStringField(option, "price_string") ?? "",
+        readMemoryArenaStringField(option, "price_string")
+          ?? readMemoryArenaPriceTextField(option, "price")
+          ?? "",
       );
-      const price = readMemoryArenaNumberField(option, "price")
+      const price = readMemoryArenaPriceField(option, "price")
         ?? parseMemoryArenaPrice(priceText);
       return {
         ...(priceText.length > 0 ? { priceText } : {}),
@@ -1526,6 +1529,24 @@ function readMemoryArenaNumberField(
     return Number.isFinite(parsed) ? parsed : undefined;
   }
   return undefined;
+}
+
+function readMemoryArenaPriceField(
+  record: Record<string, unknown>,
+  key: string,
+): number | undefined {
+  return readMemoryArenaNumberField(record, key)
+    ?? parseMemoryArenaPrice(readMemoryArenaStringField(record, key) ?? "");
+}
+
+function readMemoryArenaPriceTextField(
+  record: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = readMemoryArenaStringField(record, key);
+  return value !== undefined && parseMemoryArenaPrice(value) !== undefined
+    ? value
+    : undefined;
 }
 
 function normalizeMemoryArenaWebshopAsin(value: unknown): string | undefined {

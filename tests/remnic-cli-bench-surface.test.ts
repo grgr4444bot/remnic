@@ -123,6 +123,10 @@ test("optional bench loader imports workspace source through a TS-aware fallback
     source,
     /if \(!cachedFromLocalWorkspaceBenchSource\) \{\s*assertBenchModuleFreshForDevelopment\(\);\s*\}/,
   );
+  assert.match(
+    source,
+    /export function assertBenchModuleFreshForDevelopment\(\): void \{\s*if \(cachedFromLocalWorkspaceBenchSource\) \{\s*return;\s*\}\s*assertLocalBenchBuildFreshForDevelopment\(import\.meta\.url\);/s,
+  );
   assert.doesNotMatch(source, /await import\(pathToFileURL\(sourceEntry\)\.href\)/);
 });
 

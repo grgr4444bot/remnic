@@ -158,5 +158,8 @@ export async function tryLoadBenchModule(): Promise<BenchModule | undefined> {
 }
 
 export function assertBenchModuleFreshForDevelopment(): void {
+  if (cachedFromLocalWorkspaceBenchSource) {
+    return;
+  }
   assertLocalBenchBuildFreshForDevelopment(import.meta.url);
 }
