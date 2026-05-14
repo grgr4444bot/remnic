@@ -805,11 +805,14 @@ function itemSelectionExpectationMatches(
   predictedNormalized: string,
   expectation: ItemSelectionExpectation,
 ): boolean {
-  if (
-    expectation.targetAsin &&
-    !predictedNormalized.includes(normalizeItemSelectionText(expectation.targetAsin))
-  ) {
-    return false;
+  if (expectation.targetAsin) {
+    if (predictedNormalized.includes(normalizeItemSelectionText(expectation.targetAsin))) {
+      return true;
+    }
+    return expectation.attributes.length > 0
+      && expectation.attributes.every((attribute) =>
+        predictedNormalized.includes(normalizeItemSelectionText(attribute)),
+      );
   }
 
   return expectation.attributes.every((attribute) =>
