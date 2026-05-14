@@ -1851,15 +1851,25 @@ function extractItemSelectionAsinReferences(
   const asinPattern =
     /\b(?:target\s+asin|asin)\s+([a-z0-9][a-z0-9 ]{1,30}?)(?=\s+(?:attributes?|item|selected|price|rating|reviews|product|title|category)\b|$)/g;
   for (const match of predictedNormalized.matchAll(asinPattern)) {
-    const normalizedAsin = match[1]?.trim();
-    if (normalizedAsin !== undefined && normalizedAsin.length > 0) {
+    const normalizedAsin = normalizeMemoryArenaWebshopAsinReference(match[1]);
+    if (normalizedAsin !== undefined) {
       asinReferences.add(normalizedAsin);
     }
   }
-  for (const match of predictedNormalized.matchAll(/\bb[a-z0-9]{9}\b/g)) {
+  for (const match of predictedNormalized.matchAll(/\bb0[a-z0-9]{8}\b/g)) {
     asinReferences.add(match[0]);
   }
   return [...asinReferences];
+}
+
+function normalizeMemoryArenaWebshopAsinReference(
+  value: string | undefined,
+): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const compact = value.replace(/\s+/g, "");
+  return /^b0[a-z0-9]{8}$/.test(compact) ? compact : undefined;
 }
 
 function normalizeItemSelectionText(value: string): string {

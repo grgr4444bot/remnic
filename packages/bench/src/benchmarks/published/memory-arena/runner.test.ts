@@ -1036,7 +1036,7 @@ test("MemoryArena keeps attribute fallback for unlabeled non-ASIN words", async 
         responder: {
           async respond() {
             return {
-              text: "attributes: red, cotton; explanation: selected by material",
+              text: "asin background context; attributes: red, cotton; explanation: selected by material",
               tokens: { input: 1, output: 1 },
               latencyMs: 1,
               model: "memory-arena-test-responder",
