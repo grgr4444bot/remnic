@@ -260,6 +260,112 @@ test("MemoryArena passes the live task prompt into answer context", async () => 
   }
 });
 
+test("MemoryArena item-selection context prioritizes compact prior environment results", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "remnic-memory-arena-"));
+  const datasetPath = path.join(tempDir, "bundled_shopping.jsonl");
+  const storedMessages: string[] = [];
+  let responderContext = "";
+
+  try {
+    await writeFile(
+      datasetPath,
+      JSON.stringify({
+        id: 15,
+        category: "bundled_shopping",
+        questions: [
+          [
+            "Product 1:",
+            "### Select Base",
+            "**Goal:** Buy the base.",
+            "**Available Options:**",
+            "- A stale old option that must not be replayed.",
+            "- A vanilla cake base.",
+          ].join("\n"),
+          [
+            "Product 2:",
+            "### Select Frosting",
+            "**Goal:** Vanilla pairs well with White.",
+            "**Constraint:** Must be compatible with the previous product.",
+            "**Available Options:**",
+            "- A white frosting.",
+            "- A chocolate frosting.",
+          ].join("\n"),
+        ],
+        answers: [
+          {
+            target_asin: "B00-BASE",
+            attributes: ["vanilla cake base"],
+          },
+          {
+            target_asin: "B00-WHITE",
+            attributes: ["white frosting"],
+          },
+        ],
+      }) + "\n",
+      "utf8",
+    );
+
+    const result = await runMemoryArenaBenchmark({
+      benchmark: memoryArenaDefinition,
+      mode: "full",
+      datasetDir: tempDir,
+      system: {
+        async store(_sessionId, messages) {
+          storedMessages.push(...messages.map((message) => message.content));
+        },
+        async recall() {
+          return storedMessages.join("\n\n");
+        },
+        async search() {
+          return [];
+        },
+        async reset() {
+          storedMessages.length = 0;
+        },
+        async drain() {},
+        async destroy() {},
+        async getStats() {
+          return { totalMessages: storedMessages.length, totalSummaryNodes: 0, maxDepth: 0 };
+        },
+        responder: {
+          async respond(_question, context) {
+            responderContext = context;
+            return {
+              text: "item: A white frosting.; attributes: white frosting",
+              tokens: { input: 1, output: 1 },
+              latencyMs: 1,
+              model: "responder-smoke",
+            };
+          },
+        },
+        judge: {
+          async score() {
+            return 0;
+          },
+          async scoreWithMetrics() {
+            return {
+              score: 0,
+              tokens: { input: 0, output: 0 },
+              latencyMs: 0,
+              model: "judge-smoke",
+            };
+          },
+        },
+      },
+    });
+
+    assert.equal(result.results.tasks.length, 1);
+    assert.match(responderContext, /Prior completed MemoryArena subtasks/);
+    assert.match(responderContext, /Environment result: B00-BASE/);
+    assert.match(responderContext, /Selected item attributes: vanilla cake base/);
+    assert.match(responderContext, /A white frosting/);
+    assert.doesNotMatch(responderContext, /stale old option/);
+    assert.equal(result.results.tasks[0]?.scores.item_selection_match, 1);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("MemoryArena no-responder runs do not score the live task prompt as recall", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "remnic-memory-arena-"));
   const datasetPath = path.join(tempDir, "bundled_shopping.jsonl");

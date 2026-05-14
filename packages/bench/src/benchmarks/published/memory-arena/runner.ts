@@ -138,6 +138,9 @@ export async function runMemoryArenaBenchmark(
           const answerContext = buildMemoryArenaAnswerContext(
             recalledText,
             question,
+            {
+              itemSelection: hasItemSelectionExpectation(expectedAnswer),
+            },
           );
           const answered = await answerBenchmarkQuestion({
             question: benchmarkQuestion,
@@ -697,18 +700,121 @@ function formatMemoryArenaQuestion(
 function buildMemoryArenaAnswerContext(
   recalledText: string,
   currentQuestion: string,
+  options: { itemSelection?: boolean } = {},
 ): string {
   const trimmedQuestion = currentQuestion.trim();
   const trimmedRecall = recalledText.trim();
+  const priorEnvironmentResults = options.itemSelection
+    ? extractMemoryArenaEnvironmentResults(trimmedRecall)
+    : "";
+  const includeRawRecall = !options.itemSelection
+    || priorEnvironmentResults.length === 0;
   if (trimmedQuestion.length === 0) {
-    return trimmedRecall;
+    return includeRawRecall
+      ? trimmedRecall
+      : priorEnvironmentResults;
   }
   return [
     "## Current MemoryArena task prompt",
     trimmedQuestion,
-    trimmedRecall.length > 0 ? "## Remnic memory context" : "",
-    trimmedRecall,
+    priorEnvironmentResults.length > 0
+      ? "## Prior completed MemoryArena subtasks"
+      : "",
+    priorEnvironmentResults,
+    includeRawRecall && trimmedRecall.length > 0
+      ? "## Remnic memory context"
+      : "",
+    includeRawRecall ? trimmedRecall : "",
   ].filter((part) => part.length > 0).join("\n\n");
+}
+
+function extractMemoryArenaEnvironmentResults(recalledText: string): string {
+  const rows: string[] = [];
+  const seen = new Set<string>();
+  let currentSubtask = "";
+  for (const rawLine of recalledText.replaceAll("\r\n", "\n").replaceAll("\r", "\n").split("\n")) {
+    const line = rawLine.trim();
+    const subtaskMatch = /MemoryArena completed subtask\s+(\d+)/i.exec(line);
+    if (subtaskMatch?.[1]) {
+      currentSubtask = subtaskMatch[1];
+    }
+
+    const selectedAttributes = extractMemoryArenaStoredLineValue(line, "Selected item attributes:");
+    if (selectedAttributes !== undefined) {
+      const label = currentSubtask.length > 0
+        ? `Subtask ${currentSubtask}`
+        : "Prior subtask";
+      appendUniqueMemoryArenaEvidenceRow(
+        rows,
+        seen,
+        `${label}: Selected item attributes: ${selectedAttributes}`,
+      );
+      continue;
+    }
+
+    const selectedAsin = extractMemoryArenaStoredLineValue(line, "Selected item ASIN:");
+    if (selectedAsin !== undefined) {
+      const label = currentSubtask.length > 0
+        ? `Subtask ${currentSubtask}`
+        : "Prior subtask";
+      appendUniqueMemoryArenaEvidenceRow(
+        rows,
+        seen,
+        `${label}: Selected item ASIN: ${selectedAsin}`,
+      );
+      continue;
+    }
+
+    const environmentResult = extractMemoryArenaStoredLineValue(line, "Environment result:");
+    if (environmentResult !== undefined) {
+      const label = currentSubtask.length > 0
+        ? `Subtask ${currentSubtask}`
+        : "Prior subtask";
+      appendUniqueMemoryArenaEvidenceRow(
+        rows,
+        seen,
+        `${label}: Environment result: ${environmentResult}`,
+      );
+    }
+  }
+  return rows.join("\n");
+}
+
+function extractMemoryArenaStoredLineValue(
+  line: string,
+  marker: string,
+): string | undefined {
+  const normalizedLine = line.replace(/^Subtask\s+\d+:\s*/i, "");
+  const selectedItemMatch =
+    /^Selected item(?: \d+)? (ASIN|attributes):\s*(.+)$/i.exec(normalizedLine);
+  if (selectedItemMatch !== null) {
+    const requestedField = marker.includes("ASIN") ? "asin" : "attributes";
+    if (selectedItemMatch[1].toLowerCase() !== requestedField) {
+      return undefined;
+    }
+    const value = selectedItemMatch[2].trim();
+    return value.length > 0 ? value : undefined;
+  }
+
+  const markerIndex = normalizedLine.indexOf(marker);
+  if (markerIndex < 0) {
+    return undefined;
+  }
+  const value = normalizedLine.slice(markerIndex + marker.length).trim();
+  return value.length > 0 ? value : undefined;
+}
+
+function appendUniqueMemoryArenaEvidenceRow(
+  rows: string[],
+  seen: Set<string>,
+  row: string,
+): void {
+  const key = normalizeItemSelectionText(row);
+  if (key.length === 0 || seen.has(key)) {
+    return;
+  }
+  seen.add(key);
+  rows.push(row);
 }
 
 function scoreMemoryArenaDomainAnswer(
@@ -1435,19 +1541,25 @@ async function storeCompletedSubtask(
   expectedAnswer: ArenaExpectedAnswer,
 ): Promise<void> {
   const planFieldAnchors = formatPlanFieldAnchorLines(expectedAnswer);
+  const selectedItemLines = formatSelectedItemAnchorLines(expectedAnswer);
+  const subtaskSummary = summarizeMemoryArenaSubtaskQuestion(question);
   await options.system.store(sessionId, [
     {
       role: "user",
-      content: question,
+      content: [
+        `MemoryArena subtask ${questionIndex + 1} request.`,
+        subtaskSummary,
+      ].filter((part) => part.length > 0).join("\n"),
     },
     {
       role: "assistant",
       content: [
         `MemoryArena completed subtask ${questionIndex + 1}.`,
-        `Instruction: ${question}`,
+        subtaskSummary.length > 0 ? `Instruction summary:\n${subtaskSummary}` : "",
         `Environment result: ${expected}`,
+        ...selectedItemLines,
         ...planFieldAnchors,
-      ].join("\n"),
+      ].filter((part) => part.length > 0).join("\n"),
     },
   ]);
   try {
@@ -1455,6 +1567,62 @@ async function storeCompletedSubtask(
   } catch (drainErr) {
     console.error(`  [WARN] memory-arena drain failed after completed subtask ${questionIndex + 1}: ${drainErr instanceof Error ? drainErr.message : String(drainErr)}`);
   }
+}
+
+function summarizeMemoryArenaSubtaskQuestion(question: string): string {
+  const lines = question
+    .replaceAll("\r\n", "\n")
+    .replaceAll("\r", "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const summary: string[] = [];
+  for (const line of lines) {
+    if (line === "**Available Options:**") {
+      break;
+    }
+    if (
+      /^Product\s+\d+:/i.test(line)
+      || line.startsWith("### ")
+      || line.startsWith("**Goal:**")
+      || line.startsWith("**Preference:**")
+      || line.startsWith("**Constraint:**")
+    ) {
+      summary.push(line);
+    }
+  }
+  if (summary.length > 0) {
+    return summary.join("\n");
+  }
+  return headText(question.trim(), 500);
+}
+
+function formatSelectedItemAnchorLines(answer: ArenaExpectedAnswer): string[] {
+  const expectations = extractItemSelectionExpectations(answer);
+  if (expectations.length === 0) {
+    return [];
+  }
+
+  const lines: string[] = [];
+  expectations.forEach((expectation, index) => {
+    const prefix = expectations.length === 1
+      ? "Selected item"
+      : `Selected item ${index + 1}`;
+    if (expectation.targetAsin) {
+      lines.push(`${prefix} ASIN: ${expectation.targetAsin}`);
+    }
+    if (expectation.attributes.length > 0) {
+      lines.push(`${prefix} attributes: ${expectation.attributes.join(", ")}`);
+    }
+  });
+  return lines;
+}
+
+function headText(value: string, maxChars: number): string {
+  if (value.length <= maxChars) {
+    return value;
+  }
+  return `${value.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
 }
 
 function scoreSubtaskSuccess(scores: Record<string, number>): number {
