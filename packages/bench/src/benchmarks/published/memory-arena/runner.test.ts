@@ -1556,6 +1556,86 @@ test("MemoryArena scores hidden-ASIN selections by unique visible option text", 
   }
 });
 
+test("MemoryArena scores explicit non-B0 ASIN selections case-insensitively", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "remnic-memory-arena-"));
+  const datasetPath = path.join(tempDir, "shopping.jsonl");
+
+  try {
+    await writeFile(
+      datasetPath,
+      JSON.stringify({
+        id: 20,
+        category: "shopping",
+        questions: [
+          [
+            "Available Options:",
+            "- A reusable red cotton tote bag for groceries.",
+            "- A blue insulated lunch bag with zipper.",
+            "Which item should be selected?",
+          ].join("\n"),
+        ],
+        answers: [
+          {
+            target_asin: "A1B2C3D4E5",
+            attributes: ["red", "cotton", "tote"],
+          },
+        ],
+      }) + "\n",
+      "utf8",
+    );
+
+    const result = await runMemoryArenaBenchmark({
+      benchmark: memoryArenaDefinition,
+      mode: "full",
+      datasetDir: tempDir,
+      system: {
+        async store() {},
+        async recall() {
+          return "The selected item is the red cotton tote.";
+        },
+        async search() {
+          return [];
+        },
+        async reset() {},
+        async destroy() {},
+        async getStats() {
+          return { totalMessages: 0, totalSummaryNodes: 0, maxDepth: 0 };
+        },
+        responder: {
+          async respond() {
+            return {
+              text: "target_asin a1b2c3d4e5; attributes: red, cotton, tote",
+              tokens: { input: 1, output: 1 },
+              latencyMs: 1,
+              model: "memory-arena-test-responder",
+            };
+          },
+        },
+        judge: {
+          async score() {
+            return 0;
+          },
+          async scoreWithMetrics() {
+            return {
+              score: 0,
+              tokens: { input: 0, output: 0 },
+              latencyMs: 0,
+              model: "judge-smoke",
+            };
+          },
+        },
+      },
+    });
+
+    const task = result.results.tasks[0]!;
+    assert.equal(task.scores.item_selection_match, 1);
+    assert.equal(task.scores.process_score, 1);
+    assert.equal(task.scores.llm_judge, 0);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("MemoryArena rejects conflicting explicit ASINs before visible-option fallback", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "remnic-memory-arena-"));
   const datasetPath = path.join(tempDir, "shopping.jsonl");

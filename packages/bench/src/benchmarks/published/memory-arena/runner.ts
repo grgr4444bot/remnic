@@ -1852,7 +1852,7 @@ function buildItemSelectionAsinContext(
     expectations
       .map((expectation) => expectation.targetAsin)
       .filter((targetAsin): targetAsin is string => targetAsin !== undefined)
-      .map(normalizeItemSelectionText),
+      .map(normalizeItemSelectionAsinForComparison),
   );
   const hasConflictingExplicitAsin =
     expectedExplicitAsins.size > 0
@@ -1870,14 +1870,16 @@ function itemSelectionExpectationMatches(
   asinContext: ItemSelectionAsinContext,
 ): boolean {
   if (expectation.targetAsin) {
-    const normalizedExpectedAsin = normalizeItemSelectionText(
+    const normalizedExpectedAsin =
+      normalizeItemSelectionAsinForComparison(expectation.targetAsin);
+    const textNormalizedExpectedAsin = normalizeItemSelectionText(
       expectation.targetAsin,
     );
     if (asinContext.predictedExplicitAsins.length > 0) {
       return !asinContext.hasConflictingExplicitAsin
         && asinContext.predictedExplicitAsins.includes(normalizedExpectedAsin);
     }
-    if (predictedNormalized.includes(normalizedExpectedAsin)) {
+    if (predictedNormalized.includes(textNormalizedExpectedAsin)) {
       return true;
     }
     return expectation.attributes.length > 0
@@ -1914,10 +1916,18 @@ function extractItemSelectionAsinReferences(
       asinReferences.add(normalizedAsin);
     }
   }
-  for (const match of predictedNormalized.matchAll(/\bb0[a-z0-9]{8}\b/g)) {
-    asinReferences.add(match[0]);
+  for (const match of predictedNormalized.matchAll(/\b(?=[a-z0-9]*\d)(?=[a-z0-9]*[a-z])[a-z0-9]{10}\b/g)) {
+    const normalizedAsin = normalizeMemoryArenaWebshopAsinReference(match[0]);
+    if (normalizedAsin !== undefined) {
+      asinReferences.add(normalizedAsin);
+    }
   }
   return [...asinReferences];
+}
+
+function normalizeItemSelectionAsinForComparison(value: string): string {
+  return normalizeMemoryArenaWebshopAsinReference(value)
+    ?? normalizeItemSelectionText(value);
 }
 
 function normalizeMemoryArenaWebshopAsinReference(
@@ -1927,7 +1937,7 @@ function normalizeMemoryArenaWebshopAsinReference(
     return undefined;
   }
   const compact = value.replace(/\s+/g, "");
-  return /^b0[a-z0-9]{8}$/.test(compact) ? compact : undefined;
+  return /^[a-z0-9]{10}$/i.test(compact) ? compact.toUpperCase() : undefined;
 }
 
 function normalizeItemSelectionText(value: string): string {
