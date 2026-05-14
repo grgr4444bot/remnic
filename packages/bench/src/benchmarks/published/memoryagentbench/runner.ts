@@ -87,6 +87,10 @@ const DATASET_BUNDLE_CANDIDATES = [
 ] as const;
 
 const VISIBLE_CUE_ANCHOR_PREFIX = "MemoryAgentBench visible anchors:";
+const RECOMMENDATION_CUE_PATTERN =
+  /\b(?:recommend(?:ed|s|ing|ation|ations)?|recommender|suggest(?:ed|s|ing|ion|ions)?)\b/i;
+const RECOMMENDATION_CUE_GLOBAL_PATTERN =
+  /\b(?:recommend(?:ed|s|ing|ation|ations)?|recommender|suggest(?:ed|s|ing|ion|ions)?)\b/gi;
 
 type MemoryAgentBenchProtocol =
   | "ruler_qa"
@@ -577,32 +581,60 @@ function extractRecalledRecommendationMovies(
   movieCandidates: string[],
   aliasCounts: Map<string, number>,
 ): string[] {
-  return recalledText
+  const spans: string[] = [];
+  let inRecommendationList = false;
+
+  for (const line of recalledText
     .replaceAll("\r\n", "\n")
     .replaceAll("\r", "\n")
-    .split("\n")
-    .map((line) => recalledRecommendationSpan(line))
-    .filter((line): line is string => line !== undefined)
-    .flatMap((line) =>
-      extractRecommendationMoviesFromLine(line, movieCandidates, aliasCounts),
-    );
+    .split("\n")) {
+    const span = recalledRecommendationSpan(line, inRecommendationList);
+    if (span !== undefined) {
+      spans.push(span);
+    }
+
+    const trimmed = line.trim();
+    if (trimmed.length === 0) {
+      inRecommendationList = false;
+    } else if (isRecommendationHeader(trimmed)) {
+      inRecommendationList = true;
+    } else if (!/^\d+[\.)]\s+/.test(trimmed)) {
+      inRecommendationList = false;
+    }
+  }
+
+  return spans.flatMap((line) =>
+    extractRecommendationMoviesFromLine(line, movieCandidates, aliasCounts),
+  );
 }
 
-function recalledRecommendationSpan(line: string): string | undefined {
+function recalledRecommendationSpan(
+  line: string,
+  inRecommendationList = false,
+): string | undefined {
   const trimmed = line.trim();
   if (trimmed.length === 0) {
     return undefined;
   }
   if (/^\d+[\.)]\s+/.test(trimmed)) {
-    return trimmed;
+    const unnumbered = trimmed.replace(/^\d+[\.)]\s+/, "");
+    return inRecommendationList ? unnumbered : recommendationCueSpan(unnumbered);
   }
 
-  const cues = [...trimmed.matchAll(/\b(?:recommend(?:ed|s|ing|ation|ations)?|suggest(?:ed|s|ing|ion|ions)?)\b/gi)];
+  return recommendationCueSpan(trimmed);
+}
+
+function recommendationCueSpan(line: string): string | undefined {
+  const cues = [...line.matchAll(RECOMMENDATION_CUE_GLOBAL_PATTERN)];
   const lastCue = cues.at(-1);
   if (lastCue?.index === undefined) {
     return undefined;
   }
-  return trimmed.slice(lastCue.index);
+  return line.slice(lastCue.index);
+}
+
+function isRecommendationHeader(line: string): boolean {
+  return RECOMMENDATION_CUE_PATTERN.test(line) && /:\s*$/.test(line);
 }
 
 function uniquePreservingOrder(values: string[]): string[] {

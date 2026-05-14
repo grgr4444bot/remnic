@@ -103,6 +103,7 @@ interface CodexCliDiagnosticHandle {
 
 const DEFAULT_REASONING_EFFORT = "xhigh";
 const DEFAULT_SERVICE_TIER = "fast";
+const RESPONSES_API_SERVICE_TIER = "priority";
 const CODEX_CLI_STDIO_LIMIT = 64_000;
 const CODEX_CLI_PARENT_SIGNALS: NodeJS.Signals[] = [
   "SIGHUP",
@@ -342,7 +343,7 @@ class CodexCliProvider implements LlmProvider {
           reasoning: {
             effort: this.config.reasoningEffort ?? DEFAULT_REASONING_EFFORT,
           },
-          service_tier: DEFAULT_SERVICE_TIER,
+          service_tier: RESPONSES_API_SERVICE_TIER,
           max_output_tokens: Math.max(1, Math.floor(opts.maxTokens ?? 1024)),
           store: false,
         }),
