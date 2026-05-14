@@ -132,13 +132,14 @@ test("LongMemEval runner wires the shared harness with per-item postAnswerHook",
 
 test("LongMemEval runner preserves temporal source metadata without narrowing recall to gold sessions", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "remnic-lme-temporal-"));
+  let judgePrompt = "";
   try {
     await writeFile(
       path.join(tempDir, "longmemeval_oracle.json"),
       JSON.stringify([
         {
           question_id: "temporal-1",
-          question_type: "knowledge-update",
+          question_type: "multi-session-update",
           question:
             "As of 2025-02-01, what was the latest allergy update?",
           answer: "shellfish",
@@ -213,7 +214,8 @@ test("LongMemEval runner preserves temporal source metadata without narrowing re
               model: "smoke-judge",
             };
           },
-          async scoreBinaryPrompt() {
+          async scoreBinaryPrompt(prompt) {
+            judgePrompt = prompt;
             return {
               score: 1,
               tokens: { input: 0, output: 0 },
@@ -246,6 +248,7 @@ test("LongMemEval runner preserves temporal source metadata without narrowing re
       "latest-session",
     ]);
     assert.equal(audit.answerSessionIdsUsedForRecall, false);
+    assert.match(judgePrompt, /updated answer/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

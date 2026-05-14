@@ -177,6 +177,7 @@ function buildLongMemEvalOfficialJudgePrompt(
         "Is the model response correct? Answer yes or no only.",
       );
     case "knowledge-update":
+    case "multi-session-update":
       return formatLongMemEvalJudgePrompt(
         "I will give you a question, a correct answer, and a response from a model. Please answer yes if the response contains the correct answer. Otherwise, answer no. If the response contains some previous information along with an updated answer, the response should be considered as correct as long as the updated answer is the required answer.",
         item.question,
