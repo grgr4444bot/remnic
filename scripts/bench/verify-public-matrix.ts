@@ -126,11 +126,8 @@ export async function verifyPublicMatrixEvidence(
   const expectedServiceTier = options.expectedServiceTier ?? DEFAULT_SERVICE_TIER;
   const expectedRuntimeProfile =
     options.expectedRuntimeProfile ?? DEFAULT_RUNTIME_PROFILE;
-  const expectedGitSha = options.skipGitSha
-    ? undefined
-    : options.expectedGitSha === undefined
-      ? resolveCurrentGitSha(process.cwd())
-      : options.expectedGitSha;
+  const issues: PublicMatrixEvidenceIssue[] = [];
+  const expectedGitSha = resolveExpectedGitSha(options, issues);
   const benchmarks = resolveBenchmarks(options.benchmarks);
   const resultsDir = path.resolve(expandHome(options.resultsDir));
   const diagnosticsDir = path.resolve(
@@ -139,7 +136,6 @@ export async function verifyPublicMatrixEvidence(
   const manifestPath = path.resolve(
     expandHome(options.manifestPath ?? path.join(resultsDir, MANIFEST_FILENAME)),
   );
-  const issues: PublicMatrixEvidenceIssue[] = [];
   const rows: PublicMatrixEvidenceRow[] = benchmarks.map((benchmark) => ({
     benchmark,
   }));
@@ -213,6 +209,7 @@ export async function verifyPublicMatrixEvidence(
       expectedRunId: isNonEmptyString(manifest?.run?.id)
         ? manifest.run.id.trim()
         : undefined,
+      requireRunId: requireManifest,
       expectedModel,
       expectedReasoningEffort,
       expectedServiceTier,
@@ -496,6 +493,7 @@ async function validateDiagnostics(
   diagnosticsDir: string,
   options: {
     expectedRunId: string | undefined;
+    requireRunId: boolean;
     expectedModel: string;
     expectedReasoningEffort: BenchReasoningEffort;
     expectedServiceTier: string;
@@ -520,6 +518,14 @@ async function validateDiagnostics(
       code: "empty-codex-diagnostics",
       path: diagnosticsDir,
       message: "Codex CLI diagnostics directory contains no JSON records.",
+    });
+    return 0;
+  }
+  if (options.requireRunId && !options.expectedRunId) {
+    options.issues.push({
+      code: "missing-diagnostic-run-id",
+      path: diagnosticsDir,
+      message: "Cannot validate shared Codex CLI diagnostics without manifest run.id. Regenerate evidence with a current MANIFEST.json or pass --no-manifest with an explicit diagnostics directory.",
     });
     return 0;
   }
@@ -604,6 +610,27 @@ function gitShaMatches(actual: string, expected: string): boolean {
     return false;
   }
   return actual === expected || actual.startsWith(expected) || expected.startsWith(actual);
+}
+
+function resolveExpectedGitSha(
+  options: VerifyPublicMatrixEvidenceOptions,
+  issues: PublicMatrixEvidenceIssue[],
+): string | undefined {
+  if (options.skipGitSha) {
+    return undefined;
+  }
+  if (options.expectedGitSha !== undefined) {
+    return options.expectedGitSha;
+  }
+
+  const currentGitSha = resolveCurrentGitSha(process.cwd());
+  if (!currentGitSha) {
+    issues.push({
+      code: "missing-current-git-sha",
+      message: "Could not resolve the current git SHA. Run from the repository root, pass --git-sha, or use --skip-git to opt out explicitly.",
+    });
+  }
+  return currentGitSha;
 }
 
 function isSha256(value: unknown): value is string {

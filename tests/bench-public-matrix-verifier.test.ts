@@ -290,3 +290,30 @@ test("reports missing and wrong public matrix evidence", async (t) => {
   assert.equal(issueCodes.has("wrong-diagnostic-service-tier"), true);
   assert.equal(issueCodes.has("manifest-result-unreadable"), true);
 });
+
+test("fails closed when the current git sha cannot be resolved", async (t) => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "remnic-public-matrix-no-git-"));
+  t.after(() => rm(tmpDir, { recursive: true, force: true }));
+
+  const resultsDir = path.join(tmpDir, "results");
+  const benchmarks = ["longmemeval"];
+  await writeResult(resultsDir, benchmarkResult("longmemeval"));
+  await writeManifest(resultsDir, benchmarks);
+
+  const verifyPublicMatrixEvidence = await loadVerifier();
+  const previousCwd = process.cwd();
+  try {
+    process.chdir(tmpDir);
+    const report = await verifyPublicMatrixEvidence({
+      resultsDir,
+      benchmarks,
+      requireDiagnostics: false,
+    });
+    const issueCodes = new Set(report.issues.map((issue) => issue.code));
+
+    assert.equal(report.ok, false);
+    assert.equal(issueCodes.has("missing-current-git-sha"), true);
+  } finally {
+    process.chdir(previousCwd);
+  }
+});
