@@ -1421,11 +1421,6 @@ function isDatasetDownloaded(datasetPath: string, benchmarkId: string): boolean 
   return false;
 }
 
-export const __benchDatasetTestHooks = {
-  isDatasetDownloaded,
-  resolveBenchDatasetDir,
-};
-
 async function launchBenchUi(resultsDir: string): Promise<void> {
   const benchUiDir = path.join(CLI_REPO_ROOT, "packages", "bench-ui");
   const pnpmCmd = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
@@ -1595,6 +1590,28 @@ function resolveBenchDatasetDir(
 
   return undefined;
 }
+
+function resolveDownloadedBenchDatasetDir(
+  benchmarkId: string,
+  quick: boolean,
+  datasetDirOverride?: string,
+): string | undefined {
+  const datasetDir = resolveBenchDatasetDir(
+    benchmarkId,
+    quick,
+    datasetDirOverride,
+  );
+  if (datasetDir === undefined) {
+    return undefined;
+  }
+  return isDatasetDownloaded(datasetDir, benchmarkId) ? datasetDir : undefined;
+}
+
+export const __benchDatasetTestHooks = {
+  isDatasetDownloaded,
+  resolveBenchDatasetDir,
+  resolveDownloadedBenchDatasetDir,
+};
 
 function printBenchPackageSummary(
   result: BenchSummaryResult,
@@ -2266,7 +2283,7 @@ async function runBenchPublished(parsed: ParsedBenchArgs): Promise<void> {
         `[dry-run] beam: source=${preview.source} files=${preview.files.length} items=${preview.items} tasks=${preview.tasks} errors=${preview.errors.length}`,
       );
     } else {
-      const datasetDir = resolveBenchDatasetDir(
+      const datasetDir = resolveDownloadedBenchDatasetDir(
         benchmarkId,
         parsed.quick,
         parsed.datasetDir,
