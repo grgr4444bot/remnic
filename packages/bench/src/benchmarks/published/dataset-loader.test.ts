@@ -26,7 +26,7 @@ async function withTempDir<T>(
 test("loadLongMemEvalS loads the first probed filename that parses", async () => {
   await withTempDir(async (dir) => {
     await writeFile(
-      path.join(dir, "longmemeval_oracle.json"),
+      path.join(dir, "longmemeval_s_cleaned.json"),
       JSON.stringify([
         {
           question_id: 1,
@@ -47,7 +47,7 @@ test("loadLongMemEvalS loads the first probed filename that parses", async () =>
       datasetDir: dir,
     });
     assert.equal(result.source, "dataset");
-    assert.equal(result.filename, "longmemeval_oracle.json");
+    assert.equal(result.filename, "longmemeval_s_cleaned.json");
     assert.equal(result.items.length, 1);
     assert.equal(result.items[0]?.question, "Where does the user live?");
     assert.deepEqual(result.errors, []);
@@ -56,15 +56,15 @@ test("loadLongMemEvalS loads the first probed filename that parses", async () =>
 
 test("loadLongMemEvalS falls back from unreadable file to next probed filename", async () => {
   await withTempDir(async (dir) => {
-    // longmemeval_oracle.json intentionally has invalid JSON; loader should
+    // longmemeval_s_cleaned.json intentionally has invalid JSON; loader should
     // record the parse error and fall through to the next filename.
     await writeFile(
-      path.join(dir, "longmemeval_oracle.json"),
+      path.join(dir, "longmemeval_s_cleaned.json"),
       "{ not valid json",
       "utf8",
     );
     await writeFile(
-      path.join(dir, "longmemeval_s_cleaned.json"),
+      path.join(dir, "longmemeval_s.json"),
       JSON.stringify([
         {
           question_id: 2,
@@ -85,10 +85,10 @@ test("loadLongMemEvalS falls back from unreadable file to next probed filename",
       datasetDir: dir,
     });
     assert.equal(result.source, "dataset");
-    assert.equal(result.filename, "longmemeval_s_cleaned.json");
+    assert.equal(result.filename, "longmemeval_s.json");
     assert.equal(result.items.length, 1);
     assert.equal(result.errors.length, 1);
-    assert.match(result.errors[0]!, /longmemeval_oracle\.json/);
+    assert.match(result.errors[0]!, /longmemeval_s_cleaned\.json/);
   });
 });
 

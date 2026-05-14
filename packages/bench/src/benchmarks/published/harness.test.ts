@@ -30,6 +30,7 @@ function makeFakeSystem(opts?: {
     | { kind: "recall"; sessionId: string; question: string }
     | { kind: "search"; query: string; limit: number }
     | { kind: "judge"; question: string; predicted: string; expected: string }
+    | { kind: "binaryJudge"; prompt: string }
     | { kind: "respond"; question: string }
   > = [];
 
@@ -73,6 +74,15 @@ function makeFakeSystem(opts?: {
         expected: string,
       ) {
         calls.push({ kind: "judge", question, predicted, expected });
+        return {
+          score: opts?.judgeScore ?? 1,
+          tokens: { input: 0, output: 0 },
+          latencyMs: 0,
+          model: opts?.judgeModel ?? "smoke-judge",
+        };
+      },
+      async scoreBinaryPrompt(prompt: string) {
+        calls.push({ kind: "binaryJudge", prompt });
         return {
           score: opts?.judgeScore ?? 1,
           tokens: { input: 0, output: 0 },
@@ -313,6 +323,81 @@ test("runPublishedHarness llm_judge metric suppressed when judge score negative"
   assert.ok(
     !("llm_judge" in task.scores),
     "llm_judge should be omitted when judge returns negative",
+  );
+});
+
+test("runPublishedHarness supports benchmark-owned binary judge prompts", async () => {
+  const { system, calls } = makeFakeSystem({ judgeScore: 0.8 });
+  const result = await runPublishedHarness({
+    options: makeOptions(system),
+    metricsSpec: { metrics: ["llm_judge", "judge_accuracy"] },
+    plans: [
+      {
+        ingestSessions: [
+          { sessionId: "s", messages: [{ role: "user", content: "h" }] },
+        ],
+        trials: [
+          {
+            taskId: "binary-judge",
+            question: "q",
+            expected: "a",
+            recallSessionIds: ["s"],
+            binaryJudgePrompt: ({ answeredText }) =>
+              `Is this correct? ${answeredText}`,
+          },
+        ],
+      },
+    ],
+  });
+
+  const task = result.results.tasks[0]!;
+  assert.equal(task.scores.llm_judge, 0.8);
+  assert.equal(task.scores.judge_accuracy, 1);
+  assert.ok(
+    calls.some((call) => call.kind === "binaryJudge"),
+    "binary judge prompt should be used",
+  );
+  assert.ok(
+    !calls.some((call) => call.kind === "judge"),
+    "generic judge rubric should not be used",
+  );
+});
+
+test("runPublishedHarness falls back when judge lacks binary prompt support", async () => {
+  const { system, calls } = makeFakeSystem({ judgeScore: 0.4 });
+  delete (system.judge as { scoreBinaryPrompt?: unknown }).scoreBinaryPrompt;
+
+  const result = await runPublishedHarness({
+    options: makeOptions(system),
+    metricsSpec: { metrics: ["llm_judge", "judge_accuracy"] },
+    plans: [
+      {
+        ingestSessions: [
+          { sessionId: "s", messages: [{ role: "user", content: "h" }] },
+        ],
+        trials: [
+          {
+            taskId: "binary-judge-fallback",
+            question: "q",
+            expected: "a",
+            recallSessionIds: ["s"],
+            binaryJudgePrompt: () => "official yes/no prompt",
+          },
+        ],
+      },
+    ],
+  });
+
+  const task = result.results.tasks[0]!;
+  assert.equal(task.scores.llm_judge, 0.4);
+  assert.equal(task.scores.judge_accuracy, 0);
+  assert.ok(
+    calls.some((call) => call.kind === "judge"),
+    "generic judge rubric should be used as the compatibility fallback",
+  );
+  assert.ok(
+    !calls.some((call) => call.kind === "binaryJudge"),
+    "binary judge should not be called when unavailable",
   );
 });
 

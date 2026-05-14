@@ -89,6 +89,14 @@ test("LongMemEval runner wires the shared harness with per-item postAnswerHook",
               model: "smoke-judge",
             };
           },
+          async scoreBinaryPrompt() {
+            return {
+              score: 1,
+              tokens: { input: 0, output: 0 },
+              latencyMs: 0,
+              model: "smoke-judge",
+            };
+          },
         },
       },
     });
@@ -130,7 +138,7 @@ test("LongMemEval runner preserves temporal source metadata without narrowing re
       JSON.stringify([
         {
           question_id: "temporal-1",
-          question_type: "multi-session-update",
+          question_type: "knowledge-update",
           question:
             "As of 2025-02-01, what was the latest allergy update?",
           answer: "shellfish",
@@ -198,6 +206,14 @@ test("LongMemEval runner preserves temporal source metadata without narrowing re
             return 1;
           },
           async scoreWithMetrics() {
+            return {
+              score: 1,
+              tokens: { input: 0, output: 0 },
+              latencyMs: 0,
+              model: "smoke-judge",
+            };
+          },
+          async scoreBinaryPrompt() {
             return {
               score: 1,
               tokens: { input: 0, output: 0 },
@@ -308,6 +324,14 @@ test("LongMemEval search_hits falls back to session-scoped search", async () => 
               model: "smoke-judge",
             };
           },
+          async scoreBinaryPrompt() {
+            return {
+              score: 1,
+              tokens: { input: 0, output: 0 },
+              latencyMs: 0,
+              model: "smoke-judge",
+            };
+          },
         },
       },
     });
@@ -376,6 +400,14 @@ test("LongMemEval search_hits counts recalled evidence when direct search is emp
             return 1;
           },
           async scoreWithMetrics() {
+            return {
+              score: 1,
+              tokens: { input: 0, output: 0 },
+              latencyMs: 0,
+              model: "smoke-judge",
+            };
+          },
+          async scoreBinaryPrompt() {
             return {
               score: 1,
               tokens: { input: 0, output: 0 },

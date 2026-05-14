@@ -1175,10 +1175,10 @@ const DOWNLOADED_DATASET_MARKERS: Record<string, { anyOf?: string[]; ext?: strin
     // `datasets status` never disagrees with the runner about what
     // counts as "downloaded".
     anyOf: [
-      "longmemeval_oracle.json",
       "longmemeval_s_cleaned.json",
       "longmemeval_s.json",
       "longmemeval.json",
+      "longmemeval_oracle.json",
     ],
   },
   amemgym: {

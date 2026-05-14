@@ -120,6 +120,17 @@ export interface HarnessTrial {
     answeredText: string;
   }) => string | undefined;
   /**
+   * Optional benchmark-owned yes/no judge prompt. When present, the harness
+   * calls `BenchJudge.scoreBinaryPrompt()` instead of the generic scalar
+   * judge rubric so published benchmark metrics can keep their official
+   * evaluator wording.
+   */
+  binaryJudgePrompt?: (args: {
+    question: string;
+    expected: string;
+    answeredText: string;
+  }) => string;
+  /**
    * Optional extra per-task metrics computed by the caller up-front
    * (not a function of recall state). Merged into the final
    * `TaskResult.scores`.
@@ -152,7 +163,8 @@ export type HarnessMetricId =
   | "f1"
   | "contains_answer"
   | "rouge_l"
-  | "llm_judge";
+  | "llm_judge"
+  | "judge_accuracy";
 
 export interface HarnessMetricsSpec {
   /**
@@ -261,7 +273,7 @@ function validateContext(ctx: HarnessContext): void {
   if (!ctx.metricsSpec || !Array.isArray(ctx.metricsSpec.metrics)) {
     throw new Error(
       "PublishedBenchmarkHarness requires metricsSpec.metrics: one of " +
-        'f1, contains_answer, rouge_l, llm_judge.',
+        'f1, contains_answer, rouge_l, llm_judge, judge_accuracy.',
     );
   }
   const allowed: readonly HarnessMetricId[] = [
@@ -269,6 +281,7 @@ function validateContext(ctx: HarnessContext): void {
     "contains_answer",
     "rouge_l",
     "llm_judge",
+    "judge_accuracy",
   ];
   for (const metric of ctx.metricsSpec.metrics) {
     if (!allowed.includes(metric)) {
@@ -331,20 +344,17 @@ async function executeTrial(
       })
     : { extraScores: undefined, extraDetails: undefined };
 
-  // Only invoke the LLM judge when `llm_judge` is in the metrics spec.
+  // Only invoke the LLM judge when judge-backed metrics are in the spec.
   // Cursor review feedback on PR 596: unconditionally calling the judge
   // billed non-judge runs for an API call per trial and inflated the
   // `TaskResult` latency/token totals. The zero-valued placeholder
   // below keeps the downstream arithmetic unchanged for runs that
   // don't opt into the judge.
-  const judgeRequested = ctx.metricsSpec.metrics.includes("llm_judge");
+  const judgeRequested =
+    ctx.metricsSpec.metrics.includes("llm_judge") ||
+    ctx.metricsSpec.metrics.includes("judge_accuracy");
   const judgeResult = judgeRequested
-    ? await llmJudgeScoreDetailed(
-        ctx.options.system.judge,
-        trial.question,
-        answered.finalAnswer,
-        trial.expected,
-      )
+    ? await scoreTrialJudge(ctx, trial, answered.finalAnswer)
     : {
         score: -1,
         tokens: { input: 0, output: 0 },
@@ -370,6 +380,11 @@ async function executeTrial(
       case "llm_judge":
         if (judgeResult.score >= 0) {
           scores.llm_judge = judgeResult.score;
+        }
+        break;
+      case "judge_accuracy":
+        if (judgeResult.score >= 0) {
+          scores.judge_accuracy = judgeResult.score >= 0.5 ? 1 : 0;
         }
         break;
       default: {
@@ -432,6 +447,44 @@ async function executeTrial(
     },
     details,
   };
+}
+
+async function scoreTrialJudge(
+  ctx: HarnessContext,
+  trial: HarnessTrial,
+  answeredText: string,
+) {
+  if (!trial.binaryJudgePrompt) {
+    return llmJudgeScoreDetailed(
+      ctx.options.system.judge,
+      trial.question,
+      answeredText,
+      trial.expected,
+    );
+  }
+
+  const judge = ctx.options.system.judge;
+  if (!judge?.scoreBinaryPrompt) {
+    return llmJudgeScoreDetailed(
+      judge,
+      trial.question,
+      answeredText,
+      trial.expected,
+    );
+  }
+
+  const prompt = trial.binaryJudgePrompt({
+    question: trial.question,
+    expected: trial.expected,
+    answeredText,
+  });
+  if (typeof prompt !== "string" || prompt.trim().length === 0) {
+    throw new Error(
+      "PublishedBenchmarkHarness: binaryJudgePrompt returned an empty prompt.",
+    );
+  }
+
+  return judge.scoreBinaryPrompt(prompt);
 }
 
 type HarnessAnswerResult = BenchmarkAnswerResult & {

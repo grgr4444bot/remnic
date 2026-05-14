@@ -226,6 +226,13 @@ function wrapJudge(
       );
   }
 
+  if (judge.scoreBinaryPrompt) {
+    wrapped.scoreBinaryPrompt = (prompt) =>
+      run("judge.scoreBinaryPrompt", (signal) =>
+        judge.scoreBinaryPrompt!(prompt, { signal }),
+      );
+  }
+
   return wrapped;
 }
 
