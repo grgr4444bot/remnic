@@ -1835,7 +1835,7 @@ function extractItemSelectionAsinReferences(
       asinReferences.add(normalizedAsin);
     }
   }
-  for (const match of predictedNormalized.matchAll(/\b[a-z0-9]{10,}\b/g)) {
+  for (const match of predictedNormalized.matchAll(/\bb[a-z0-9]{9}\b/g)) {
     asinReferences.add(match[0]);
   }
   return [...asinReferences];
