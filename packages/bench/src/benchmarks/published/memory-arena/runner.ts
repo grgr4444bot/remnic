@@ -230,11 +230,11 @@ export async function runMemoryArenaBenchmark(
               options,
               sessionId,
               questionIndex,
-            question,
-            expected,
-            expectedAnswer,
-            webshopCatalog,
-          );
+              question,
+              expected,
+              expectedAnswer,
+              webshopCatalog,
+            );
           } catch (storeErr) {
             console.error(`  [WARN] memory-arena store failed for ${taskResultId}: ${storeErr instanceof Error ? storeErr.message : String(storeErr)}`);
           }
