@@ -1782,7 +1782,15 @@ function itemSelectionExpectationMatches(
   expectation: ItemSelectionExpectation,
 ): boolean {
   if (expectation.targetAsin) {
-    if (predictedNormalized.includes(normalizeItemSelectionText(expectation.targetAsin))) {
+    const normalizedExpectedAsin = normalizeItemSelectionText(
+      expectation.targetAsin,
+    );
+    const predictedExplicitAsins =
+      extractExplicitItemSelectionAsins(predictedNormalized);
+    if (predictedExplicitAsins.length > 0) {
+      return predictedExplicitAsins.includes(normalizedExpectedAsin);
+    }
+    if (predictedNormalized.includes(normalizedExpectedAsin)) {
       return true;
     }
     return expectation.attributes.length > 0
@@ -1794,6 +1802,21 @@ function itemSelectionExpectationMatches(
   return expectation.attributes.every((attribute) =>
     predictedNormalized.includes(normalizeItemSelectionText(attribute)),
   );
+}
+
+function extractExplicitItemSelectionAsins(
+  predictedNormalized: string,
+): string[] {
+  const explicitAsins: string[] = [];
+  const asinPattern =
+    /\b(?:target\s+asin|asin)\s+([a-z0-9][a-z0-9 ]{1,30}?)(?=\s+(?:attributes?|item|selected|price|rating|reviews|product|title|category)\b|$)/g;
+  for (const match of predictedNormalized.matchAll(asinPattern)) {
+    const normalizedAsin = match[1]?.trim();
+    if (normalizedAsin !== undefined && normalizedAsin.length > 0) {
+      explicitAsins.push(normalizedAsin);
+    }
+  }
+  return explicitAsins;
 }
 
 function normalizeItemSelectionText(value: string): string {
