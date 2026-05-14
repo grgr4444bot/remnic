@@ -485,8 +485,11 @@ async function scoreTrialJudge(
     );
   }
 
+  const binaryJudge = {
+    scoreBinaryPrompt: judge.scoreBinaryPrompt.bind(judge),
+  };
   return llmBinaryJudgeScoreDetailed(
-    judge,
+    binaryJudge,
     prompt,
     answeredText,
     trial.expected,
