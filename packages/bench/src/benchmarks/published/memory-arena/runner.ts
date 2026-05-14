@@ -149,6 +149,7 @@ export async function runMemoryArenaBenchmark(
             task.category,
             answered.finalAnswer,
             expectedAnswer,
+            question,
           );
           const judgeResult = await llmJudgeScoreDetailed(
             options.system.judge,
@@ -655,8 +656,11 @@ function formatMemoryArenaQuestion(
     return [
       "You are completing a MemoryArena item-selection task.",
       "Use the supplied memory context and current task prompt to select the exact item requested.",
-      "Return only the selected item identifiers and distinguishing attributes from the task or memory context.",
-      "Use this format when available: target_asin: <ASIN>; attributes: <attribute1>, <attribute2>.",
+      "Return only the selected visible option text, item identifiers that are explicitly shown, and distinguishing attributes from the task or memory context.",
+      "If the current options do not show an ASIN, omit target_asin instead of answering unknown.",
+      "Do not answer unknown merely because the ASIN is hidden; choose the best-supported visible option from Available Options.",
+      "Use this format when identifiers are available: target_asin: <ASIN>; attributes: <attribute1>, <attribute2>.",
+      "Use this format when identifiers are not available: item: <visible option text>; attributes: <attribute1>, <attribute2>.",
       "",
       "Current item-selection request:",
       question,
@@ -711,8 +715,9 @@ function scoreMemoryArenaDomainAnswer(
   category: string,
   predicted: string,
   expectedAnswer: ArenaExpectedAnswer,
+  question?: string,
 ): Record<string, number> {
-  const itemScore = scoreItemSelectionAnswer(predicted, expectedAnswer);
+  const itemScore = scoreItemSelectionAnswer(predicted, expectedAnswer, question);
   if (!isGroupTravelPlannerCategory(category)) {
     return itemScore;
   }
@@ -755,6 +760,7 @@ function failureMemoryArenaDomainScores(
 function scoreItemSelectionAnswer(
   predicted: string,
   expectedAnswer: ArenaExpectedAnswer,
+  question?: string,
 ): Record<string, number> {
   const expectations = extractItemSelectionExpectations(expectedAnswer);
   if (expectations.length === 0) {
@@ -762,8 +768,12 @@ function scoreItemSelectionAnswer(
   }
 
   const predictedNormalized = normalizeItemSelectionText(predicted);
+  const visibleOptions = question === undefined
+    ? []
+    : extractMemoryArenaVisibleOptions(question);
   const hits = expectations.filter((expectation) =>
-    itemSelectionExpectationMatches(predictedNormalized, expectation),
+    itemSelectionExpectationMatches(predictedNormalized, expectation)
+      || visibleOptionSelectionMatches(predicted, expectation, visibleOptions),
   ).length;
   return {
     item_selection_match: hits / expectations.length,
@@ -828,6 +838,194 @@ function normalizeItemSelectionText(value: string): string {
     .replace(/[^\p{L}\p{N}\s]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+interface VisibleItemOption {
+  index: number;
+  text: string;
+  normalized: string;
+  tokens: Set<string>;
+}
+
+const ITEM_SELECTION_STOPWORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "as",
+  "at",
+  "available",
+  "by",
+  "for",
+  "from",
+  "in",
+  "into",
+  "is",
+  "item",
+  "of",
+  "on",
+  "option",
+  "or",
+  "product",
+  "select",
+  "set",
+  "the",
+  "to",
+  "with",
+]);
+
+function extractMemoryArenaVisibleOptions(question: string): VisibleItemOption[] {
+  return question
+    .replaceAll("\r\n", "\n")
+    .replaceAll("\r", "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("- "))
+    .map((line, index) => {
+      const text = line.slice(2).trim();
+      return {
+        index,
+        text,
+        normalized: normalizeItemSelectionText(text),
+        tokens: new Set(tokenizeItemSelectionText(text)),
+      };
+    })
+    .filter((option) => option.text.length > 0);
+}
+
+function visibleOptionSelectionMatches(
+  predicted: string,
+  expectation: ItemSelectionExpectation,
+  visibleOptions: VisibleItemOption[],
+): boolean {
+  if (visibleOptions.length === 0 || expectation.attributes.length === 0) {
+    return false;
+  }
+
+  const expectedOption = selectVisibleOptionForExpectation(
+    visibleOptions,
+    expectation,
+  );
+  if (expectedOption === undefined) {
+    return false;
+  }
+
+  const predictedOption = selectVisibleOptionForPrediction(
+    visibleOptions,
+    predicted,
+  );
+  return predictedOption?.index === expectedOption.index;
+}
+
+function selectVisibleOptionForExpectation(
+  visibleOptions: VisibleItemOption[],
+  expectation: ItemSelectionExpectation,
+): VisibleItemOption | undefined {
+  const expectedTokens = new Set(
+    tokenizeItemSelectionText(expectation.attributes.join(" ")),
+  );
+  if (expectedTokens.size === 0) {
+    return undefined;
+  }
+
+  const targetAsin = expectation.targetAsin === undefined
+    ? undefined
+    : normalizeItemSelectionText(expectation.targetAsin);
+  const ranked = rankVisibleOptions(visibleOptions, (option) => {
+    let score = countTokenOverlap(expectedTokens, option.tokens);
+    if (targetAsin && option.normalized.includes(targetAsin)) {
+      score += 100;
+    }
+    for (const attribute of expectation.attributes) {
+      const normalizedAttribute = normalizeItemSelectionText(attribute);
+      if (
+        normalizedAttribute.length > 0
+        && option.normalized.includes(normalizedAttribute)
+      ) {
+        score += 2;
+      }
+    }
+    return score;
+  });
+  const threshold = Math.max(2, Math.ceil(Math.min(expectedTokens.size, 6) / 2));
+  return ranked.score >= threshold ? ranked.option : undefined;
+}
+
+function selectVisibleOptionForPrediction(
+  visibleOptions: VisibleItemOption[],
+  predicted: string,
+): VisibleItemOption | undefined {
+  const predictedTokens = new Set(tokenizeItemSelectionText(predicted));
+  if (predictedTokens.size === 0) {
+    return undefined;
+  }
+
+  const predictedNormalized = normalizeItemSelectionText(predicted);
+  const ranked = rankVisibleOptions(visibleOptions, (option) => {
+    let score = countTokenOverlap(predictedTokens, option.tokens);
+    if (
+      predictedNormalized.length > 0
+      && predictedNormalized.includes(option.normalized)
+    ) {
+      score += Math.max(4, option.tokens.size);
+    }
+    return score;
+  });
+  const threshold = Math.max(
+    2,
+    Math.min(4, Math.ceil(predictedTokens.size * 0.4)),
+  );
+  return ranked.score >= threshold ? ranked.option : undefined;
+}
+
+function rankVisibleOptions(
+  visibleOptions: VisibleItemOption[],
+  scoreOption: (option: VisibleItemOption) => number,
+): { option?: VisibleItemOption; score: number } {
+  let bestOption: VisibleItemOption | undefined;
+  let bestScore = 0;
+  let tied = false;
+  for (const option of visibleOptions) {
+    const score = scoreOption(option);
+    if (score > bestScore) {
+      bestOption = option;
+      bestScore = score;
+      tied = false;
+    } else if (score === bestScore && score > 0) {
+      tied = true;
+    }
+  }
+  return tied ? { score: bestScore } : { option: bestOption, score: bestScore };
+}
+
+function countTokenOverlap(left: Set<string>, right: Set<string>): number {
+  let count = 0;
+  for (const token of left) {
+    if (right.has(token)) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function tokenizeItemSelectionText(value: string): string[] {
+  return normalizeItemSelectionText(value)
+    .split(" ")
+    .map(canonicalizeItemSelectionToken)
+    .filter(
+      (token) =>
+        token.length > 0
+        && !ITEM_SELECTION_STOPWORDS.has(token),
+    );
+}
+
+function canonicalizeItemSelectionToken(token: string): string {
+  if (token.length > 4 && token.endsWith("ies")) {
+    return `${token.slice(0, -3)}y`;
+  }
+  if (token.length > 3 && token.endsWith("s") && !token.endsWith("ss")) {
+    return token.slice(0, -1);
+  }
+  return token;
 }
 
 function isGroupTravelPlannerCategory(category: string): boolean {

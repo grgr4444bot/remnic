@@ -62,25 +62,37 @@ test("parseBenchArgs rejects unknown published --name", () => {
         "--model",
         "m",
       ]),
-    /--name must be one of longmemeval, locomo, beam/,
+    /--name must be one of ama-bench, memory-arena, amemgym, longmemeval, locomo, beam, personamem, memoryagentbench, membench/,
   );
 });
 
-test("parseBenchArgs accepts BEAM as a published benchmark", () => {
-  const parsed = parseBenchArgs([
-    "published",
-    "--name",
+test("parseBenchArgs accepts every public benchmark for published runs", () => {
+  for (const benchmarkId of [
+    "ama-bench",
+    "memory-arena",
+    "amemgym",
+    "longmemeval",
+    "locomo",
     "beam",
-    "--dataset",
-    "/tmp/bench-datasets/beam",
-    "--model",
-    "gpt-5.5",
-  ]);
+    "personamem",
+    "memoryagentbench",
+    "membench",
+  ] as const) {
+    const parsed = parseBenchArgs([
+      "published",
+      "--name",
+      benchmarkId,
+      "--dataset",
+      `/tmp/bench-datasets/${benchmarkId}`,
+      "--model",
+      "gpt-5.5",
+    ]);
 
-  assert.equal(parsed.action, "published");
-  assert.equal(parsed.publishedName, "beam");
-  assert.equal(parsed.datasetDir, "/tmp/bench-datasets/beam");
-  assert.equal(parsed.systemModel, "gpt-5.5");
+    assert.equal(parsed.action, "published");
+    assert.equal(parsed.publishedName, benchmarkId);
+    assert.equal(parsed.datasetDir, `/tmp/bench-datasets/${benchmarkId}`);
+    assert.equal(parsed.systemModel, "gpt-5.5");
+  }
 });
 
 test("parseBenchArgs rejects non-integer --limit", () => {

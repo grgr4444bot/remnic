@@ -166,6 +166,7 @@ import { firstSuccessfulCandidate, firstSuccessfulResult } from "./service-candi
 import {
   type BenchAction,
   type ParsedBenchArgs,
+  PUBLISHED_BENCHMARK_NAMES,
   parseBenchActionArgs,
   parseBenchArgs,
 } from "./bench-args.js";
@@ -738,7 +739,7 @@ export function getBenchUsageText(): string {
 Commands:
   list                     List published benchmark packs
   run [benchmark...]       Run one or more benchmark packs
-  published --name <longmemeval|locomo|beam> --dataset <path> --model <id>
+  published --name <benchmark> --dataset <path> --model <id>
                            Run a published benchmark with leaderboard-friendly flags
                            (see issue #566 slice 4). Accepts --limit, --seed,
                            --trial-limit, --out, --dry-run, --provider, --base-url.
@@ -2150,15 +2151,15 @@ async function publishBenchPackageResults(parsed: ParsedBenchArgs): Promise<void
 }
 
 /**
- * `remnic bench published --name <longmemeval|locomo|beam> --dataset <path>
+ * `remnic bench published --name <benchmark> --dataset <path>
  *    --model <id> --limit <n> --trial-limit <n> --seed <n> --out <dir> [--dry-run]
- *    [--provider openai|anthropic|ollama|litellm] [--base-url <url>]`
+ *    [--provider openai|anthropic|ollama|litellm|codex-cli] [--base-url <url>]`
  *
  * Issue #566 PR 4/7. Thin wrapper that routes the user's flags into the
- * existing `runBenchViaPackage` machinery. The wrapper is deliberately
- * narrow: it only accepts the supported published benchmark IDs, enforces the
- * `--name` + `--dataset` invariants at the boundary, and — in `--dry-run`
- * — loads the dataset and prints a preview without calling any LLM.
+ * existing `runBenchViaPackage` machinery. The wrapper accepts every public
+ * benchmark runner, enforces the `--name` + `--dataset` invariants at the
+ * boundary, and — in `--dry-run` — validates the dataset path without calling
+ * any LLM.
  *
  * Validation is upstream in `parseBenchArgs`, per CLAUDE.md rules 14
  * (validate CLI flag args) and 51 (reject invalid input with listed
@@ -2168,7 +2169,7 @@ async function publishBenchPackageResults(parsed: ParsedBenchArgs): Promise<void
 async function runBenchPublished(parsed: ParsedBenchArgs): Promise<void> {
   if (!parsed.publishedName) {
     console.error(
-      "ERROR: `bench published` requires --name longmemeval|locomo|beam.",
+      `ERROR: \`bench published\` requires --name ${PUBLISHED_BENCHMARK_NAMES.join("|")}.`,
     );
     process.exit(1);
   }
@@ -2265,10 +2266,33 @@ async function runBenchPublished(parsed: ParsedBenchArgs): Promise<void> {
         `[dry-run] beam: source=${preview.source} files=${preview.files.length} items=${preview.items} tasks=${preview.tasks} errors=${preview.errors.length}`,
       );
     } else {
-      console.error(
-        `ERROR: installed @remnic/bench version does not export a loader for "${benchmarkId}".`,
+      const datasetDir = resolveBenchDatasetDir(
+        benchmarkId,
+        parsed.quick,
+        parsed.datasetDir,
       );
-      process.exit(1);
+      if (datasetDir === undefined) {
+        console.error(
+          `ERROR: [dry-run] ${benchmarkId}: dataset missing or unreadable under ${parsed.datasetDir}. Provide a valid --dataset path before running without --dry-run.`,
+        );
+        process.exit(1);
+      }
+      const definition = benchModule.getBenchmark?.(benchmarkId);
+      if (!definition?.runnerAvailable) {
+        console.error(
+          `ERROR: installed @remnic/bench version does not export a runner for "${benchmarkId}".`,
+        );
+        process.exit(1);
+      }
+      loadResult = {
+        source: parsed.quick ? "smoke" : "dataset",
+        filename: datasetDir,
+        items: [],
+        errors: [],
+      };
+      console.log(
+        `[dry-run] ${benchmarkId}: source=${loadResult.source} datasetDir=${datasetDir} items=<runner-managed> errors=0`,
+      );
     }
     if (loadResult && loadResult.source === "missing") {
       console.error(

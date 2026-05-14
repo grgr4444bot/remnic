@@ -86,7 +86,7 @@ export interface ParsedBenchArgs {
   amaBenchCrossJudgeBaseUrl?: string;
   amaBenchCrossJudgeApiKey?: string;
   amaBenchCrossJudgeCodexReasoningEffort?: BenchCodexReasoningEffort;
-  /** `bench published` — specific benchmark to run (longmemeval|locomo|beam). */
+  /** `bench published` — specific benchmark to run. */
   publishedName?: PublishedBenchmarkName;
   /** `bench published` — seed forwarded into the harness context. */
   publishedSeed?: number;
@@ -106,9 +106,28 @@ export interface ParsedBenchArgs {
   retryFailed?: boolean;
 }
 
-export type PublishedBenchmarkName = "longmemeval" | "locomo" | "beam";
+export type PublishedBenchmarkName =
+  | "ama-bench"
+  | "memory-arena"
+  | "amemgym"
+  | "longmemeval"
+  | "locomo"
+  | "beam"
+  | "personamem"
+  | "memoryagentbench"
+  | "membench";
 export const PUBLISHED_BENCHMARK_NAMES: readonly PublishedBenchmarkName[] =
-  Object.freeze(["longmemeval", "locomo", "beam"]);
+  Object.freeze([
+    "ama-bench",
+    "memory-arena",
+    "amemgym",
+    "longmemeval",
+    "locomo",
+    "beam",
+    "personamem",
+    "memoryagentbench",
+    "membench",
+  ]);
 
 function isBenchRuntimeProfile(value: string): value is BenchRuntimeProfile {
   return (

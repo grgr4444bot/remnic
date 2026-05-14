@@ -474,3 +474,173 @@ test("MemoryArena accepts exact ASIN matches without requiring secondary attribu
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+test("MemoryArena scores hidden-ASIN selections by unique visible option text", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "remnic-memory-arena-"));
+  const datasetPath = path.join(tempDir, "shopping.jsonl");
+  let responderPrompt = "";
+
+  try {
+    await writeFile(
+      datasetPath,
+      JSON.stringify({
+        id: 13,
+        category: "shopping",
+        questions: [
+          [
+            "Available Options:",
+            "- A BBTO 50th birthday cake topper decoration with glitter numeral candles in rose gold.",
+            "- A Amscan #5 metallic birthday candle in gold for my party.",
+            "- A black 50th birthday candle cake topper for a man or woman party decoration.",
+            "- A red birthday candle with numeral for a one year cake.",
+            "- A Glitter Star Candle set for cake in gold color.",
+            "Which item should be selected?",
+          ].join("\n"),
+        ],
+        answers: [
+          {
+            target_asin: "B06XG24BBK",
+            attributes: ["metallic", "birthday", "candle", "gold", "party supply"],
+          },
+        ],
+      }) + "\n",
+      "utf8",
+    );
+
+    const result = await runMemoryArenaBenchmark({
+      benchmark: memoryArenaDefinition,
+      mode: "full",
+      datasetDir: tempDir,
+      system: {
+        async store() {},
+        async recall() {
+          return "The best visible option is the metallic birthday candle in gold.";
+        },
+        async search() {
+          return [];
+        },
+        async reset() {},
+        async destroy() {},
+        async getStats() {
+          return { totalMessages: 0, totalSummaryNodes: 0, maxDepth: 0 };
+        },
+        responder: {
+          async respond(question) {
+            responderPrompt = question;
+            return {
+              text: "item: A Amscan #5 metallic birthday candle in gold for my party; attributes: metallic, birthday, candle, gold",
+              tokens: { input: 1, output: 1 },
+              latencyMs: 1,
+              model: "memory-arena-test-responder",
+            };
+          },
+        },
+        judge: {
+          async score() {
+            return 0;
+          },
+          async scoreWithMetrics() {
+            return {
+              score: 0,
+              tokens: { input: 0, output: 0 },
+              latencyMs: 0,
+              model: "judge-smoke",
+            };
+          },
+        },
+      },
+    });
+
+    const task = result.results.tasks[0]!;
+    assert.match(responderPrompt, /omit target_asin instead of answering unknown/);
+    assert.match(responderPrompt, /item: <visible option text>/);
+    assert.equal(task.scores.item_selection_match, 1);
+    assert.equal(task.scores.process_score, 1);
+    assert.equal(task.scores.llm_judge, 0);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("MemoryArena rejects wrong visible option selections that share generic attributes", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "remnic-memory-arena-"));
+  const datasetPath = path.join(tempDir, "shopping.jsonl");
+
+  try {
+    await writeFile(
+      datasetPath,
+      JSON.stringify({
+        id: 14,
+        category: "shopping",
+        questions: [
+          [
+            "Available Options:",
+            "- A BBTO 50th birthday cake topper decoration with glitter numeral candles in rose gold.",
+            "- A Amscan #5 metallic birthday candle in gold for my party.",
+            "- A black 50th birthday candle cake topper for a man or woman party decoration.",
+            "- A red birthday candle with numeral for a one year cake.",
+            "- A Glitter Star Candle set for cake in gold color.",
+            "Which item should be selected?",
+          ].join("\n"),
+        ],
+        answers: [
+          {
+            target_asin: "B06XG24BBK",
+            attributes: ["metallic", "birthday", "candle", "gold", "party supply"],
+          },
+        ],
+      }) + "\n",
+      "utf8",
+    );
+
+    const result = await runMemoryArenaBenchmark({
+      benchmark: memoryArenaDefinition,
+      mode: "full",
+      datasetDir: tempDir,
+      system: {
+        async store() {},
+        async recall() {
+          return "The answer is a gold candle option.";
+        },
+        async search() {
+          return [];
+        },
+        async reset() {},
+        async destroy() {},
+        async getStats() {
+          return { totalMessages: 0, totalSummaryNodes: 0, maxDepth: 0 };
+        },
+        responder: {
+          async respond() {
+            return {
+              text: "item: A Glitter Star Candle set for cake in gold color; attributes: glitter star candle, gold color",
+              tokens: { input: 1, output: 1 },
+              latencyMs: 1,
+              model: "memory-arena-test-responder",
+            };
+          },
+        },
+        judge: {
+          async score() {
+            return 0;
+          },
+          async scoreWithMetrics() {
+            return {
+              score: 0,
+              tokens: { input: 0, output: 0 },
+              latencyMs: 0,
+              model: "judge-smoke",
+            };
+          },
+        },
+      },
+    });
+
+    const task = result.results.tasks[0]!;
+    assert.equal(task.scores.item_selection_match, 0);
+    assert.equal(task.scores.process_score, 0);
+    assert.equal(task.scores.llm_judge, 0);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
