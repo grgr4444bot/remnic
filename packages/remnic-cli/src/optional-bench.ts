@@ -20,8 +20,13 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 type BenchModule = typeof import("@remnic/bench");
 
 const SPECIFIER = "@remnic/" + "bench";
+const TSX_ESM_API_SPECIFIER = "tsx/esm/" + "api";
 
 let cached: BenchModule | null | undefined;
+
+type TsxEsmApi = {
+  tsImport: (specifier: string, parentURL: string) => Promise<unknown>;
+};
 
 function resolveLocalWorkspaceBenchPaths(): {
   distEntry: string;
@@ -45,7 +50,8 @@ async function tryImportLocalWorkspaceBenchSource(
   if (!existsSync(sourceEntry)) {
     return null;
   }
-  return (await import(pathToFileURL(sourceEntry).href)) as BenchModule;
+  const { tsImport } = (await import(TSX_ESM_API_SPECIFIER)) as TsxEsmApi;
+  return (await tsImport(pathToFileURL(sourceEntry).href, import.meta.url)) as BenchModule;
 }
 
 function isMissingLocalWorkspaceBenchDistError(err: unknown): boolean {
