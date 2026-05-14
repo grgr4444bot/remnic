@@ -1780,14 +1780,22 @@ function scoreItemSelectionAnswer(
   }
 
   const predictedNormalized = normalizeItemSelectionText(predicted);
+  const asinContext = buildItemSelectionAsinContext(
+    predictedNormalized,
+    expectations,
+  );
   const visibleOptions = question === undefined
     ? []
     : extractMemoryArenaVisibleOptions(question);
   const hits = expectations.filter((expectation) => {
-    if (itemSelectionExpectationMatches(predictedNormalized, expectation)) {
+    if (itemSelectionExpectationMatches(
+      predictedNormalized,
+      expectation,
+      asinContext,
+    )) {
       return true;
     }
-    if (itemSelectionHasConflictingExplicitAsin(predictedNormalized, expectation)) {
+    if (itemSelectionHasConflictingExplicitAsin(asinContext, expectation)) {
       return false;
     }
     return visibleOptionSelectionMatches(predicted, expectation, visibleOptions);
@@ -1800,6 +1808,12 @@ function scoreItemSelectionAnswer(
 interface ItemSelectionExpectation {
   targetAsin?: string;
   attributes: string[];
+}
+
+interface ItemSelectionAsinContext {
+  predictedExplicitAsins: string[];
+  expectedExplicitAsins: Set<string>;
+  hasConflictingExplicitAsin: boolean;
 }
 
 function hasItemSelectionExpectation(answer: ArenaExpectedAnswer): boolean {
@@ -1828,19 +1842,40 @@ function extractItemSelectionExpectations(
     .filter((item) => item.targetAsin !== undefined || item.attributes.length > 0);
 }
 
+function buildItemSelectionAsinContext(
+  predictedNormalized: string,
+  expectations: ItemSelectionExpectation[],
+): ItemSelectionAsinContext {
+  const predictedExplicitAsins =
+    extractItemSelectionAsinReferences(predictedNormalized);
+  const expectedExplicitAsins = new Set(
+    expectations
+      .map((expectation) => expectation.targetAsin)
+      .filter((targetAsin): targetAsin is string => targetAsin !== undefined)
+      .map(normalizeItemSelectionText),
+  );
+  const hasConflictingExplicitAsin =
+    expectedExplicitAsins.size > 0
+    && predictedExplicitAsins.some((asin) => !expectedExplicitAsins.has(asin));
+  return {
+    predictedExplicitAsins,
+    expectedExplicitAsins,
+    hasConflictingExplicitAsin,
+  };
+}
+
 function itemSelectionExpectationMatches(
   predictedNormalized: string,
   expectation: ItemSelectionExpectation,
+  asinContext: ItemSelectionAsinContext,
 ): boolean {
   if (expectation.targetAsin) {
     const normalizedExpectedAsin = normalizeItemSelectionText(
       expectation.targetAsin,
     );
-    const predictedExplicitAsins =
-      extractItemSelectionAsinReferences(predictedNormalized);
-    if (predictedExplicitAsins.length > 0) {
-      return predictedExplicitAsins.length === 1
-        && predictedExplicitAsins[0] === normalizedExpectedAsin;
+    if (asinContext.predictedExplicitAsins.length > 0) {
+      return !asinContext.hasConflictingExplicitAsin
+        && asinContext.predictedExplicitAsins.includes(normalizedExpectedAsin);
     }
     if (predictedNormalized.includes(normalizedExpectedAsin)) {
       return true;
@@ -1857,19 +1892,14 @@ function itemSelectionExpectationMatches(
 }
 
 function itemSelectionHasConflictingExplicitAsin(
-  predictedNormalized: string,
+  asinContext: ItemSelectionAsinContext,
   expectation: ItemSelectionExpectation,
 ): boolean {
   if (!expectation.targetAsin) {
     return false;
   }
-  const normalizedExpectedAsin = normalizeItemSelectionText(
-    expectation.targetAsin,
-  );
-  const predictedExplicitAsins =
-    extractItemSelectionAsinReferences(predictedNormalized);
-  return predictedExplicitAsins.length > 0
-    && !predictedExplicitAsins.includes(normalizedExpectedAsin);
+  return asinContext.predictedExplicitAsins.length > 0
+    && asinContext.hasConflictingExplicitAsin;
 }
 
 function extractItemSelectionAsinReferences(
