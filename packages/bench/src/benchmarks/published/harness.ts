@@ -210,9 +210,10 @@ async function* toAsyncIterable<T>(
  *   - `system.reset()` is called exactly once per plan, before ingest.
  *   - `system.store(sessionId, messages)` is called once per non-empty
  *     session, in the order provided by `plan.ingestSessions`.
- *   - Within a plan, trials are executed sequentially. Across plans,
- *     plans are executed sequentially. No implicit concurrency is
- *     introduced; that keeps the harness deterministic.
+ *   - Within a plan, trials are sequential by default. Runners may opt
+ *     into bounded trial concurrency after ingestion/drain; task output
+ *     and progress callbacks still follow dataset order.
+ *     Across plans, execution remains sequential.
  *   - Every trial recalls from ALL `recallSessionIds` before calling
  *     the responder.
  */
@@ -220,6 +221,9 @@ export async function runPublishedHarness(
   ctx: HarnessContext,
 ): Promise<BenchmarkResult> {
   validateContext(ctx);
+  const trialConcurrency = resolveTrialConcurrency(
+    ctx.options.benchmarkOptions?.trialConcurrency,
+  );
   const tasks: TaskResult[] = [];
 
   for await (const plan of toAsyncIterable(ctx.plans)) {
@@ -235,32 +239,106 @@ export async function runPublishedHarness(
       console.error(`  [WARN] harness drain failed for plan: ${drainErr instanceof Error ? drainErr.message : String(drainErr)}`);
     }
     const planIndex = tasks.length;
-    for (const trial of plan.trials) {
-      const trialId = trial.taskId ?? trial.question.slice(0, 60);
-      try {
-        tasks.push(await executeTrial(ctx, trial));
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.error(`  [WARN] harness trial plan-${planIndex}/${trialId} failed: ${message}`);
-        tasks.push({
-          taskId: trial.taskId,
-          question: trial.question,
-          expected: trial.expected,
-          actual: `(error: ${message})`,
-          scores: buildFailureScores(ctx.metricsSpec.metrics),
-          latencyMs: 0,
-          tokens: { input: 0, output: 0 },
-          details: { error: message },
-        });
-      }
-      // Pass the GLOBAL total (ctx.totalCount), not a per-plan total —
-      // `tasks.length` is cumulative across every plan in ctx.plans, so a
-      // per-plan divisor would overflow to "N/3" nonsense in plan 2+.
-      ctx.options.onTaskComplete?.(tasks[tasks.length - 1]!, tasks.length, ctx.totalCount);
-    }
+    await executePlanTrials(ctx, plan.trials, {
+      planIndex,
+      tasks,
+      trialConcurrency,
+    });
   }
 
   return buildBenchmarkResult(ctx, tasks);
+}
+
+async function executePlanTrials(
+  ctx: HarnessContext,
+  trials: HarnessTrial[],
+  options: {
+    planIndex: number;
+    tasks: TaskResult[];
+    trialConcurrency: number;
+  },
+): Promise<void> {
+  if (options.trialConcurrency === 1 || trials.length <= 1) {
+    for (const trial of trials) {
+      appendCompletedTask(
+        ctx,
+        options.tasks,
+        await executeTrialWithFailure(ctx, trial, options.planIndex),
+      );
+    }
+    return;
+  }
+
+  const results: Array<TaskResult | undefined> = new Array(trials.length);
+  const completed: boolean[] = new Array(trials.length).fill(false);
+  let nextTrialIndex = 0;
+  let nextEmitIndex = 0;
+
+  const emitCompletedPrefix = (): void => {
+    while (completed[nextEmitIndex]) {
+      appendCompletedTask(ctx, options.tasks, results[nextEmitIndex]!);
+      nextEmitIndex += 1;
+    }
+  };
+
+  const worker = async (): Promise<void> => {
+    while (true) {
+      const trialIndex = nextTrialIndex;
+      nextTrialIndex += 1;
+      if (trialIndex >= trials.length) {
+        return;
+      }
+
+      results[trialIndex] = await executeTrialWithFailure(
+        ctx,
+        trials[trialIndex]!,
+        options.planIndex,
+      );
+      completed[trialIndex] = true;
+      emitCompletedPrefix();
+    }
+  };
+
+  const workerCount = Math.min(options.trialConcurrency, trials.length);
+  await Promise.all(
+    Array.from({ length: workerCount }, () => worker()),
+  );
+}
+
+function appendCompletedTask(
+  ctx: HarnessContext,
+  tasks: TaskResult[],
+  task: TaskResult,
+): void {
+  tasks.push(task);
+  // Pass the GLOBAL total (ctx.totalCount), not a per-plan total —
+  // `tasks.length` is cumulative across every plan in ctx.plans, so a
+  // per-plan divisor would overflow to "N/3" nonsense in plan 2+.
+  ctx.options.onTaskComplete?.(task, tasks.length, ctx.totalCount);
+}
+
+async function executeTrialWithFailure(
+  ctx: HarnessContext,
+  trial: HarnessTrial,
+  planIndex: number,
+): Promise<TaskResult> {
+  const trialId = trial.taskId ?? trial.question.slice(0, 60);
+  try {
+    return await executeTrial(ctx, trial);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`  [WARN] harness trial plan-${planIndex}/${trialId} failed: ${message}`);
+    return {
+      taskId: trial.taskId,
+      question: trial.question,
+      expected: trial.expected,
+      actual: `(error: ${message})`,
+      scores: buildFailureScores(ctx.metricsSpec.metrics),
+      latencyMs: 0,
+      tokens: { input: 0, output: 0 },
+      details: { error: message },
+    };
+  }
 }
 
 function validateContext(ctx: HarnessContext): void {
@@ -309,6 +387,19 @@ function buildFailureScores(
     scores[metric] = -1;
   }
   return scores;
+}
+
+function resolveTrialConcurrency(raw: unknown): number {
+  if (raw === undefined) {
+    return 1;
+  }
+  const parsed = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 64) {
+    throw new Error(
+      "PublishedBenchmarkHarness: benchmarkOptions.trialConcurrency must be an integer from 1 to 64.",
+    );
+  }
+  return parsed;
 }
 
 async function executeTrial(

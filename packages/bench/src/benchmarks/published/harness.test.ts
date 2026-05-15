@@ -219,6 +219,83 @@ test("runPublishedHarness recalls from ALL recallSessionIds per trial", async ()
   }
 });
 
+test("runPublishedHarness executes independent trials concurrently with stable output order", async () => {
+  const { system } = makeFakeSystem();
+  let activeResponders = 0;
+  let maxActiveResponders = 0;
+  const originalRespond = system.responder.respond.bind(system.responder);
+  system.responder.respond = async (...args) => {
+    activeResponders += 1;
+    maxActiveResponders = Math.max(maxActiveResponders, activeResponders);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return await originalRespond(...args);
+    } finally {
+      activeResponders -= 1;
+    }
+  };
+  const completedTaskIds: string[] = [];
+
+  const result = await runPublishedHarness({
+    options: makeOptions(system, {
+      benchmarkOptions: { trialConcurrency: 2 },
+      onTaskComplete: (task) => {
+        completedTaskIds.push(task.taskId);
+      },
+    }),
+    metricsSpec: { metrics: ["f1"] },
+    plans: [
+      {
+        ingestSessions: [
+          { sessionId: "s", messages: [{ role: "user", content: "x" }] },
+        ],
+        trials: [
+          {
+            taskId: "t1",
+            question: "Q1",
+            expected: "A1",
+            recallSessionIds: ["s"],
+          },
+          {
+            taskId: "t2",
+            question: "Q2",
+            expected: "A2",
+            recallSessionIds: ["s"],
+          },
+          {
+            taskId: "t3",
+            question: "Q3",
+            expected: "A3",
+            recallSessionIds: ["s"],
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(maxActiveResponders, 2);
+  assert.deepEqual(
+    result.results.tasks.map((task) => task.taskId),
+    ["t1", "t2", "t3"],
+  );
+  assert.deepEqual(completedTaskIds, ["t1", "t2", "t3"]);
+});
+
+test("runPublishedHarness rejects invalid trialConcurrency", async () => {
+  const { system } = makeFakeSystem();
+  await assert.rejects(
+    () =>
+      runPublishedHarness({
+        options: makeOptions(system, {
+          benchmarkOptions: { trialConcurrency: 0 },
+        }),
+        metricsSpec: { metrics: ["f1"] },
+        plans: [],
+      }),
+    /trialConcurrency must be an integer from 1 to 64/,
+  );
+});
+
 test("runPublishedHarness postAnswerHook runs between answer and judge", async () => {
   const { system, calls } = makeFakeSystem({ searchHits: 4 });
   const order: string[] = [];

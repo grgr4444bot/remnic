@@ -1723,6 +1723,7 @@ export const __benchDatasetTestHooks = {
     benchmarkId: string,
     args: {
       publishedTrialLimit?: number;
+      publishedTrialConcurrency?: number;
       publishedTaskFilter?: string;
     },
   ) {
@@ -2563,6 +2564,7 @@ function buildPublishedBenchmarkOptions(
   benchmarkId: string,
   args: {
     publishedTrialLimit?: number;
+    publishedTrialConcurrency?: number;
     publishedTaskFilter?: string;
   },
 ): Record<string, unknown> | undefined {
@@ -2570,9 +2572,14 @@ function buildPublishedBenchmarkOptions(
     args.publishedTrialLimit !== undefined
       ? { trialLimit: args.publishedTrialLimit }
       : undefined;
+  const trialConcurrencyOptions =
+    args.publishedTrialConcurrency !== undefined
+      ? { trialConcurrency: args.publishedTrialConcurrency }
+      : undefined;
   if (benchmarkId === "locomo") {
     return {
       ...(trialLimitOptions ?? {}),
+      ...(trialConcurrencyOptions ?? {}),
       replayExtractionMode: "skip",
     };
   }

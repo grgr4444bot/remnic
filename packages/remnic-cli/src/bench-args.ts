@@ -95,6 +95,8 @@ export interface ParsedBenchArgs {
   publishedLimit?: number;
   /** `bench published` — scored trial cap forwarded into benchmark-specific options. */
   publishedTrialLimit?: number;
+  /** `bench published` — max independent trials to execute at once when supported. */
+  publishedTrialConcurrency?: number;
   /** `bench published` — benchmark-specific task/ability filter for diagnostic runs. */
   publishedTaskFilter?: string;
   /** `bench published` — published artifact output directory. */
@@ -257,6 +259,7 @@ export function collectBenchmarks(argv: string[]): string[] {
       arg === "--model" ||
       arg === "--limit" ||
       arg === "--trial-limit" ||
+      arg === "--trial-concurrency" ||
       arg === "--task-filter" ||
       arg === "--seed" ||
       arg === "--out" ||
@@ -633,6 +636,10 @@ export function parseBenchArgs(argv: string[]): ParsedBenchArgs {
   const publishedModelRaw = readBenchOptionValue(args, "--model");
   const publishedLimitRaw = readBenchOptionValue(args, "--limit");
   const publishedTrialLimitRaw = readBenchOptionValue(args, "--trial-limit");
+  const publishedTrialConcurrencyRaw = readBenchOptionValue(
+    args,
+    "--trial-concurrency",
+  );
   const publishedTaskFilterRaw = readBenchOptionValue(args, "--task-filter");
   const publishedSeedRaw = readBenchOptionValue(args, "--seed");
   const publishedOutRaw = readBenchOptionValue(args, "--out");
@@ -688,6 +695,36 @@ export function parseBenchArgs(argv: string[]): ParsedBenchArgs {
     );
   if (publishedTrialLimit !== undefined && !trialLimitTargetsSupportedBenchmark) {
     throw new Error("ERROR: --trial-limit is currently supported only for LoCoMo and MemoryAgentBench.");
+  }
+
+  let publishedTrialConcurrency: number | undefined;
+  if (publishedTrialConcurrencyRaw !== undefined) {
+    const parsed = Number(publishedTrialConcurrencyRaw);
+    if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 64) {
+      throw new Error(
+        "ERROR: --trial-concurrency must be an integer from 1 to 64.",
+      );
+    }
+    publishedTrialConcurrency = parsed;
+  }
+  const trialConcurrencyTargetsSupportedBenchmark =
+    publishedName === "locomo" ||
+    (
+      publishedName === undefined &&
+      action === "published"
+    ) ||
+    (
+      publishedName === undefined &&
+      action !== "published" &&
+      !args.includes("--all") &&
+      benchmarks.length === 1 &&
+      benchmarks[0] === "locomo"
+    );
+  if (
+    publishedTrialConcurrency !== undefined &&
+    !trialConcurrencyTargetsSupportedBenchmark
+  ) {
+    throw new Error("ERROR: --trial-concurrency is currently supported only for LoCoMo.");
   }
 
   let publishedTaskFilter: string | undefined;
@@ -902,6 +939,7 @@ export function parseBenchArgs(argv: string[]): ParsedBenchArgs {
     publishedSeed,
     publishedLimit,
     publishedTrialLimit,
+    publishedTrialConcurrency,
     publishedTaskFilter,
     publishedOut: publishedOutRaw
       ? path.resolve(expandTilde(publishedOutRaw))

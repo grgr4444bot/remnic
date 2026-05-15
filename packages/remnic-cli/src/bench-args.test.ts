@@ -129,6 +129,55 @@ test("parseBenchArgs accepts published --trial-limit", () => {
   assert.equal(parsed.publishedTrialLimit, 25);
 });
 
+test("parseBenchArgs accepts published --trial-concurrency for LoCoMo", () => {
+  const parsed = parseBenchArgs([
+    "published",
+    "--name",
+    "locomo",
+    "--dataset",
+    "/tmp",
+    "--model",
+    "m",
+    "--trial-concurrency",
+    "8",
+  ]);
+
+  assert.equal(parsed.publishedTrialConcurrency, 8);
+});
+
+test("parseBenchArgs rejects invalid or unsupported --trial-concurrency", () => {
+  assert.throws(
+    () =>
+      parseBenchArgs([
+        "published",
+        "--name",
+        "locomo",
+        "--dataset",
+        "/tmp",
+        "--model",
+        "m",
+        "--trial-concurrency",
+        "0",
+      ]),
+    /--trial-concurrency must be an integer from 1 to 64/,
+  );
+  assert.throws(
+    () =>
+      parseBenchArgs([
+        "published",
+        "--name",
+        "longmemeval",
+        "--dataset",
+        "/tmp",
+        "--model",
+        "m",
+        "--trial-concurrency",
+        "2",
+      ]),
+    /--trial-concurrency is currently supported only for LoCoMo/,
+  );
+});
+
 test("parseBenchArgs accepts independent provider and drain timeouts", () => {
   const parsed = parseBenchArgs([
     "run",
