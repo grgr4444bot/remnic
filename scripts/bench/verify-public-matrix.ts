@@ -156,7 +156,13 @@ export async function verifyPublicMatrixEvidence(
   const summaries = requireManifest ? [] : await listBenchmarkResults(resultsDir);
   for (const row of rows) {
     const resultPath = manifest
-      ? resolveManifestResultPath(resultsDir, manifest, row.benchmark, issues)
+      ? await resolveManifestResultPath(
+          resultsDir,
+          manifest,
+          row.benchmark,
+          expectedRuntimeProfile,
+          issues,
+        )
       : resolveLatestResultPath(summaries, row.benchmark);
     if (!resultPath) {
       if (!manifest) {
@@ -438,28 +444,68 @@ function validateManifest(
   }
 }
 
-function resolveManifestResultPath(
+async function resolveManifestResultPath(
   resultsDir: string,
   manifest: ReproManifest,
   benchmark: string,
+  expectedRuntimeProfile: BenchRuntimeProfile,
   issues: PublicMatrixEvidenceIssue[],
-): string | undefined {
-  const result = manifest.results?.find((entry) => entry.benchmark === benchmark);
-  if (!result || !isNonEmptyString(result.path)) {
+): Promise<string | undefined> {
+  const candidates = manifest.results?.filter((entry) => entry.benchmark === benchmark) ?? [];
+  if (candidates.length === 0) {
     return undefined;
   }
-  if (path.isAbsolute(result.path)) {
+
+  const candidatePaths: string[] = [];
+  for (const result of candidates) {
+    if (!isNonEmptyString(result.path)) {
+      continue;
+    }
+    const resolvedPath = resolveManifestEntryPath(
+      resultsDir,
+      benchmark,
+      result.path,
+      issues,
+    );
+    if (resolvedPath) {
+      candidatePaths.push(resolvedPath);
+    }
+  }
+  if (candidatePaths.length === 0) {
+    return undefined;
+  }
+
+  for (const candidatePath of candidatePaths) {
+    try {
+      const result = await loadBenchmarkResult(candidatePath);
+      if (result.config.runtimeProfile === expectedRuntimeProfile) {
+        return candidatePath;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return candidatePaths[0];
+}
+
+function resolveManifestEntryPath(
+  resultsDir: string,
+  benchmark: string,
+  manifestPath: string,
+  issues: PublicMatrixEvidenceIssue[],
+): string | undefined {
+  if (path.isAbsolute(manifestPath)) {
     addIssue(
       issues,
       benchmark,
-      result.path,
+      manifestPath,
       "manifest-result-absolute-path",
       "Manifest result path must be relative to the results directory.",
     );
     return undefined;
   }
 
-  const resolvedPath = path.resolve(resultsDir, result.path);
+  const resolvedPath = path.resolve(resultsDir, manifestPath);
   const relativePath = path.relative(resultsDir, resolvedPath);
   if (
     relativePath.startsWith("..") ||

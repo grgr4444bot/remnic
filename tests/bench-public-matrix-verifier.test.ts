@@ -247,6 +247,74 @@ test("verifies a complete Codex CLI public matrix evidence subset", async (t) =>
   assert.equal(skipGitReport.ok, true, JSON.stringify(skipGitReport.issues, null, 2));
 });
 
+test("selects the expected runtime profile from multi-profile manifests", async (t) => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "remnic-public-matrix-profile-"));
+  t.after(() => rm(tmpDir, { recursive: true, force: true }));
+
+  const resultsDir = path.join(tmpDir, "results");
+  const diagnosticsDir = path.join(resultsDir, "codex-cli-diagnostics");
+  const benchmark = "longmemeval";
+  await writeResult(
+    resultsDir,
+    benchmarkResult(benchmark, {
+      meta: {
+        id: "longmemeval-baseline-result",
+      },
+      config: {
+        runtimeProfile: "baseline",
+      },
+    }),
+  );
+  await writeResult(resultsDir, benchmarkResult(benchmark));
+  await writeJson(path.join(resultsDir, "MANIFEST.json"), {
+    git: {
+      commit: "abc123",
+      dirty: false,
+    },
+    run: {
+      id: "test-public-matrix-run",
+      mode: "full",
+      runtimeProfiles: ["baseline", "real"],
+      selectedBenchmarks: [benchmark],
+    },
+    datasets: [
+      {
+        benchmark,
+        status: "hashed",
+        fileCount: 1,
+        sha256: "a".repeat(64),
+      },
+    ],
+    results: [
+      {
+        benchmark,
+        path: "longmemeval-baseline-result.json",
+        mode: "full",
+        gitSha: "abc123",
+        taskCount: 1,
+      },
+      {
+        benchmark,
+        path: "longmemeval-test-result.json",
+        mode: "full",
+        gitSha: "abc123",
+        taskCount: 1,
+      },
+    ],
+  });
+  await writeDiagnostic(diagnosticsDir);
+
+  const verifyPublicMatrixEvidence = await loadVerifier();
+  const report = await verifyPublicMatrixEvidence({
+    resultsDir,
+    benchmarks: [benchmark],
+    expectedGitSha: "abc123",
+  });
+
+  assert.equal(report.ok, true, JSON.stringify(report.issues, null, 2));
+  assert.deepEqual(report.issues, []);
+});
+
 test("reports missing and wrong public matrix evidence", async (t) => {
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "remnic-public-matrix-bad-"));
   t.after(() => rm(tmpDir, { recursive: true, force: true }));

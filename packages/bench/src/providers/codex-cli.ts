@@ -60,6 +60,8 @@ interface ResponsesApiResponse {
   };
 }
 
+type ResponsesApiServiceTier = "auto" | "default" | "flex" | "scale" | "priority";
+
 interface CodexCliDiagnosticRecord {
   schemaVersion: 1;
   id: string;
@@ -328,6 +330,19 @@ class CodexCliProvider implements LlmProvider {
       );
     }
 
+    const serviceTier = responsesApiServiceTier(DEFAULT_SERVICE_TIER);
+    const body: Record<string, unknown> = {
+      model: this.config.model,
+      instructions: buildResponsesInstructions(opts.systemPrompt),
+      input: prompt,
+      reasoning: {
+        effort: this.config.reasoningEffort ?? DEFAULT_REASONING_EFFORT,
+      },
+      ...(serviceTier ? { service_tier: serviceTier } : {}),
+      max_output_tokens: Math.max(1, Math.floor(opts.maxTokens ?? 1024)),
+      store: false,
+    };
+
     const response = await retryFetch(
       this.responsesApiUrl(),
       {
@@ -337,17 +352,7 @@ class CodexCliProvider implements LlmProvider {
           authorization: `Bearer ${apiKey}`,
         },
         signal: opts.signal,
-        body: JSON.stringify({
-          model: this.config.model,
-          instructions: buildResponsesInstructions(opts.systemPrompt),
-          input: prompt,
-          reasoning: {
-            effort: this.config.reasoningEffort ?? DEFAULT_REASONING_EFFORT,
-          },
-          service_tier: DEFAULT_SERVICE_TIER,
-          max_output_tokens: Math.max(1, Math.floor(opts.maxTokens ?? 1024)),
-          store: false,
-        }),
+        body: JSON.stringify(body),
       },
       this.config.retryOptions,
     );
@@ -428,6 +433,21 @@ class CodexCliProvider implements LlmProvider {
       env: buildIsolatedCodexEnv(this.config.apiKey),
     };
   }
+}
+
+function responsesApiServiceTier(
+  serviceTier: string,
+): ResponsesApiServiceTier | undefined {
+  if (
+    serviceTier === "auto" ||
+    serviceTier === "default" ||
+    serviceTier === "flex" ||
+    serviceTier === "scale" ||
+    serviceTier === "priority"
+  ) {
+    return serviceTier;
+  }
+  return undefined;
 }
 
 function buildResponsesInstructions(systemPrompt: string | undefined): string {
