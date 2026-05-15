@@ -27,6 +27,7 @@ function makeFakeSystem(opts?: {
   const calls: Array<
     | { kind: "reset" }
     | { kind: "store"; sessionId: string; messageCount: number }
+    | { kind: "drain" }
     | { kind: "recall"; sessionId: string; question: string }
     | { kind: "search"; query: string; limit: number }
     | { kind: "judge"; question: string; predicted: string; expected: string }
@@ -40,6 +41,9 @@ function makeFakeSystem(opts?: {
     },
     async store(sessionId: string, messages: Array<unknown>) {
       calls.push({ kind: "store", sessionId, messageCount: messages.length });
+    },
+    async drain() {
+      calls.push({ kind: "drain" });
     },
     async recall(sessionId: string, question: string) {
       calls.push({ kind: "recall", sessionId, question });
@@ -178,6 +182,44 @@ test("runPublishedHarness resets once per plan and stores every non-empty sessio
   assert.equal(result.meta.seeds[0], 42);
   assert.equal(result.meta.benchmark, "harness-test");
   assert.equal(result.config.adapterMode, "direct");
+});
+
+test("runPublishedHarness rejects drain failure before scoring trials", async () => {
+  const { system, calls } = makeFakeSystem();
+  system.drain = async () => {
+    calls.push({ kind: "drain" });
+    throw new Error("drain timed out");
+  };
+
+  await assert.rejects(
+    () =>
+      runPublishedHarness({
+        options: makeOptions(system),
+        metricsSpec: { metrics: ["f1"] },
+        plans: [
+          {
+            ingestSessions: [
+              { sessionId: "s", messages: [{ role: "user", content: "x" }] },
+            ],
+            trials: [
+              {
+                taskId: "must-not-score",
+                question: "Q",
+                expected: "A",
+                recallSessionIds: ["s"],
+              },
+            ],
+          },
+        ],
+      }),
+    /drain failed before scoring.*drain timed out/,
+  );
+
+  assert.ok(calls.some((call) => call.kind === "store"));
+  assert.ok(calls.some((call) => call.kind === "drain"));
+  assert.equal(calls.some((call) => call.kind === "recall"), false);
+  assert.equal(calls.some((call) => call.kind === "respond"), false);
+  assert.equal(calls.some((call) => call.kind === "judge"), false);
 });
 
 test("runPublishedHarness recalls from ALL recallSessionIds per trial", async () => {

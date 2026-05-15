@@ -236,7 +236,12 @@ export async function runPublishedHarness(
     try {
       await ctx.options.system.drain?.();
     } catch (drainErr) {
-      console.error(`  [WARN] harness drain failed for plan: ${drainErr instanceof Error ? drainErr.message : String(drainErr)}`);
+      throw new Error(
+        `PublishedBenchmarkHarness: drain failed before scoring; public benchmark evidence would be incomplete: ${
+          drainErr instanceof Error ? drainErr.message : String(drainErr)
+        }`,
+        { cause: drainErr },
+      );
     }
     const planIndex = tasks.length;
     await executePlanTrials(ctx, plan.trials, {
