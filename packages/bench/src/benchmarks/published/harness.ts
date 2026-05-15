@@ -487,6 +487,8 @@ async function executeTrial(
       case "judge_accuracy":
         if (judgeResult.score >= 0) {
           scores.judge_accuracy = judgeResult.score >= 0.5 ? 1 : 0;
+        } else {
+          scores.judge_accuracy = -1;
         }
         break;
       default: {

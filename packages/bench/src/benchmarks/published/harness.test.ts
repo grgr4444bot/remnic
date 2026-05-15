@@ -403,6 +403,35 @@ test("runPublishedHarness llm_judge metric suppressed when judge score negative"
   );
 });
 
+test("runPublishedHarness records failed judge_accuracy when judge score is negative", async () => {
+  const { system } = makeFakeSystem({ judgeScore: -1 });
+  const result = await runPublishedHarness({
+    options: makeOptions(system),
+    metricsSpec: { metrics: ["llm_judge", "judge_accuracy"] },
+    plans: [
+      {
+        ingestSessions: [
+          { sessionId: "s", messages: [{ role: "user", content: "h" }] },
+        ],
+        trials: [
+          {
+            taskId: "invalid-binary-judge",
+            question: "q",
+            expected: "a",
+            recallSessionIds: ["s"],
+            binaryJudgePrompt: () => "official yes/no prompt",
+          },
+        ],
+      },
+    ],
+  });
+
+  const task = result.results.tasks[0]!;
+  assert.ok(!("llm_judge" in task.scores));
+  assert.equal(task.scores.judge_accuracy, -1);
+  assert.equal(result.results.aggregates.judge_accuracy?.mean, -1);
+});
+
 test("runPublishedHarness supports benchmark-owned binary judge prompts", async () => {
   const { system, calls } = makeFakeSystem({ judgeScore: 0.8 });
   const result = await runPublishedHarness({
