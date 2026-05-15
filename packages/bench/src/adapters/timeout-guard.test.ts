@@ -190,6 +190,21 @@ test("timeout guard aborts judge phase work on timeout", async () => {
   assert.equal(sawAbort, true);
 });
 
+test("timeout guard uses a separate drain timeout", async () => {
+  const adapter = makeAdapter();
+  adapter.drain = async () => new Promise<void>(() => {});
+  const guarded = createTimeoutGuardedAdapter(adapter, {
+    benchmarkId: "timeout-test",
+    timeoutMs: 100,
+    drainTimeoutMs: 5,
+  });
+
+  await assert.rejects(
+    () => guarded.drain!(),
+    /benchmark phase timed out after 5ms: timeout-test:drain/,
+  );
+});
+
 test("resolveBenchmarkPhaseTimeoutMs prefers explicit benchmark config", () => {
   assert.equal(
     resolveBenchmarkPhaseTimeoutMs({

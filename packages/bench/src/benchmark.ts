@@ -142,6 +142,9 @@ export async function runBenchmark(
       : createTimeoutGuardedAdapter(options.system, {
           benchmarkId,
           timeoutMs,
+          ...(options.drainTimeoutMs !== undefined
+            ? { drainTimeoutMs: options.drainTimeoutMs }
+            : {}),
           logProgress,
           log,
         });

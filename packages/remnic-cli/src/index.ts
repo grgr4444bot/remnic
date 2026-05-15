@@ -2809,6 +2809,7 @@ async function runBenchViaPackage(
       judgeProvider: plan.runtime.judgeProvider,
       internalProvider: plan.runtime.internalProvider,
       remnicConfig: plan.runtime.effectiveRemnicConfig,
+      drainTimeoutMs: plan.runtime.adapterOptions.drainTimeoutMs,
       ...(benchmarkOptions ? { benchmarkOptions } : {}),
       ...(amaBenchProtocol.judgeProtocol
         ? { amaBenchJudgeProtocol: amaBenchProtocol.judgeProtocol }

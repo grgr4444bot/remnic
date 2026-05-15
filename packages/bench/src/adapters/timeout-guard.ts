@@ -15,6 +15,7 @@ const BENCHMARK_TIMEOUT_ABORT_GRACE_MS = 1_500;
 export interface TimeoutGuardOptions {
   benchmarkId: string;
   timeoutMs: number;
+  drainTimeoutMs?: number;
   logProgress?: boolean;
   log?: (message: string) => void;
   onTimeout?: (phase: string) => void | Promise<void>;
@@ -65,18 +66,19 @@ export function createTimeoutGuardedAdapter(
   adapter: BenchMemoryAdapter,
   options: TimeoutGuardOptions,
 ): BenchMemoryAdapter {
-  if (!Number.isInteger(options.timeoutMs) || options.timeoutMs <= 0) {
-    throw new Error(
-      `benchmark phase timeout must be a positive integer; received ${String(options.timeoutMs)}.`,
-    );
+  assertPositiveTimeout(options.timeoutMs, "benchmark phase timeout");
+  if (options.drainTimeoutMs !== undefined) {
+    assertPositiveTimeout(options.drainTimeoutMs, "benchmark drain timeout");
   }
+  const drainTimeoutMs = options.drainTimeoutMs ?? options.timeoutMs;
 
   const run = async <T>(
     phase: string,
     fn: (signal: AbortSignal) => Promise<T>,
+    timeoutMs = options.timeoutMs,
   ): Promise<T> => {
     const label = `${options.benchmarkId}:${phase}`;
-    return runWithBenchmarkPhaseTimeout(label, options.timeoutMs, fn, options);
+    return runWithBenchmarkPhaseTimeout(label, timeoutMs, fn, options);
   };
 
   const wrapped: BenchMemoryAdapter = {
@@ -120,7 +122,8 @@ export function createTimeoutGuardedAdapter(
   };
 
   if (adapter.drain) {
-    wrapped.drain = (): Promise<void> => run("drain", () => adapter.drain!());
+    wrapped.drain = (): Promise<void> =>
+      run("drain", () => adapter.drain!(), drainTimeoutMs);
   }
   if (adapter.responder) {
     wrapped.responder = wrapResponder(adapter.responder, run);
@@ -136,11 +139,7 @@ export function createTimeoutGuardedIngestionAdapter(
   adapter: IngestionBenchAdapter,
   options: TimeoutGuardOptions,
 ): IngestionBenchAdapter {
-  if (!Number.isInteger(options.timeoutMs) || options.timeoutMs <= 0) {
-    throw new Error(
-      `benchmark phase timeout must be a positive integer; received ${String(options.timeoutMs)}.`,
-    );
-  }
+  assertPositiveTimeout(options.timeoutMs, "benchmark phase timeout");
 
   const run = async <T>(
     phase: string,
@@ -162,6 +161,14 @@ export function createTimeoutGuardedIngestionAdapter(
       return adapter.destroy();
     },
   };
+}
+
+function assertPositiveTimeout(value: number, label: string): void {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(
+      `${label} must be a positive integer; received ${String(value)}.`,
+    );
+  }
 }
 
 export async function runWithBenchmarkPhaseTimeout<T>(
