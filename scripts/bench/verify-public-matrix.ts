@@ -13,6 +13,7 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import os from "node:os";
@@ -74,10 +75,19 @@ interface ReproManifest {
   results?: Array<{
     benchmark?: string;
     path?: string;
+    sha256?: string;
+    resultId?: string;
     mode?: string;
     gitSha?: string;
     taskCount?: number;
   }>;
+}
+
+type ReproManifestResult = NonNullable<ReproManifest["results"]>[number];
+
+interface ManifestResultResolution {
+  entry: ReproManifestResult;
+  path: string;
 }
 
 export interface PublicMatrixEvidenceIssue {
@@ -155,14 +165,17 @@ export async function verifyPublicMatrixEvidence(
 
   const summaries = requireManifest ? [] : await listBenchmarkResults(resultsDir);
   for (const row of rows) {
-    const resultPath = manifest
-      ? await resolveManifestResultPath(
+    const manifestResult = manifest
+      ? await resolveManifestResult(
           resultsDir,
           manifest,
           row.benchmark,
           expectedRuntimeProfile,
           issues,
         )
+      : undefined;
+    const resultPath = manifest
+      ? manifestResult?.path
       : resolveLatestResultPath(summaries, row.benchmark);
     if (!resultPath) {
       if (!manifest) {
@@ -176,6 +189,9 @@ export async function verifyPublicMatrixEvidence(
     }
 
     row.resultPath = resultPath;
+    if (manifestResult) {
+      await validateManifestResultFile(manifestResult.entry, resultPath, row.benchmark, issues);
+    }
     let result: BenchmarkResult;
     try {
       result = await loadBenchmarkResult(resultPath);
@@ -191,6 +207,9 @@ export async function verifyPublicMatrixEvidence(
 
     row.resultId = result.meta.id;
     row.taskCount = result.results.tasks.length;
+    if (manifestResult) {
+      validateManifestResultIdentity(manifestResult.entry, result, resultPath, issues);
+    }
     if (result.meta.benchmark !== row.benchmark) {
       addIssue(
         issues,
@@ -512,19 +531,19 @@ function validateManifest(
   }
 }
 
-async function resolveManifestResultPath(
+async function resolveManifestResult(
   resultsDir: string,
   manifest: ReproManifest,
   benchmark: string,
   expectedRuntimeProfile: BenchRuntimeProfile,
   issues: PublicMatrixEvidenceIssue[],
-): Promise<string | undefined> {
+): Promise<ManifestResultResolution | undefined> {
   const candidates = manifest.results?.filter((entry) => entry.benchmark === benchmark) ?? [];
   if (candidates.length === 0) {
     return undefined;
   }
 
-  const candidatePaths: string[] = [];
+  const candidateResults: ManifestResultResolution[] = [];
   for (const result of candidates) {
     if (!isNonEmptyString(result.path)) {
       continue;
@@ -536,24 +555,95 @@ async function resolveManifestResultPath(
       issues,
     );
     if (resolvedPath) {
-      candidatePaths.push(resolvedPath);
+      candidateResults.push({ entry: result, path: resolvedPath });
     }
   }
-  if (candidatePaths.length === 0) {
+  if (candidateResults.length === 0) {
     return undefined;
   }
 
-  for (const candidatePath of candidatePaths) {
+  for (const candidate of candidateResults) {
     try {
-      const result = await loadBenchmarkResult(candidatePath);
+      const result = await loadBenchmarkResult(candidate.path);
       if (result.config.runtimeProfile === expectedRuntimeProfile) {
-        return candidatePath;
+        return candidate;
       }
     } catch {
       continue;
     }
   }
-  return candidatePaths[0];
+  return candidateResults[0];
+}
+
+async function validateManifestResultFile(
+  entry: ReproManifestResult,
+  resultPath: string,
+  benchmark: string,
+  issues: PublicMatrixEvidenceIssue[],
+): Promise<void> {
+  if (!isSha256(entry.sha256)) {
+    addIssue(
+      issues,
+      benchmark,
+      resultPath,
+      "manifest-result-missing-hash",
+      "Manifest result entry must include the SHA-256 hash of the result file.",
+    );
+    return;
+  }
+
+  let actualHash: string;
+  try {
+    actualHash = await sha256File(resultPath);
+  } catch (error) {
+    addIssue(
+      issues,
+      benchmark,
+      resultPath,
+      "manifest-result-hash-unreadable",
+      `Could not hash manifest result file: ${error instanceof Error ? error.message : String(error)}.`,
+    );
+    return;
+  }
+
+  const expectedHash = entry.sha256.toLowerCase();
+  if (actualHash !== expectedHash) {
+    addIssue(
+      issues,
+      benchmark,
+      resultPath,
+      "manifest-result-hash-mismatch",
+      `Manifest result hash mismatch: expected ${expectedHash}, got ${actualHash}.`,
+    );
+  }
+}
+
+function validateManifestResultIdentity(
+  entry: ReproManifestResult,
+  result: BenchmarkResult,
+  resultPath: string,
+  issues: PublicMatrixEvidenceIssue[],
+): void {
+  if (!isNonEmptyString(entry.resultId)) {
+    addIssue(
+      issues,
+      result.meta.benchmark,
+      resultPath,
+      "manifest-result-missing-id",
+      "Manifest result entry must include resultId.",
+    );
+    return;
+  }
+
+  if (entry.resultId !== result.meta.id) {
+    addIssue(
+      issues,
+      result.meta.benchmark,
+      resultPath,
+      "manifest-result-id-mismatch",
+      `Manifest resultId ${entry.resultId} does not match loaded result id ${result.meta.id}.`,
+    );
+  }
 }
 
 function resolveManifestEntryPath(
@@ -753,6 +843,11 @@ function isSha256(value: unknown): value is string {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+async function sha256File(filePath: string): Promise<string> {
+  const bytes = await readFile(filePath);
+  return createHash("sha256").update(bytes).digest("hex");
 }
 
 function resolveCurrentGitSha(cwd: string): string | undefined {

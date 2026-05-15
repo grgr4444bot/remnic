@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -139,6 +140,52 @@ async function writeResult(resultsDir: string, result: BenchmarkResult): Promise
   await writeJson(path.join(resultsDir, `${result.meta.id}.json`), result);
 }
 
+async function manifestResultEntry(
+  resultsDir: string,
+  benchmark: string,
+  gitSha: string,
+): Promise<Record<string, unknown>> {
+  return manifestResultEntryForPath(
+    resultsDir,
+    `${benchmark}-test-result.json`,
+    benchmark,
+    gitSha,
+  );
+}
+
+async function manifestResultEntryForPath(
+  resultsDir: string,
+  resultPath: string,
+  benchmark: string,
+  gitSha: string,
+): Promise<Record<string, unknown>> {
+  try {
+    const bytes = await readFile(path.join(resultsDir, resultPath));
+    const result = JSON.parse(bytes.toString("utf8")) as BenchmarkResult;
+    return {
+      benchmark: result.meta.benchmark,
+      path: resultPath,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      sizeBytes: bytes.byteLength,
+      resultId: result.meta.id,
+      mode: result.meta.mode,
+      gitSha: result.meta.gitSha,
+      taskCount: result.results.tasks.length,
+    };
+  } catch {
+    return {
+      benchmark,
+      path: resultPath,
+      sha256: "b".repeat(64),
+      sizeBytes: 1,
+      resultId: `${benchmark}-test-result`,
+      mode: "full",
+      gitSha,
+      taskCount: 1,
+    };
+  }
+}
+
 async function writeManifest(
   resultsDir: string,
   benchmarks: readonly string[],
@@ -164,13 +211,9 @@ async function writeManifest(
       fileCount: 1,
       sha256: "a".repeat(64),
     })),
-    results: benchmarks.map((benchmark) => ({
-      benchmark,
-      path: `${benchmark}-test-result.json`,
-      mode: "full",
-      gitSha,
-      taskCount: 1,
-    })),
+    results: await Promise.all(
+      benchmarks.map((benchmark) => manifestResultEntry(resultsDir, benchmark, gitSha)),
+    ),
   });
 }
 
@@ -286,20 +329,18 @@ test("selects the expected runtime profile from multi-profile manifests", async 
       },
     ],
     results: [
-      {
+      await manifestResultEntryForPath(
+        resultsDir,
+        "longmemeval-baseline-result.json",
         benchmark,
-        path: "longmemeval-baseline-result.json",
-        mode: "full",
-        gitSha: "abc123",
-        taskCount: 1,
-      },
-      {
+        "abc123",
+      ),
+      await manifestResultEntryForPath(
+        resultsDir,
+        "longmemeval-test-result.json",
         benchmark,
-        path: "longmemeval-test-result.json",
-        mode: "full",
-        gitSha: "abc123",
-        taskCount: 1,
-      },
+        "abc123",
+      ),
     ],
   });
   await writeDiagnostic(diagnosticsDir);
@@ -313,6 +354,60 @@ test("selects the expected runtime profile from multi-profile manifests", async 
 
   assert.equal(report.ok, true, JSON.stringify(report.issues, null, 2));
   assert.deepEqual(report.issues, []);
+});
+
+test("rejects manifest result files swapped after manifest generation", async (t) => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "remnic-public-matrix-hash-"));
+  t.after(() => rm(tmpDir, { recursive: true, force: true }));
+
+  const resultsDir = path.join(tmpDir, "results");
+  const diagnosticsDir = path.join(resultsDir, "codex-cli-diagnostics");
+  const benchmark = "longmemeval";
+  await writeResult(resultsDir, benchmarkResult(benchmark));
+  await writeManifest(resultsDir, [benchmark]);
+  await writeJson(
+    path.join(resultsDir, `${benchmark}-test-result.json`),
+    benchmarkResult(benchmark, {
+      meta: {
+        id: `${benchmark}-swapped-result`,
+      },
+      results: {
+        tasks: [
+          {
+            taskId: `${benchmark}-task-1`,
+            question: "What should be recalled?",
+            expected: "answer",
+            actual: "different answer",
+            scores: { accuracy: 0.5 },
+            latencyMs: 1,
+            tokens: { input: 2, output: 1 },
+          },
+        ],
+        aggregates: {
+          accuracy: {
+            mean: 0.5,
+            median: 0.5,
+            stdDev: 0,
+            min: 0.5,
+            max: 0.5,
+          },
+        },
+      },
+    }),
+  );
+  await writeDiagnostic(diagnosticsDir);
+
+  const verifyPublicMatrixEvidence = await loadVerifier();
+  const report = await verifyPublicMatrixEvidence({
+    resultsDir,
+    benchmarks: [benchmark],
+    expectedGitSha: "abc123",
+  });
+  const issueCodes = new Set(report.issues.map((issue) => issue.code));
+
+  assert.equal(report.ok, false);
+  assert.equal(issueCodes.has("manifest-result-hash-mismatch"), true);
+  assert.equal(issueCodes.has("manifest-result-id-mismatch"), true);
 });
 
 test("reports missing and wrong public matrix evidence", async (t) => {
