@@ -75,6 +75,22 @@ class FakeMemoryAdapter implements BenchMemoryAdapter {
   async destroy(): Promise<void> {}
 }
 
+class SlowRecallMemoryAdapter extends FakeMemoryAdapter {
+  activeRecalls = 0;
+  maxActiveRecalls = 0;
+
+  async recall(sessionId: string, query: string): Promise<string> {
+    this.activeRecalls += 1;
+    this.maxActiveRecalls = Math.max(this.maxActiveRecalls, this.activeRecalls);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    try {
+      return await super.recall(sessionId, query);
+    } finally {
+      this.activeRecalls -= 1;
+    }
+  }
+}
+
 test("runBenchmark executes ama-bench in quick mode through the phase-1 package API", async () => {
   const adapter = new FakeMemoryAdapter();
 
@@ -175,6 +191,37 @@ test("runBenchmark treats ama-bench limit zero as an empty run instead of fallin
         system: adapter,
       }),
     /AMA-Bench dataset is empty after applying the requested limit/,
+  );
+});
+
+test("runBenchmark applies AMA-Bench trialConcurrency without reordering tasks", async () => {
+  const adapter = new SlowRecallMemoryAdapter();
+
+  const result = await runBenchmark("ama-bench", {
+    mode: "quick",
+    system: adapter,
+    benchmarkOptions: { trialConcurrency: 2 },
+  });
+
+  assert.equal(adapter.maxActiveRecalls, 2);
+  assert.equal(result.config.benchmarkOptions?.trialConcurrency, 2);
+  assert.deepEqual(
+    result.results.tasks.map((task) => task.taskId),
+    ["ama-smoke-q1", "ama-smoke-q2"],
+  );
+});
+
+test("runBenchmark rejects invalid AMA-Bench trialConcurrency", async () => {
+  const adapter = new FakeMemoryAdapter();
+
+  await assert.rejects(
+    () =>
+      runBenchmark("ama-bench", {
+        mode: "quick",
+        system: adapter,
+        benchmarkOptions: { trialConcurrency: 0 },
+      }),
+    /AMA-Bench benchmarkOptions\.trialConcurrency must be an integer from 1 to 64/,
   );
 });
 

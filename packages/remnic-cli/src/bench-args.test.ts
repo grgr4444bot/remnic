@@ -145,6 +145,22 @@ test("parseBenchArgs accepts published --trial-concurrency for LoCoMo", () => {
   assert.equal(parsed.publishedTrialConcurrency, 8);
 });
 
+test("parseBenchArgs accepts published --trial-concurrency for AMA-Bench", () => {
+  const parsed = parseBenchArgs([
+    "published",
+    "--name",
+    "ama-bench",
+    "--dataset",
+    "/tmp",
+    "--model",
+    "m",
+    "--trial-concurrency",
+    "8",
+  ]);
+
+  assert.equal(parsed.publishedTrialConcurrency, 8);
+});
+
 test("parseBenchArgs accepts published --ingest-concurrency for LoCoMo", () => {
   const parsed = parseBenchArgs([
     "published",
@@ -190,7 +206,7 @@ test("parseBenchArgs rejects invalid or unsupported --trial-concurrency", () => 
         "--trial-concurrency",
         "2",
       ]),
-    /--trial-concurrency is currently supported only for LoCoMo/,
+    /--trial-concurrency is currently supported only for LoCoMo and AMA-Bench/,
   );
 });
 

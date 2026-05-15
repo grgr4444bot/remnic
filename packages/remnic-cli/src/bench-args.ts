@@ -716,6 +716,7 @@ export function parseBenchArgs(argv: string[]): ParsedBenchArgs {
   }
   const trialConcurrencyTargetsSupportedBenchmark =
     publishedName === "locomo" ||
+    publishedName === "ama-bench" ||
     (
       publishedName === undefined &&
       action === "published"
@@ -725,13 +726,13 @@ export function parseBenchArgs(argv: string[]): ParsedBenchArgs {
       action !== "published" &&
       !args.includes("--all") &&
       benchmarks.length === 1 &&
-      benchmarks[0] === "locomo"
+      (benchmarks[0] === "locomo" || benchmarks[0] === "ama-bench")
     );
   if (
     publishedTrialConcurrency !== undefined &&
     !trialConcurrencyTargetsSupportedBenchmark
   ) {
-    throw new Error("ERROR: --trial-concurrency is currently supported only for LoCoMo.");
+    throw new Error("ERROR: --trial-concurrency is currently supported only for LoCoMo and AMA-Bench.");
   }
 
   let publishedIngestConcurrency: number | undefined;

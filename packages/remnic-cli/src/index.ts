@@ -2586,6 +2586,9 @@ function buildPublishedBenchmarkOptions(
       replayExtractionMode: "skip",
     };
   }
+  if (benchmarkId === "ama-bench") {
+    return trialConcurrencyOptions;
+  }
   if (benchmarkId === "memoryagentbench") {
     return trialLimitOptions;
   }
