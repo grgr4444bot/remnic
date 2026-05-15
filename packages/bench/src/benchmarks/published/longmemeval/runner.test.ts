@@ -599,3 +599,174 @@ test("LongMemEval official judge prompt handles abstention question ids", async 
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+test("LongMemEval official judge prompt treats only _abs suffix as abstention", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "remnic-lme-abs-substring-"));
+  try {
+    await writeFile(
+      path.join(tempDir, "longmemeval_oracle.json"),
+      JSON.stringify([
+        {
+          question_id: "no_abs_here",
+          question_type: "single-session-user",
+          question: "What city does the user live in?",
+          answer: "Paris",
+          question_date: "2025-01-01",
+          haystack_sessions: [
+            [{ role: "user", content: "I live in Paris." }],
+          ],
+          haystack_session_ids: ["city-session"],
+          haystack_dates: ["2025-01-01"],
+          answer_session_ids: ["city-session"],
+        },
+      ]),
+      "utf8",
+    );
+
+    let capturedPrompt = "";
+    await runLongMemEvalBenchmark({
+      benchmark: longMemEvalDefinition,
+      mode: "full",
+      datasetDir: tempDir,
+      system: {
+        async store() {},
+        async recall() {
+          return "I live in Paris.";
+        },
+        async search() {
+          return [];
+        },
+        async reset() {},
+        async destroy() {},
+        async getStats() {
+          return { totalMessages: 0, totalSummaryNodes: 0, maxDepth: 0 };
+        },
+        responder: {
+          async respond() {
+            return {
+              text: "Paris",
+              tokens: { input: 1, output: 1 },
+              latencyMs: 1,
+              model: "smoke-responder",
+            };
+          },
+        },
+        judge: {
+          async score() {
+            return 1;
+          },
+          async scoreWithMetrics() {
+            return {
+              score: 1,
+              tokens: { input: 0, output: 0 },
+              latencyMs: 0,
+              model: "smoke-judge",
+            };
+          },
+          async scoreBinaryPrompt(prompt) {
+            capturedPrompt = prompt;
+            return {
+              score: 1,
+              tokens: { input: 0, output: 0 },
+              latencyMs: 0,
+              model: "smoke-judge",
+            };
+          },
+        },
+      },
+    });
+
+    assert.match(capturedPrompt, /Correct Answer:/);
+    assert.doesNotMatch(capturedPrompt, /unanswerable question/);
+    assert.doesNotMatch(capturedPrompt, /Explanation:/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("LongMemEval failed trials retain judge_accuracy in aggregates", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "remnic-lme-failed-trial-"));
+  try {
+    await writeFile(
+      path.join(tempDir, "longmemeval_oracle.json"),
+      JSON.stringify([
+        {
+          question_id: "fail-1",
+          question_type: "single-session-user",
+          question: "What city does the user live in?",
+          answer: "Paris",
+          question_date: "2025-01-01",
+          haystack_sessions: [
+            [{ role: "user", content: "I live in Paris." }],
+          ],
+          haystack_session_ids: ["city-session"],
+          haystack_dates: ["2025-01-01"],
+          answer_session_ids: ["city-session"],
+        },
+      ]),
+      "utf8",
+    );
+
+    const result = await runLongMemEvalBenchmark({
+      benchmark: longMemEvalDefinition,
+      mode: "full",
+      datasetDir: tempDir,
+      system: {
+        async store() {},
+        async recall() {
+          throw new Error("forced recall failure");
+        },
+        async search() {
+          return [];
+        },
+        async reset() {},
+        async destroy() {},
+        async getStats() {
+          return { totalMessages: 0, totalSummaryNodes: 0, maxDepth: 0 };
+        },
+        responder: {
+          async respond() {
+            return {
+              text: "Paris",
+              tokens: { input: 1, output: 1 },
+              latencyMs: 1,
+              model: "smoke-responder",
+            };
+          },
+        },
+        judge: {
+          async score() {
+            return 1;
+          },
+          async scoreWithMetrics() {
+            return {
+              score: 1,
+              tokens: { input: 0, output: 0 },
+              latencyMs: 0,
+              model: "smoke-judge",
+            };
+          },
+          async scoreBinaryPrompt() {
+            return {
+              score: 1,
+              tokens: { input: 0, output: 0 },
+              latencyMs: 0,
+              model: "smoke-judge",
+            };
+          },
+        },
+      },
+    });
+
+    const task = result.results.tasks[0]!;
+    assert.deepEqual(task.scores, {
+      f1: -1,
+      contains_answer: -1,
+      llm_judge: -1,
+      judge_accuracy: -1,
+    });
+    assert.equal(result.results.aggregates.judge_accuracy?.mean, -1);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});

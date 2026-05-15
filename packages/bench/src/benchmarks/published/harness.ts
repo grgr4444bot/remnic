@@ -247,7 +247,7 @@ export async function runPublishedHarness(
           question: trial.question,
           expected: trial.expected,
           actual: `(error: ${message})`,
-          scores: { f1: -1, contains_answer: -1, llm_judge: -1 },
+          scores: buildFailureScores(ctx.metricsSpec.metrics),
           latencyMs: 0,
           tokens: { input: 0, output: 0 },
           details: { error: message },
@@ -299,6 +299,16 @@ function validateContext(ctx: HarnessContext): void {
       );
     }
   }
+}
+
+function buildFailureScores(
+  metrics: readonly HarnessMetricId[],
+): Record<string, number> {
+  const scores: Record<string, number> = {};
+  for (const metric of metrics) {
+    scores[metric] = -1;
+  }
+  return scores;
 }
 
 async function executeTrial(
