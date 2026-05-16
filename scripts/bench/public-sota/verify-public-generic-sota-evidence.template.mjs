@@ -3,48 +3,6 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const TARGETS = {
-  amemgym: {
-    memoryAgent: { score: 0.296 },
-    nativeLlm: { score: 0.463 },
-  },
-  longmemeval: {
-    target: { score: 0.956 },
-  },
-  locomo: {
-    target: { score: 0.9201298701298701 },
-  },
-  beam: {
-    targets: {
-      '100k': { score: 0.7336577408538804 },
-      '10m': { score: 0.6407977206043332 },
-      '1m': { score: 0.7386039171368353 },
-      '500k': { score: 0.7111989151837411 },
-    },
-  },
-  personamem: {
-    targets: {
-      '32k': { score: 0.865874363327674 },
-      '128k': { score: 0.52 },
-      '1M': { score: 0.45 },
-    },
-  },
-  memoryagentbench: {
-    targets: {
-      overallScore: { score: 49.6 },
-      strongestMemoryAgentOverall: { score: 37.7 },
-    },
-  },
-  membench: {
-    targets: {
-      FirstAgentLowLevel: { score: 0.692 },
-      FirstAgentHighLevel: { score: 0.742 },
-      ThirdAgentLowLevel: { score: 0.883 },
-      ThirdAgentHighLevel: { score: 0.9 },
-    },
-  },
-};
-
 const [evidenceDir = '.', benchmarkArg] = process.argv.slice(2);
 
 function assert(condition, message) {
@@ -297,10 +255,11 @@ function compareMemBench(result, targets) {
   );
 }
 
-function comparePublicBenchmarkSota(result) {
+function comparePublicBenchmarkSota(result, targetMap) {
   const benchmark = result.meta?.benchmark ?? result.benchmarkId;
   assert(typeof benchmark === 'string' && benchmark.length > 0, 'result missing benchmark id');
-  const targets = TARGETS[benchmark]?.targets ?? TARGETS[benchmark];
+  const entry = targetMap.benchmarks?.[benchmark];
+  const targets = entry?.targets ?? entry?.target ?? entry;
   assert(targets, `target map missing ${benchmark}`);
 
   const checks = {
@@ -491,7 +450,6 @@ const manifest = readJson(manifestPath);
 const benchmark = manifest.run?.selectedBenchmarks?.[0];
 assert(typeof benchmark === 'string' && benchmark.length > 0, 'manifest must select one benchmark');
 assert(benchmark !== 'memory-arena', 'use the MemoryArena-specific verifier for memory-arena');
-assert(Object.prototype.hasOwnProperty.call(TARGETS, benchmark), `unsupported benchmark ${benchmark}`);
 
 const publicArtifactEntry = manifest.publicArtifacts?.find((entry) => entry.benchmark === benchmark);
 const rawResultEntry = manifest.results?.find((entry) => entry.benchmark === benchmark);
@@ -501,9 +459,12 @@ assert(rawResultEntry, 'manifest must include raw result entry');
 const artifactPath = path.join(evidenceDir, publicArtifactEntry.path);
 const comparisonPath = path.join(evidenceDir, `${benchmark}-sota-comparison.json`);
 const diagnosticsPath = path.join(evidenceDir, `${benchmark}-diagnostics-summary.json`);
+const targetMapPath = path.join(evidenceDir, 'current-target-map.json');
 const artifact = readJson(artifactPath);
 const comparison = readJson(comparisonPath);
 const diagnostics = readJson(diagnosticsPath);
+const targetMap = readJson(targetMapPath);
+assert(Object.prototype.hasOwnProperty.call(targetMap.benchmarks ?? {}, benchmark), `unsupported benchmark ${benchmark}`);
 
 assert(manifest.schemaVersion === 1, 'manifest schemaVersion must be 1');
 assert(manifest.run?.mode === 'full', 'manifest run.mode must be full');
@@ -543,7 +504,7 @@ for (const [metric, recomputed] of Object.entries(recomputedMetricMeans)) {
 }
 
 const pseudoRawResult = pseudoRawResultFromArtifact(artifact);
-const recomputedComparison = comparePublicBenchmarkSota(pseudoRawResult);
+const recomputedComparison = comparePublicBenchmarkSota(pseudoRawResult, targetMap);
 compareJson(comparison, recomputedComparison, 'SOTA comparison');
 assert(comparison.sotaAllCheckedMetrics === true, `${benchmark} comparison must be SOTA on publishable metrics`);
 assert(comparison.atOrAboveAllCheckedMetrics === true, `${benchmark} comparison must be at or above publishable metrics`);

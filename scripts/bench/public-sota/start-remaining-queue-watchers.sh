@@ -18,7 +18,7 @@ start_session() {
   echo "started=${session}"
 }
 
-publish_benchmarks=(longmemeval locomo beam memoryagentbench membench personamem)
+publish_benchmarks=(amemgym longmemeval locomo beam memoryagentbench membench personamem)
 for benchmark in "${publish_benchmarks[@]}"; do
   printf -v command 'INTERVAL_SECONDS=1800 %q %q' "${SCRIPT_DIR}/watch-public-benchmark-publish.sh" "${benchmark}"
   start_session \
