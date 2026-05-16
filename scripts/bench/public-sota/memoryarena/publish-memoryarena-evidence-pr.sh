@@ -25,7 +25,7 @@ if [[ "${current_branch}" != "${BRANCH}" ]]; then
   exit 2
 fi
 
-if git -C "${WORKTREE}" diff --quiet --exit-code && git -C "${WORKTREE}" diff --cached --quiet --exit-code; then
+if [[ -z "$(git -C "${WORKTREE}" status --porcelain --untracked-files=all)" ]]; then
   existing_pr="$(gh pr list --repo "${REPO}" --head "${BRANCH}" --base "${BASE_BRANCH}" --state all --json number --jq 'sort_by(.number) | reverse | .[0].number // empty')"
   if [[ -z "${existing_pr}" ]]; then
     echo "waiting: no staged or unstaged MemoryArena evidence changes in ${WORKTREE} and no PR exists for ${BRANCH}" >&2
