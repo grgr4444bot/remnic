@@ -63,8 +63,9 @@ if [[ -z "${result_path}" ]]; then
 fi
 
 mkdir -p "${OUT_DIR}"
-node "${SCRIPT_DIR}/build-target-map.mjs" "${TARGET_MAP}"
-if [[ "${TARGET_MAP}" != "${PACKAGED_TARGET_MAP}" ]]; then
+if [[ "${TARGET_MAP}" == "${PACKAGED_TARGET_MAP}" ]]; then
+  node "${SCRIPT_DIR}/build-target-map.mjs" "${PACKAGED_TARGET_MAP}"
+else
   cp "${TARGET_MAP}" "${PACKAGED_TARGET_MAP}"
 fi
 

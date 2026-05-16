@@ -7,10 +7,6 @@ import path from 'node:path';
 const defaultRunId = process.env.DEFAULT_PUBLIC_RUN_ID ?? 'public-matrix-codex-bf9b2643-20260515T052919Z';
 const defaultResultsRoot = process.env.RESULTS_ROOT ?? path.join(os.homedir(), '.remnic/bench/results');
 const [resultsDir = path.join(defaultResultsRoot, defaultRunId)] = process.argv.slice(2);
-const diagnosticScanLimitRaw = Number.parseInt(process.env.DIAGNOSTIC_SCAN_LIMIT ?? '250', 10);
-const diagnosticScanLimit = Number.isInteger(diagnosticScanLimitRaw) && diagnosticScanLimitRaw > 0
-  ? diagnosticScanLimitRaw
-  : 250;
 
 function hasTmuxSession(name) {
   try {
@@ -79,12 +75,11 @@ function newestDiagnostics(diagDir, count) {
       return { name, file, mtimeMs: fs.statSync(file).mtimeMs };
     })
     .sort((left, right) => right.mtimeMs - left.mtimeMs);
-  const recordsToScan = records.slice(0, Math.max(count, diagnosticScanLimit));
 
   let errors = 0;
   let nonzero = 0;
   let inFlight = 0;
-  const parsedRecords = recordsToScan.map((entry) => {
+  const parsedRecords = records.map((entry) => {
     try {
       const record = { name: entry.name, ...JSON.parse(fs.readFileSync(entry.file, 'utf8')) };
       if (record.error || record.parseError) {
@@ -106,7 +101,7 @@ function newestDiagnostics(diagDir, count) {
   return {
     total: records.length,
     scanned: parsedRecords.length,
-    countsMode: 'newest-diagnostics-sample',
+    countsMode: 'all-diagnostics',
     sampleSize: sample.length,
     errors,
     nonzero,

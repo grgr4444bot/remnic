@@ -44,8 +44,9 @@ fi
 
 mkdir -p "${OUT_DIR}"
 
-node "${PUBLIC_SOTA_DIR}/build-target-map.mjs" "${TARGET_MAP}"
-if [[ "${TARGET_MAP}" != "${PACKAGED_TARGET_MAP}" ]]; then
+if [[ "${TARGET_MAP}" == "${PACKAGED_TARGET_MAP}" ]]; then
+  node "${PUBLIC_SOTA_DIR}/build-target-map.mjs" "${PACKAGED_TARGET_MAP}"
+else
   cp "${TARGET_MAP}" "${PACKAGED_TARGET_MAP}"
 fi
 
