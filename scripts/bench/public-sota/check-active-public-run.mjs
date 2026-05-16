@@ -21,6 +21,9 @@ function hasTmuxSession(name) {
 }
 
 function readLines(file, count) {
+  if (count <= 0) {
+    return [];
+  }
   if (!fs.existsSync(file)) {
     return [];
   }
