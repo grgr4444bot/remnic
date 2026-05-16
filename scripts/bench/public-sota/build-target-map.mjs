@@ -16,10 +16,19 @@ function scoreValue(row) {
   return Number.isFinite(score) ? score : Number.NEGATIVE_INFINITY;
 }
 
+function finiteTargetScore(row) {
+  const score = scoreValue(row);
+  if (!Number.isFinite(score)) {
+    throw new Error(`target row missing finite score: ${JSON.stringify(row)}`);
+  }
+  return score;
+}
+
 function compareResultRows(left, right) {
-  const scoreDelta = scoreValue(right) - scoreValue(left);
-  if (scoreDelta !== 0) {
-    return scoreDelta;
+  const leftScore = scoreValue(left);
+  const rightScore = scoreValue(right);
+  if (rightScore !== leftScore) {
+    return rightScore - leftScore;
   }
   return compareNullableStrings(left.memory ?? left.method, right.memory ?? right.method) ||
     compareNullableStrings(left.source_label ?? left.sourceLabel, right.source_label ?? right.sourceLabel) ||
@@ -67,7 +76,7 @@ function bestBySplitFromExternal(external, dataset) {
         return [];
       }
       return [[split, {
-        score: row.accuracy,
+        score: finiteTargetScore(row),
         method: row.memory,
         sourceLabel: row.source_label,
         sourceUrl: row.source_url,
@@ -81,9 +90,10 @@ function bestBySplitFromAmbResults(results, dataset) {
   const bySplit = {};
   for (const row of results.filter((entry) => entry.dataset === dataset)) {
     const split = row.split ?? 'default';
-    if (!bySplit[split] || Number(row.accuracy) > Number(bySplit[split].score)) {
+    const rowScore = finiteTargetScore(row);
+    if (!bySplit[split] || rowScore > bySplit[split].score) {
       bySplit[split] = {
-        score: row.accuracy,
+        score: rowScore,
         method: row.memory,
         runName: row.run_name,
         sourcePath: row.path,

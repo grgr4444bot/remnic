@@ -406,7 +406,7 @@ function buildDiagnosticsSummary(resultsDir, runId, startedAt, finishedAt, gener
   }
   const complete = checked.filter((record) => record.result?.status === 0 && !record.error).length;
   const errored = checked.filter((record) => record.error).length;
-  const nonzero = checked.filter((record) => record.result?.status !== 0).length;
+  const nonzero = checked.filter((record) => record.result && record.result.status !== 0).length;
   const startedValues = checked.map((record) => record.startedAt).filter(Boolean).sort();
   const finishedValues = checked.map((record) => record.finishedAt).filter(Boolean).sort();
   return {

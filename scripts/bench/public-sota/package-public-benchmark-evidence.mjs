@@ -396,7 +396,7 @@ function buildDiagnosticsSummary(resultsDir, runId, benchmark, startedAt, finish
     beforeStart,
     afterCutoff,
     errored: checked.filter((record) => record.error).length,
-    nonzero: checked.filter((record) => record.result?.status !== 0).length,
+    nonzero: checked.filter((record) => record.result && record.result.status !== 0).length,
     providers: distribution((record) => record.provider ?? '<missing>'),
     models: distribution((record) => record.model ?? '<missing>'),
     reasoningEfforts: distribution((record) => record.reasoningEffort ?? '<missing>'),
