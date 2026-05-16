@@ -192,7 +192,9 @@ function verdict(actual, target, metric) {
   };
 }
 
-function compareMemoryArenaSota(result, targets) {
+function compareMemoryArenaSota(result, targetMap) {
+  const targets = targetMap.benchmarks?.['memory-arena']?.targets;
+  assert(targets, 'target map missing memory-arena targets');
   const derived = deriveMemoryArenaOfficialMetrics(result);
   const bundled = byDomain(derived, 'bundled_shopping');
   const travel = byDomain(derived, 'group_travel_planner');
@@ -302,10 +304,8 @@ const manifest = readJson(manifestPath);
 const targetMap = readJson(targetMapPath);
 const publicArtifactEntry = manifest.publicArtifacts?.find((entry) => entry.benchmark === 'memory-arena');
 const rawResultEntry = manifest.results?.find((entry) => entry.benchmark === 'memory-arena');
-const targets = targetMap.benchmarks?.['memory-arena']?.targets;
 assert(publicArtifactEntry, 'manifest must include memory-arena public artifact');
 assert(rawResultEntry, 'manifest must include memory-arena raw result entry');
-assert(targets, 'target map missing memory-arena targets');
 
 const artifactPath = path.join(evidenceDir, publicArtifactEntry.path);
 const artifact = readJson(artifactPath);
@@ -352,7 +352,7 @@ if (typeof derived.official.softProgressScore === 'number') {
   assertClose(artifact.metrics?.memory_arena_official_soft_progress_score, derived.official.softProgressScore, 'official soft progress score');
 }
 
-const recomputedComparison = compareMemoryArenaSota(pseudoRawResult, targets);
+const recomputedComparison = compareMemoryArenaSota(pseudoRawResult, targetMap);
 compareJson(comparison, recomputedComparison, 'SOTA comparison');
 assert(comparison.sotaAllCheckedMetrics === true, 'memory-arena comparison must be SOTA on all checked metrics');
 assert(comparison.atOrAboveAllCheckedMetrics === true, 'memory-arena comparison must be at or above all checked metrics');
