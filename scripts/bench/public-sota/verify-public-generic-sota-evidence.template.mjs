@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const [evidenceDir = '.', benchmarkArg] = process.argv.slice(2);
+const FLOAT_EPSILON = 1e-9;
 
 function assert(condition, message) {
   if (!condition) {
@@ -177,26 +178,41 @@ function comparePersonaMem(result, targets) {
   return checks;
 }
 
-function memoryAgentBenchPercent(value) {
-  return value <= 1 ? value * 100 : value;
+function memoryAgentBenchPercent(metricName, aggregate) {
+  const value = finiteScore(aggregate?.mean, `MemoryAgentBench ${metricName}.mean`);
+  const units = String(aggregate?.units ?? aggregate?.unit ?? aggregate?.scale ?? '').toLowerCase();
+  if (units === 'percent' || units === 'percentage') {
+    return value;
+  }
+  if (units === 'fraction' || units === 'ratio' || units === 'proportion') {
+    return value * 100;
+  }
+  // Remnic benchmark aggregates are means of 0-1 task scores unless units say otherwise.
+  if (metricName === 'memoryagentbench_overall_score' || metricName === 'overall_score') {
+    return value * 100;
+  }
+  throw new Error(`MemoryAgentBench aggregate ${metricName} missing units`);
 }
 
 function compareMemoryAgentBench(result, targets) {
-  const overall = result.results?.aggregates?.memoryagentbench_overall_score?.mean
-    ?? result.results?.aggregates?.overall_score?.mean;
-  if (typeof overall === 'number' && Number.isFinite(overall)) {
+  const overallAggregate = [
+    ['memoryagentbench_overall_score', result.results?.aggregates?.memoryagentbench_overall_score],
+    ['overall_score', result.results?.aggregates?.overall_score],
+  ].find(([, aggregate]) => typeof aggregate?.mean === 'number' && Number.isFinite(aggregate.mean));
+  if (overallAggregate) {
+    const [metricName, aggregate] = overallAggregate;
     return [
       metricResult(
         'memoryagentbench_overall_score',
-        memoryAgentBenchPercent(overall),
+        memoryAgentBenchPercent(metricName, aggregate),
         finiteScore(targets.overallScore?.score, 'MemoryAgentBench overall target'),
-        { units: 'percent' },
+        { units: 'percent', sourceMetric: metricName },
       ),
     ];
   }
 
   const protocolReady = metricFromTasks(result, 'official_protocol_ready');
-  assert(protocolReady === 1, `MemoryAgentBench official_protocol_ready must be 1, got ${protocolReady}`);
+  assert(protocolReady >= 1 - FLOAT_EPSILON, `MemoryAgentBench official_protocol_ready must be 1, got ${protocolReady}`);
 
   const table = memoryAgentBenchTable3Metrics(result);
   return [
@@ -527,12 +543,12 @@ for (const [metric, recomputed] of Object.entries(recomputedMetricMeans)) {
 const pseudoRawResult = pseudoRawResultFromArtifact(artifact);
 const recomputedComparison = comparePublicBenchmarkSota(pseudoRawResult, targetMap);
 compareJson(comparison, recomputedComparison, 'SOTA comparison');
-assert(comparison.atOrAboveAllCheckedMetrics === true, `${benchmark} comparison must be at or above publishable metrics`);
+assert(comparison.sotaAllCheckedMetrics === true, `${benchmark} comparison must beat all publishable metrics for SOTA publication`);
 for (const check of comparison.checks ?? []) {
   if (check.publishAsSota === false) {
     continue;
   }
-  assert(check.sota === true || check.tied === true, `${check.metric} must meet or exceed target for SOTA claim`);
+  assert(check.sota === true, `${check.metric} must beat target for SOTA claim`);
 }
 
 assert(diagnostics.runId === manifest.run?.id, 'diagnostics runId must match manifest');

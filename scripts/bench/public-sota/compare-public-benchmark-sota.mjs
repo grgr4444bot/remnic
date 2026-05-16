@@ -7,6 +7,7 @@ import { compareMemoryArenaSota } from './memoryarena/compare-memoryarena-sota.m
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_TARGET_MAP = path.join(scriptDir, 'current-target-map.json');
+const FLOAT_EPSILON = 1e-9;
 
 function assert(condition, message) {
   if (!condition) {
@@ -197,7 +198,7 @@ function compareMemoryAgentBench(result, targets) {
   }
 
   const protocolReady = metricFromTasks(result, 'official_protocol_ready');
-  assert(protocolReady === 1, `MemoryAgentBench official_protocol_ready must be 1, got ${protocolReady}`);
+  assert(protocolReady >= 1 - FLOAT_EPSILON, `MemoryAgentBench official_protocol_ready must be 1, got ${protocolReady}`);
 
   const table = memoryAgentBenchTable3Metrics(result);
   return [
