@@ -11,8 +11,13 @@ function compareNullableStrings(left, right) {
   return String(left ?? '').localeCompare(String(right ?? ''));
 }
 
+function scoreValue(row) {
+  const score = Number(row.accuracy ?? row.score);
+  return Number.isFinite(score) ? score : Number.NEGATIVE_INFINITY;
+}
+
 function compareResultRows(left, right) {
-  const scoreDelta = Number(right.accuracy ?? right.score ?? 0) - Number(left.accuracy ?? left.score ?? 0);
+  const scoreDelta = scoreValue(right) - scoreValue(left);
   if (scoreDelta !== 0) {
     return scoreDelta;
   }
