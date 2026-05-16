@@ -1,0 +1,322 @@
+#!/usr/bin/env node
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { compareMemoryArenaSota } from './memoryarena/compare-memoryarena-sota.mjs';
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const DEFAULT_TARGET_MAP = path.join(scriptDir, 'current-target-map.json');
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function mean(values) {
+  assert(values.length > 0, 'cannot average an empty list');
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function finiteScore(value, label) {
+  assert(typeof value === 'number' && Number.isFinite(value), `${label} must be finite`);
+  return value;
+}
+
+function aggregateMean(result, metric) {
+  return finiteScore(result.results?.aggregates?.[metric]?.mean, `aggregate ${metric}.mean`);
+}
+
+function taskScores(result, metric, predicate = () => true) {
+  return (result.results?.tasks ?? [])
+    .filter(predicate)
+    .map((task) => task.scores?.[metric])
+    .filter((value) => typeof value === 'number' && Number.isFinite(value) && value >= 0);
+}
+
+function metricFromTasks(result, metric, predicate = () => true) {
+  const values = taskScores(result, metric, predicate);
+  assert(values.length > 0, `no scored tasks for ${metric}`);
+  return mean(values);
+}
+
+function metricResult(metric, actual, target, meta = {}) {
+  return {
+    metric,
+    actual,
+    target,
+    delta: actual - target,
+    sota: actual > target,
+    tied: actual === target,
+    ...meta,
+  };
+}
+
+function sourceMatches(task, pattern) {
+  return pattern.test(String(task.details?.source ?? task.taskId ?? '').toLowerCase());
+}
+
+function compareAmaBench(result, targets) {
+  const actual = result.metrics?.ama_bench_leaderboard_average
+    ?? result.results?.aggregates?.ama_bench_leaderboard_average?.mean
+    ?? result.results?.aggregates?.ama_bench_recommended_accuracy?.mean;
+  const target = targets.target?.score;
+  return [metricResult('ama_bench_leaderboard_average', finiteScore(actual, 'AMA leaderboard average'), finiteScore(target, 'AMA target'))];
+}
+
+function compareAMemGym(result, targets) {
+  const actual = result.results?.aggregates?.normalized_memory_score?.mean
+    ?? result.results?.aggregates?.memory_score?.mean
+    ?? result.results?.aggregates?.qa_accuracy?.mean;
+  return [
+    metricResult(
+      'amemgym_memory_agent_score',
+      finiteScore(actual, 'AMemGym score'),
+      finiteScore(targets.memoryAgent?.score, 'AMemGym memory-agent target'),
+      { comparisonClass: 'memory-agent' },
+    ),
+    metricResult(
+      'amemgym_native_llm_score_reference',
+      finiteScore(actual, 'AMemGym score'),
+      finiteScore(targets.nativeLlm?.score, 'AMemGym native target'),
+      {
+        comparisonClass: 'native-llm-reference',
+        publishAsSota: false,
+        note: 'Reference only; Remnic memory-system SOTA should be judged against the memory-agent class unless making a model-only claim.',
+      },
+    ),
+  ];
+}
+
+function compareLongMemEval(result, targets) {
+  const actual = result.results?.aggregates?.judge_accuracy?.mean
+    ?? result.results?.aggregates?.llm_judge?.mean;
+  return [
+    metricResult(
+      'longmemeval_s_accuracy',
+      finiteScore(actual, 'LongMemEval judge accuracy'),
+      finiteScore(targets.target?.score, 'LongMemEval target'),
+    ),
+  ];
+}
+
+function compareLoCoMo(result, targets) {
+  const actual = result.results?.aggregates?.judge_accuracy?.mean
+    ?? result.results?.aggregates?.llm_judge?.mean;
+  return [
+    metricResult(
+      'locomo10_accuracy',
+      finiteScore(actual, 'LoCoMo judge accuracy'),
+      finiteScore(targets.target?.score, 'LoCoMo target'),
+    ),
+  ];
+}
+
+function normalizeSplit(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/m$/, 'm')
+    .replace(/k$/, 'k');
+}
+
+function compareBeam(result, targets) {
+  const checks = [];
+  for (const [split, targetEntry] of Object.entries(targets)) {
+    const splitKey = normalizeSplit(split);
+    const values = taskScores(result, 'llm_judge', (task) =>
+      normalizeSplit(task.details?.scale) === splitKey ||
+      String(task.taskId ?? '').toLowerCase().startsWith(`${splitKey}-`),
+    );
+    const fallbackValues = values.length > 0
+      ? values
+      : taskScores(result, 'rubric_coverage', (task) =>
+          normalizeSplit(task.details?.scale) === splitKey ||
+          String(task.taskId ?? '').toLowerCase().startsWith(`${splitKey}-`),
+        );
+    assert(fallbackValues.length > 0, `no BEAM scored tasks for split ${split}`);
+    checks.push(metricResult(`beam_${splitKey}`, mean(fallbackValues), finiteScore(targetEntry.score, `BEAM ${split} target`)));
+  }
+  return checks;
+}
+
+function comparePersonaMem(result, targets) {
+  const checks = [];
+  for (const [split, targetEntry] of Object.entries(targets)) {
+    const splitKey = normalizeSplit(split);
+    const values = taskScores(result, 'mcq_accuracy', (task) =>
+      normalizeSplit(task.details?.split ?? task.details?.contextWindow ?? task.details?.chatHistoryWindow) === splitKey ||
+      (splitKey === '32k' && task.details?.chatHistory32kLink) ||
+      String(task.taskId ?? '').toLowerCase().includes(splitKey),
+    );
+    if (values.length > 0) {
+      checks.push(metricResult(`personamem_${splitKey}_mcq_accuracy`, mean(values), finiteScore(targetEntry.score, `PersonaMem ${split} target`)));
+    }
+  }
+  if (checks.length === 0) {
+    const actual = aggregateMean(result, 'mcq_accuracy');
+    checks.push(metricResult('personamem_mcq_accuracy', actual, finiteScore(targets['32k']?.score, 'PersonaMem 32k target')));
+  }
+  return checks;
+}
+
+function compareMemoryAgentBench(result, targets) {
+  const overall = result.results?.aggregates?.memoryagentbench_overall_score?.mean
+    ?? result.results?.aggregates?.overall_score?.mean;
+  if (typeof overall === 'number' && Number.isFinite(overall)) {
+    return [metricResult('memoryagentbench_overall_score', overall, finiteScore(targets.overallScore?.score, 'MemoryAgentBench overall target'))];
+  }
+
+  const protocolReady = metricFromTasks(result, 'official_protocol_ready');
+  assert(protocolReady === 1, `MemoryAgentBench official_protocol_ready must be 1, got ${protocolReady}`);
+
+  const table = memoryAgentBenchTable3Metrics(result);
+  return [
+    metricResult(
+      'memoryagentbench_table3_overall_score',
+      table.overallScore,
+      finiteScore(targets.overallScore?.score, 'MemoryAgentBench overall target'),
+      {
+        units: 'percent',
+        sourceLabel: 'MemoryAgentBench paper Table 3 overall score formula',
+        categoryAverages: table.categoryAverages,
+        datasetScores: table.datasetScores,
+      },
+    ),
+    metricResult(
+      'memoryagentbench_table3_strongest_memory_agent_overall_score',
+      table.overallScore,
+      finiteScore(targets.strongestMemoryAgentOverall?.score, 'MemoryAgentBench strongest memory-agent target'),
+      {
+        units: 'percent',
+        comparisonClass: 'memory-agent',
+        sourceLabel: 'MemoryAgentBench paper Table 3 strongest agentic memory-agent score',
+      },
+    ),
+  ];
+}
+
+function memoryAgentBenchTable3Metrics(result) {
+  const percent = (value) => value * 100;
+  const source = (pattern) => (task) => sourceMatches(task, pattern);
+  const protocol = (name) => (task) => String(task.details?.officialProtocol ?? '').toLowerCase() === name;
+  const any = (...predicates) => (task) => predicates.some((predicate) => predicate(task));
+
+  const datasetScores = {
+    shDocQa: percent(metricFromTasks(result, 'official_exact_match', source(/^ruler_qa1_/))),
+    mhDocQa: percent(metricFromTasks(result, 'official_exact_match', source(/^ruler_qa2_/))),
+    longMemEvalSStar: percent(metricFromTasks(result, 'official_exact_match', source(/^longmemeval/))),
+    eventQa: percent(metricFromTasks(result, 'eventqa_recall', any(source(/^eventqa/), protocol('eventqa')))),
+    mcc: percent(metricFromTasks(result, 'official_exact_match', source(/^icl_/))),
+    recommendation: percent(metricFromTasks(result, 'recsys_recall_at_5', any(source(/^recsys_/), protocol('recsys_redial')))),
+    summarization: percent(metricFromTasks(result, 'official_f1', source(/^infbench_sum/))),
+    detectiveQa: percent(metricFromTasks(result, 'official_exact_match', source(/^detective_/))),
+    factConsolidationSingleHop: percent(metricFromTasks(result, 'official_exact_match', source(/^factconsolidation_sh_/))),
+    factConsolidationMultiHop: percent(metricFromTasks(result, 'official_exact_match', source(/^factconsolidation_mh_/))),
+  };
+
+  const categoryAverages = {
+    accurateRetrieval: mean([
+      datasetScores.shDocQa,
+      datasetScores.mhDocQa,
+      datasetScores.longMemEvalSStar,
+      datasetScores.eventQa,
+    ]),
+    testTimeLearning: mean([
+      datasetScores.mcc,
+      datasetScores.recommendation,
+    ]),
+    longRangeUnderstanding: mean([
+      datasetScores.summarization,
+      datasetScores.detectiveQa,
+    ]),
+    selectiveForgetting: mean([
+      datasetScores.factConsolidationSingleHop,
+      datasetScores.factConsolidationMultiHop,
+    ]),
+  };
+
+  return {
+    datasetScores,
+    categoryAverages,
+    overallScore: mean(Object.values(categoryAverages)),
+  };
+}
+
+function compareMemBench(result, targets) {
+  const mapping = {
+    FirstAgentLowLevel: 'membench_accuracy_factual_participant',
+    ThirdAgentLowLevel: 'membench_accuracy_factual_observation',
+    FirstAgentHighLevel: 'membench_accuracy_reflective_participant',
+    ThirdAgentHighLevel: 'membench_accuracy_reflective_observation',
+  };
+  return Object.entries(mapping).map(([targetName, metric]) =>
+    metricResult(metric, aggregateMean(result, metric), finiteScore(targets[targetName]?.score, `MemBench ${targetName} target`)),
+  );
+}
+
+export function comparePublicBenchmarkSota(result, targetMap) {
+  const benchmark = result.meta?.benchmark ?? result.benchmarkId;
+  assert(typeof benchmark === 'string' && benchmark.length > 0, 'result missing benchmark id');
+  const targets = targetMap.benchmarks?.[benchmark]?.targets ?? targetMap.benchmarks?.[benchmark];
+  assert(targets, `target map missing ${benchmark}`);
+
+  if (benchmark === 'memory-arena') {
+    const report = compareMemoryArenaSota(result, targetMap);
+    return {
+      ...report,
+      checks: report.checks,
+      atOrAboveAllCheckedMetrics: report.atOrAboveAllCheckedMetrics,
+      sotaAllCheckedMetrics: report.sotaAllCheckedMetrics,
+    };
+  }
+
+  const checks = {
+    'ama-bench': compareAmaBench,
+    amemgym: compareAMemGym,
+    longmemeval: compareLongMemEval,
+    locomo: compareLoCoMo,
+    beam: compareBeam,
+    personamem: comparePersonaMem,
+    memoryagentbench: compareMemoryAgentBench,
+    membench: compareMemBench,
+  }[benchmark]?.(result, targets);
+  assert(Array.isArray(checks), `unsupported benchmark ${benchmark}`);
+
+  return {
+    benchmark,
+    gitSha: result.meta?.gitSha ?? result.system?.gitSha,
+    taskCount: result.results?.tasks?.length ?? result.perTaskScores?.length,
+    checks,
+    sotaAllCheckedMetrics: checks
+      .filter((check) => check.publishAsSota !== false)
+      .every((check) => check.sota),
+    atOrAboveAllCheckedMetrics: checks
+      .filter((check) => check.publishAsSota !== false)
+      .every((check) => check.sota || check.tied),
+  };
+}
+
+function round(value) {
+  return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const [resultPath, targetMapPath = DEFAULT_TARGET_MAP] = process.argv.slice(2);
+  if (!resultPath) {
+    console.error('Usage: compare-public-benchmark-sota.mjs <result.json> [target-map.json]');
+    process.exit(2);
+  }
+  const result = JSON.parse(fs.readFileSync(resultPath, 'utf8'));
+  const targetMap = JSON.parse(fs.readFileSync(targetMapPath, 'utf8'));
+  console.log(JSON.stringify(
+    {
+      ...comparePublicBenchmarkSota(result, targetMap),
+      resultPath,
+      targetMapPath,
+    },
+    (_key, value) => typeof value === 'number' ? round(value) : value,
+    2,
+  ));
+}

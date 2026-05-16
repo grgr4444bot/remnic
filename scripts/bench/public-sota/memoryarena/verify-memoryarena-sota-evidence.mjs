@@ -1,0 +1,204 @@
+#!/usr/bin/env node
+import { createHash } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { compareMemoryArenaSota } from './compare-memoryarena-sota.mjs';
+import { deriveMemoryArenaOfficialMetrics } from './derive-memoryarena-official-metrics.mjs';
+
+const publicSotaDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const DEFAULT_TARGET_MAP = path.join(publicSotaDir, 'current-target-map.json');
+
+const [evidenceDir = '.', targetMapPath = DEFAULT_TARGET_MAP] = process.argv.slice(2);
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function readJson(file) {
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+function sha256File(file) {
+  return createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+
+function assertClose(actual, expected, label) {
+  assert(typeof actual === 'number' && Number.isFinite(actual), `${label} must be finite`);
+  assert(typeof expected === 'number' && Number.isFinite(expected), `${label} expected must be finite`);
+  assert(Math.abs(actual - expected) < 1e-12, `${label}: expected ${expected}, got ${actual}`);
+}
+
+function stableStringify(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableStringify(entry)).join(',')}]`;
+  }
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'undefined';
+}
+
+function sha256String(value) {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function manifestArtifactHashIdentity(manifest) {
+  return {
+    schemaVersion: manifest.schemaVersion,
+    run: {
+      id: manifest.run?.id,
+      ...(manifest.run?.mode ? { mode: manifest.run.mode } : {}),
+      selectedBenchmarks: manifest.run?.selectedBenchmarks,
+      runtimeProfiles: manifest.run?.runtimeProfiles,
+      ...(Object.prototype.hasOwnProperty.call(manifest.run ?? {}, 'limit') ? { limit: manifest.run.limit } : {}),
+      ...(Object.prototype.hasOwnProperty.call(manifest.run ?? {}, 'seed') ? { seed: manifest.run.seed } : {}),
+    },
+    git: {
+      commit: manifest.git?.commit,
+      shortCommit: manifest.git?.shortCommit,
+    },
+    command: {
+      argv: manifest.command?.argv,
+      envKeys: manifest.command?.envKeys,
+    },
+    environment: {
+      platform: manifest.environment?.platform,
+      arch: manifest.environment?.arch,
+      nodeVersion: manifest.environment?.nodeVersion,
+      ...(manifest.environment?.packageManager ? { packageManager: manifest.environment.packageManager } : {}),
+    },
+    ...(manifest.qmd ? { qmd: manifest.qmd } : {}),
+    configFiles: manifest.configFiles,
+    datasets: manifest.datasets,
+    results: manifest.results,
+    ...(manifest.publicArtifacts ? { publicArtifacts: manifest.publicArtifacts } : {}),
+  };
+}
+
+function toPseudoRawResult(artifact) {
+  return {
+    meta: {
+      benchmark: 'memory-arena',
+      mode: 'full',
+      gitSha: artifact.system?.gitSha,
+    },
+    results: {
+      tasks: (artifact.perTaskScores ?? []).map((task) => ({
+        taskId: task.taskId,
+        scores: task.scores,
+        details: task.memoryArena,
+      })),
+      aggregates: {},
+    },
+  };
+}
+
+function compareJson(actual, expected, label) {
+  assert(
+    stableStringify(actual) === stableStringify(expected),
+    `${label} mismatch`,
+  );
+}
+
+function officialMetricsForPublicComparison(derived) {
+  return {
+    benchmark: derived.benchmark,
+    mode: derived.mode,
+    gitSha: derived.gitSha,
+    taskCount: derived.taskCount,
+    scoredSubtasks: derived.scoredSubtasks,
+    official: derived.official,
+    byDomain: derived.byDomain,
+  };
+}
+
+const manifestPath = path.join(evidenceDir, 'MANIFEST.memory-arena.json');
+const comparisonPath = path.join(evidenceDir, 'memory-arena-sota-comparison.json');
+const diagnosticsPath = path.join(evidenceDir, 'memory-arena-diagnostics-summary.json');
+
+const manifest = readJson(manifestPath);
+const publicArtifactEntry = manifest.publicArtifacts?.find((entry) => entry.benchmark === 'memory-arena');
+const rawResultEntry = manifest.results?.find((entry) => entry.benchmark === 'memory-arena');
+assert(publicArtifactEntry, 'manifest must include memory-arena public artifact');
+assert(rawResultEntry, 'manifest must include memory-arena raw result entry');
+
+const artifactPath = path.join(evidenceDir, publicArtifactEntry.path);
+const artifact = readJson(artifactPath);
+const targetMap = readJson(targetMapPath);
+const comparison = readJson(comparisonPath);
+assert(fs.existsSync(diagnosticsPath), 'diagnostics summary is required to prove provider/model/reasoning/service-tier');
+const diagnostics = readJson(diagnosticsPath);
+
+assert(manifest.schemaVersion === 1, 'manifest schemaVersion must be 1');
+assert(manifest.run?.mode === 'full', 'manifest run.mode must be full');
+assert(JSON.stringify(manifest.run?.selectedBenchmarks) === JSON.stringify(['memory-arena']), 'manifest must select only memory-arena');
+assert(JSON.stringify(manifest.run?.runtimeProfiles) === JSON.stringify(['real']), 'manifest runtimeProfiles must be real');
+assert(manifest.git?.dirty === false, 'manifest git must be clean');
+assert(manifest.command?.cwd === '<repo-root>', 'manifest cwd must be scrubbed');
+assert(!JSON.stringify(manifest).includes('/Users/'), 'manifest must not contain /Users paths');
+assert(!JSON.stringify(manifest).includes('MacStudio'), 'manifest must not contain local hostnames');
+assert(
+  sha256String(stableStringify(manifestArtifactHashIdentity(manifest))) === manifest.artifactHash,
+  'manifest artifactHash mismatch',
+);
+
+assert(artifact.schemaVersion === 1, 'artifact schemaVersion must be 1');
+assert(artifact.benchmarkId === 'memory-arena', 'artifact benchmarkId must be memory-arena');
+assert(artifact.system?.name === 'remnic', 'artifact system.name must be remnic');
+assert(artifact.model === 'gpt-5.5', 'artifact model must be gpt-5.5');
+assert(artifact.seed === 1, 'artifact seed must be 1');
+assert(Array.isArray(artifact.perTaskScores) && artifact.perTaskScores.length > 0, 'artifact must include perTaskScores');
+assert(publicArtifactEntry.publicSafe === true, 'public artifact entry must be publicSafe');
+assert(publicArtifactEntry.sha256 === sha256File(artifactPath), 'public artifact sha256 mismatch');
+assert(publicArtifactEntry.taskCount === artifact.perTaskScores.length, 'public artifact taskCount mismatch');
+assert(publicArtifactEntry.sourceResultPath === rawResultEntry.path, 'source result path mismatch');
+assert(publicArtifactEntry.sourceResultSha256 === rawResultEntry.sha256, 'source result sha mismatch');
+assert(publicArtifactEntry.sourceResultSizeBytes === rawResultEntry.sizeBytes, 'source result size mismatch');
+assert(rawResultEntry.mode === 'full', 'raw result manifest entry must be full');
+
+const pseudoRawResult = toPseudoRawResult(artifact);
+const derived = deriveMemoryArenaOfficialMetrics(pseudoRawResult);
+compareJson(
+  officialMetricsForPublicComparison(artifact.memoryArenaOfficialMetrics),
+  officialMetricsForPublicComparison(derived),
+  'official metrics',
+);
+assertClose(artifact.metrics?.memory_arena_official_success_rate, derived.official.successRate, 'official success rate');
+assertClose(artifact.metrics?.memory_arena_official_progress_score, derived.official.progressScore, 'official progress score');
+if (typeof derived.official.softProgressScore === 'number') {
+  assertClose(artifact.metrics?.memory_arena_official_soft_progress_score, derived.official.softProgressScore, 'official soft progress score');
+}
+
+const recomputedComparison = compareMemoryArenaSota(pseudoRawResult, targetMap);
+compareJson(comparison, recomputedComparison, 'SOTA comparison');
+assert(comparison.sotaAllCheckedMetrics === true, 'memory-arena comparison must be SOTA on all checked metrics');
+assert(comparison.atOrAboveAllCheckedMetrics === true, 'memory-arena comparison must be at or above all checked metrics');
+
+assert(diagnostics.runId === manifest.run?.id, 'diagnostics runId must match manifest');
+assert(diagnostics.benchmark === 'memory-arena', 'diagnostics benchmark must be memory-arena');
+assert(diagnostics.checked > 0, 'diagnostics must include at least one completed record');
+assert(diagnostics.complete === diagnostics.checked, 'diagnostics complete count must match checked records');
+assert(diagnostics.inFlight === 0, 'diagnostics must have zero in-flight records');
+assert(diagnostics.errored === 0, 'diagnostics must have zero errors');
+assert(diagnostics.nonzero === 0, 'diagnostics must have zero nonzero exits');
+assert(diagnostics.providers?.['codex-cli'] === diagnostics.checked, 'diagnostics provider distribution must be all codex-cli');
+assert(diagnostics.models?.['gpt-5.5'] === diagnostics.checked, 'diagnostics model distribution must be all gpt-5.5');
+assert(diagnostics.reasoningEfforts?.xhigh === diagnostics.checked, 'diagnostics reasoning distribution must be all xhigh');
+assert(diagnostics.serviceTiers?.fast === diagnostics.checked, 'diagnostics service tier distribution must be all fast');
+
+console.log(JSON.stringify({
+  ok: true,
+  benchmark: 'memory-arena',
+  taskCount: artifact.perTaskScores.length,
+  official: derived.official,
+  checks: comparison.checks.length,
+  artifactSha256: publicArtifactEntry.sha256,
+  rawResultSha256: rawResultEntry.sha256,
+}, null, 2));

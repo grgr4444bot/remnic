@@ -1,0 +1,278 @@
+{
+  "generatedAt": "2026-05-16T19:46:38.942Z",
+  "sources": {
+    "ambExternalResults": "https://agentmemorybenchmark.ai/api/external-results",
+    "ambResults": "https://agentmemorybenchmark.ai/api/results",
+    "ambCatalog": "https://agentmemorybenchmark.ai/api/catalog",
+    "memoryArenaPaper": "https://arxiv.org/abs/2602.16313",
+    "amemGymPaper": "https://arxiv.org/abs/2603.01966",
+    "memoryAgentBenchPaper": "https://arxiv.org/abs/2507.05257"
+  },
+  "benchmarks": {
+    "ama-bench": {
+      "primaryMetric": "ama_bench_leaderboard_average",
+      "comparison": "agent/memory-system leaderboard average across 24 domain x qaType cells",
+      "target": {
+        "score": 0.5579,
+        "method": "AMA-agent",
+        "sourceLabel": "AMA-Bench Leaderboard",
+        "sourceUrl": "https://github.com/AMA-Bench/AMA-Bench"
+      },
+      "caveat": "Model-only long-context results are tracked separately; Remnic PR #1005 claims agent/memory-system SOTA only."
+    },
+    "memory-arena": {
+      "primaryMetric": "task_success_rate and task_progress_score",
+      "comparison": "paper Table 3 reports SR and PS by environment plus all-task average SR; Group Travel Planning additionally uses sPS",
+      "targets": {
+        "allTaskAverageSuccessRate": {
+          "score": 0.19,
+          "method": "Claude-Sonnet-4.5 long-context",
+          "sourceLabel": "MemoryArena paper Table 3"
+        },
+        "bundledWebShopping": {
+          "successRate": 0.12,
+          "progressScore": 0.79,
+          "method": "Claude-Sonnet-4.5 long-context",
+          "sourceLabel": "MemoryArena paper Table 3"
+        },
+        "groupTravelPlanning": {
+          "successRate": 0,
+          "progressScore": 0.06,
+          "softProgressScore": 0.62,
+          "method": "Gemini-3-Flash long-context",
+          "sourceLabel": "MemoryArena paper Table 3"
+        },
+        "progressiveWebSearch": {
+          "successRate": 0.28,
+          "progressScore": 0.32,
+          "method": "BM25 / Text-Embedding-3-Small RAG",
+          "sourceLabel": "MemoryArena paper Table 3"
+        },
+        "formalReasoning": {
+          "mathSuccessRate": 0.6,
+          "physSuccessRate": 0.7,
+          "processScore": 0.65,
+          "method": "Text-Embedding-3-Small RAG",
+          "sourceLabel": "MemoryArena paper Table 3"
+        }
+      },
+      "note": "Raw Remnic process_score means are subtask-weighted; official PS must average per-task subtask pass fractions."
+    },
+    "amemgym": {
+      "primaryMetric": "normalized_memory_score",
+      "comparison": "on-policy memory score from AMemGym paper",
+      "targets": {
+        "nativeLlm": {
+          "score": 0.463,
+          "method": "gemini-3-pro-preview",
+          "sourceLabel": "AMemGym paper Figure 5"
+        },
+        "memoryAgent": {
+          "score": 0.296,
+          "method": "AWE-(2,4,30)",
+          "sourceLabel": "AMemGym paper Figure 6"
+        }
+      },
+      "note": "Paper separates native LLMs from memory agents; use the memory-agent target for Remnic memory-system SOTA unless making a model-only claim."
+    },
+    "longmemeval": {
+      "primaryMetric": "llm_judge/pass-rate accuracy on LongMemEval-S",
+      "comparison": "max of live AMB reproduced and external reported targets",
+      "target": {
+        "score": 0.956,
+        "method": "Chronos",
+        "sourceLabel": "Chronos Paper (arXiv:2603.16862)",
+        "sourceUrl": "https://arxiv.org/abs/2603.16862",
+        "comment": "Self-reported by Chronos authors. Best of two configurations tested; the GPT-4o configuration achieved 92.6%. This configuration uses Claude Opus 4.6 as backbone, which is considerably more capable than the models used by most other entries here."
+      },
+      "live": {
+        "external": {
+          "s": {
+            "score": 0.956,
+            "method": "Chronos",
+            "sourceLabel": "Chronos Paper (arXiv:2603.16862)",
+            "sourceUrl": "https://arxiv.org/abs/2603.16862",
+            "comment": "Self-reported by Chronos authors. Best of two configurations tested; the GPT-4o configuration achieved 92.6%. This configuration uses Claude Opus 4.6 as backbone, which is considerably more capable than the models used by most other entries here."
+          }
+        },
+        "ambReproduced": {
+          "s": {
+            "score": 0.946,
+            "method": "hindsight",
+            "runName": "hindsight",
+            "sourcePath": "outputs/longmemeval/hindsight/rag/s.json.gz",
+            "totalQueries": 500
+          }
+        }
+      },
+      "scoringNote": "An LLM judge compares each answer against a gold-standard reference and grades it pass or fail, with special handling for time and date questions. The overall score is the pass rate across all questions."
+    },
+    "locomo": {
+      "primaryMetric": "LLM-judge pass-rate accuracy on locomo10",
+      "comparison": "max of live AMB reproduced and external reported targets",
+      "target": {
+        "score": 0.9201298701298701,
+        "method": "hindsight",
+        "runName": "locomo-hindsight",
+        "sourcePath": "outputs/locomo/locomo-hindsight/rag/locomo10.json.gz",
+        "totalQueries": 1540
+      },
+      "live": {
+        "external": {
+          "locomo10": {
+            "score": 0.9169,
+            "method": "MemMachine v0.2 (gpt-4.1-mini)",
+            "sourceLabel": "MemMachine v0.2 Blog (Dec 2025)",
+            "sourceUrl": "https://memmachine.ai/blog/2025/12/memmachine-v0.2-delivers-top-scores-and-efficiency-on-locomo-benchmark/",
+            "comment": "Self-reported by MemMachine. LLM-as-a-judge with GPT-4o-mini. Adversarial questions (cat. 5) excluded. Uses gpt-4.1-mini as backbone — stronger LLM directly inflates scores vs. gpt-4o-mini entries."
+          }
+        },
+        "ambReproduced": {
+          "locomo10": {
+            "score": 0.9201298701298701,
+            "method": "hindsight",
+            "runName": "locomo-hindsight",
+            "sourcePath": "outputs/locomo/locomo-hindsight/rag/locomo10.json.gz",
+            "totalQueries": 1540
+          }
+        }
+      },
+      "scoringNote": "An LLM judge compares each answer against a gold-standard reference and grades it pass or fail. The overall score is the pass rate across all questions."
+    },
+    "beam": {
+      "primaryMetric": "mean rubric score by split",
+      "comparison": "live AMB reproduced target per split",
+      "targets": {
+        "100k": {
+          "score": 0.7336577408538804,
+          "method": "hindsight",
+          "runName": "hindsight",
+          "sourcePath": "outputs/beam/hindsight/single-query/100k.json",
+          "totalQueries": 400
+        },
+        "10m": {
+          "score": 0.6407977206043332,
+          "method": "hindsight",
+          "runName": "hindsight",
+          "sourcePath": "outputs/beam/hindsight/single-query/10m.json",
+          "totalQueries": 200
+        },
+        "1m": {
+          "score": 0.7386039171368353,
+          "method": "hindsight",
+          "runName": "hindsight",
+          "sourcePath": "outputs/beam/hindsight/single-query/1m.json",
+          "totalQueries": 700
+        },
+        "500k": {
+          "score": 0.7111989151837411,
+          "method": "hindsight",
+          "runName": "hindsight",
+          "sourcePath": "outputs/beam/hindsight/single-query/500k.json",
+          "totalQueries": 700
+        }
+      },
+      "external": {
+        "100k": {
+          "score": 0.63,
+          "method": "Hindsight RAG (Honcho)",
+          "sourceLabel": "Honcho (evals.honcho.dev)",
+          "sourceUrl": "https://evals.honcho.dev/"
+        },
+        "500k": {
+          "score": 0.649,
+          "method": "Hindsight RAG (Honcho)",
+          "sourceLabel": "Honcho (evals.honcho.dev)",
+          "sourceUrl": "https://evals.honcho.dev/"
+        },
+        "1m": {
+          "score": 0.631,
+          "method": "Hindsight RAG (Honcho)",
+          "sourceLabel": "Honcho (evals.honcho.dev)",
+          "sourceUrl": "https://evals.honcho.dev/"
+        },
+        "10m": {
+          "score": 0.406,
+          "method": "Hindsight RAG (Honcho)",
+          "sourceLabel": "Honcho (evals.honcho.dev)",
+          "sourceUrl": "https://evals.honcho.dev/"
+        }
+      },
+      "scoringNote": "Scoring follows the formula defined in the BEAM paper. Each question has a rubric with multiple items, and an LLM judge scores each item on a 0/0.5/1 scale; the question score is the average across its rubric items. For event ordering questions, Kendall tau-b rank correlation measures how well the predicted order matches the reference. The overall benchmark score is the mean of all individual question scores. Because partial credit is common (scoring 0.5 is straightforward) while achieving a perfect 1.0 requires nailing every rubric item, BEAM scores sit on a different scale than pass/fail benchmarks."
+    },
+    "personamem": {
+      "primaryMetric": "MCQ accuracy by split",
+      "comparison": "live AMB reproduced target for 32k; paper targets for 128k and 1M",
+      "targets": {
+        "32k": {
+          "score": 0.865874363327674,
+          "method": "hindsight",
+          "runName": "hindsight",
+          "sourcePath": "outputs/personamem/hindsight/rag/32k.json.gz",
+          "totalQueries": 589
+        },
+        "128k": {
+          "score": 0.52,
+          "method": "Gemini-1.5-Flash",
+          "sourceLabel": "PersonaMem Paper (arXiv:2504.14225)",
+          "sourceUrl": "https://arxiv.org/abs/2504.14225"
+        },
+        "1M": {
+          "score": 0.45,
+          "method": "Gemini-1.5-Flash",
+          "sourceLabel": "PersonaMem Paper (arXiv:2504.14225)",
+          "sourceUrl": "https://arxiv.org/abs/2504.14225"
+        }
+      },
+      "scoringNote": "Multiple-choice questions with a single correct answer. The model must select the right option; the score is the fraction of questions answered correctly."
+    },
+    "memoryagentbench": {
+      "primaryMetric": "official protocol accuracy/recall/F1 by competency and overall score",
+      "comparison": "paper Table 3 overall score",
+      "targets": {
+        "overallScore": {
+          "score": 49.6,
+          "method": "Claude-3.7-Sonnet long-context",
+          "sourceLabel": "MemoryAgentBench paper Table 3"
+        },
+        "strongestMemoryAgentOverall": {
+          "score": 37.7,
+          "method": "MIRIX (GPT-4.1-mini)",
+          "sourceLabel": "MemoryAgentBench paper Table 3"
+        }
+      },
+      "note": "Paper reports percentages; Remnic artifacts may emit 0-1 fractions. Normalize before comparison."
+    },
+    "membench": {
+      "primaryMetric": "MCQ accuracy by split",
+      "comparison": "paper split targets surfaced by AMB external API",
+      "targets": {
+        "FirstAgentLowLevel": {
+          "score": 0.692,
+          "method": "RetrievalMemory",
+          "sourceLabel": "MemBench Paper (standard context)",
+          "sourceUrl": "https://arxiv.org/abs/2506.21605"
+        },
+        "FirstAgentHighLevel": {
+          "score": 0.742,
+          "method": "GenerativeAgent",
+          "sourceLabel": "MemBench Paper (standard context)",
+          "sourceUrl": "https://arxiv.org/abs/2506.21605"
+        },
+        "ThirdAgentLowLevel": {
+          "score": 0.883,
+          "method": "RetrievalMemory",
+          "sourceLabel": "MemBench Paper (standard context)",
+          "sourceUrl": "https://arxiv.org/abs/2506.21605"
+        },
+        "ThirdAgentHighLevel": {
+          "score": 0.9,
+          "method": "MemoryBank",
+          "sourceLabel": "MemBench Paper (standard context)",
+          "sourceUrl": "https://arxiv.org/abs/2506.21605"
+        }
+      },
+      "scoringNote": "Multiple-choice questions with a single correct answer. The model must select the right option; the score is the fraction of questions answered correctly."
+    }
+  }
+}

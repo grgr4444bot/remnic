@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:${PATH}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TMP_ROOT="${TMPDIR:-/tmp}"
+TMP_ROOT="${TMP_ROOT%/}"
+
+RUN_ID="${RUN_ID:-public-matrix-codex-bf9b2643-20260515T052919Z}"
+RESULTS_DIR="${RESULTS_DIR:-${HOME}/.remnic/bench/results/${RUN_ID}}"
+EVIDENCE_ROOT="${EVIDENCE_ROOT:-${TMP_ROOT}/remnic-memoryarena-evidence}"
+SESSION="${SESSION:-${RUN_ID}}"
+INTERVAL_SECONDS="${INTERVAL_SECONDS:-1800}"
+LOG_FILE="${LOG_FILE:-${RESULTS_DIR}/memoryarena-publish-watcher.log}"
+LOCK_DIR="${LOCK_DIR:-/tmp/remnic-memoryarena-publish-watcher.lock}"
+
+mkdir -p "$(dirname "${LOG_FILE}")"
+
+if ! mkdir "${LOCK_DIR}" 2>/dev/null; then
+  echo "watcher already running: ${LOCK_DIR}" >&2
+  exit 0
+fi
+trap 'rmdir "${LOCK_DIR}" 2>/dev/null || true' EXIT
+
+log() {
+  printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "${LOG_FILE}"
+}
+
+result_file() {
+  if [[ ! -d "${RESULTS_DIR}" ]]; then
+    return 0
+  fi
+  find "${RESULTS_DIR}" -maxdepth 1 -type f -name 'memory-arena-*.json' -print 2>/dev/null | sort | tail -1 || true
+}
+
+while :; do
+  result="$(result_file)"
+
+  if [[ -z "${result}" ]]; then
+    if tmux has-session -t "${SESSION}" 2>/dev/null; then
+      log "waiting: no MemoryArena result file yet; session ${SESSION} still running"
+      sleep "${INTERVAL_SECONDS}"
+      continue
+    fi
+
+    log "error: no MemoryArena result file and session ${SESSION} is not running"
+    exit 2
+  fi
+
+  log "result detected: ${result}"
+
+  set +e
+  bash "${SCRIPT_DIR}/complete-memoryarena-if-ready.sh" >> "${LOG_FILE}" 2>&1
+  complete_status=$?
+  set -e
+  if [[ "${complete_status}" -ne 0 ]]; then
+    if [[ "${complete_status}" -eq 4 ]]; then
+      remediation_file="${RESULTS_DIR}/memory-arena-remediation-required.md"
+      cat > "${remediation_file}" <<EOF
+# MemoryArena Remediation Required
+
+Detected: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+The MemoryArena run completed but did not meet all checked SOTA targets.
+
+Next required action:
+
+1. Inspect the comparison output under
+   \`${EVIDENCE_ROOT}/${RUN_ID}/memory-arena-sota-comparison.raw.json\`.
+2. Identify whether the miss is due to a benchmark harness issue or Remnic
+   behavior.
+3. Make only changes that preserve real-world user behavior.
+4. Run focused tests for the changed behavior.
+5. Rerun MemoryArena with Codex CLI \`gpt-5.5\`, reasoning effort \`xhigh\`,
+   and service tier \`fast\`.
+6. Re-run this watcher or the completion/stage/publish helpers after rerun.
+EOF
+      log "remediation-required: wrote ${remediation_file}"
+    fi
+    log "stopping: MemoryArena completion helper exited ${complete_status}"
+    exit "${complete_status}"
+  fi
+
+  set +e
+  bash "${SCRIPT_DIR}/stage-memoryarena-evidence-pr.sh" >> "${LOG_FILE}" 2>&1
+  stage_status=$?
+  set -e
+  if [[ "${stage_status}" -ne 0 ]]; then
+    log "stopping: MemoryArena staging helper exited ${stage_status}"
+    exit "${stage_status}"
+  fi
+
+  set +e
+  publish_output="$(bash "${SCRIPT_DIR}/publish-memoryarena-evidence-pr.sh" 2>&1)"
+  publish_status=$?
+  set -e
+  if [[ -n "${publish_output}" ]]; then
+    while IFS= read -r line; do log "${line}"; done <<< "${publish_output}"
+  fi
+  if [[ "${publish_status}" -ne 0 ]]; then
+    log "waiting: MemoryArena publish helper exited ${publish_status}; will retry"
+    sleep "${INTERVAL_SECONDS}"
+    continue
+  fi
+  if grep -q '^waiting:' <<< "${publish_output}"; then
+    sleep "${INTERVAL_SECONDS}"
+    continue
+  fi
+
+  log "done: MemoryArena evidence publish helper completed"
+  exit 0
+done
