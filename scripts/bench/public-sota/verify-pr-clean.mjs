@@ -47,9 +47,6 @@ query($owner:String!,$name:String!,$number:Int!){
       headRefOid
       mergeCommit{oid}
       reviewDecision
-      reviewThreads(first:100){
-        nodes{isResolved}
-      }
       commits(last:1){
         nodes{
           commit{
@@ -71,6 +68,18 @@ query($owner:String!,$name:String!,$number:Int!){
   }
 }`;
 
+const reviewThreadsQuery = `
+query($owner:String!,$name:String!,$number:Int!,$after:String){
+  repository(owner:$owner,name:$name){
+    pullRequest(number:$number){
+      reviewThreads(first:100, after:$after){
+        pageInfo{hasNextPage endCursor}
+        nodes{isResolved}
+      }
+    }
+  }
+}`;
+
 function fetchPr() {
   const raw = execFileSync('gh', [
     'api',
@@ -85,7 +94,38 @@ function fetchPr() {
   if (!pr) {
     throw new Error(`PR #${prNumber} not found in ${repo}`);
   }
-  return pr;
+  return {
+    ...pr,
+    reviewThreads: {
+      nodes: fetchReviewThreads(),
+    },
+  };
+}
+
+function fetchReviewThreads() {
+  const threads = [];
+  let after;
+  for (;;) {
+    const raw = execFileSync('gh', [
+      'api',
+      'graphql',
+      '-f', `owner=${owner}`,
+      '-f', `name=${name}`,
+      '-F', `number=${prNumber}`,
+      ...(after ? ['-f', `after=${after}`] : ['-f', 'after=']),
+      '-f', `query=${reviewThreadsQuery}`,
+    ], { encoding: 'utf8' });
+    const payload = JSON.parse(raw);
+    const page = payload.data?.repository?.pullRequest?.reviewThreads;
+    if (!page) {
+      throw new Error(`Could not fetch review threads for PR #${prNumber} in ${repo}`);
+    }
+    threads.push(...(page.nodes ?? []));
+    if (!page.pageInfo?.hasNextPage) {
+      return threads;
+    }
+    after = page.pageInfo.endCursor;
+  }
 }
 
 function evaluate(pr) {

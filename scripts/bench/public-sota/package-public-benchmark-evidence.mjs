@@ -272,8 +272,8 @@ function gitInfo(repoRoot, result, ignoredRelativePrefixes = []) {
     .filter((line) => line.trim())
     .filter((line) => !isIgnoredDirtyEntry(line, ignoredRelativePrefixes));
   return {
-    commit: git(['rev-parse', 'HEAD']) || result.meta.gitSha,
-    shortCommit: git(['rev-parse', '--short', 'HEAD']) || String(result.meta.gitSha).slice(0, 8),
+    commit: result.meta.gitSha,
+    shortCommit: String(result.meta.gitSha).slice(0, 8),
     dirty: dirtyEntries.length > 0,
     dirtyEntryCount: dirtyEntries.length,
   };

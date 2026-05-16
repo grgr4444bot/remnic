@@ -134,8 +134,8 @@ function isIgnoredDirtyEntry(entry, ignoredRelativePrefixes) {
 }
 
 function gitInfo(repoRoot, result, ignoredRelativePrefixes = []) {
-  const commit = gitOutput(repoRoot, ['rev-parse', 'HEAD']) || result.meta?.gitSha || 'unknown';
-  const shortCommit = gitOutput(repoRoot, ['rev-parse', '--short', 'HEAD']) || String(result.meta?.gitSha ?? 'unknown').slice(0, 8);
+  const commit = result.meta?.gitSha ?? 'unknown';
+  const shortCommit = String(result.meta?.gitSha ?? 'unknown').slice(0, 8);
   const dirtyEntries = gitOutput(repoRoot, ['status', '--porcelain', '--untracked-files=all'])
     .split(/\r?\n/)
     .filter((line) => line.trim().length > 0)
