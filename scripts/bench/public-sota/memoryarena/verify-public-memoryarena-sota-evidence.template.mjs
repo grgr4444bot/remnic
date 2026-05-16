@@ -207,6 +207,7 @@ function compareMemoryArenaSota(result, targetMap) {
     verdict(derived.official.successRate, targets.allTaskAverageSuccessRate?.score, 'all_task_average_success_rate'),
     verdict(bundled.successRate, targets.bundledWebShopping?.successRate, 'bundled_web_shopping_success_rate'),
     verdict(bundled.progressScore, targets.bundledWebShopping?.progressScore, 'bundled_web_shopping_progress_score'),
+    verdict(travel.successRate, targets.groupTravelPlanning?.successRate, 'group_travel_planning_success_rate'),
     verdict(travel.progressScore, targets.groupTravelPlanning?.progressScore, 'group_travel_planning_progress_score'),
     verdict(travel.softProgressScore ?? 0, targets.groupTravelPlanning?.softProgressScore, 'group_travel_planning_soft_progress_score'),
     verdict(search.successRate, targets.progressiveWebSearch?.successRate, 'progressive_search_success_rate'),

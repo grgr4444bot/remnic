@@ -132,6 +132,7 @@ function expectedComparisonTargets(benchmark) {
         all_task_average_success_rate: entry.targets.allTaskAverageSuccessRate.score,
         bundled_web_shopping_success_rate: entry.targets.bundledWebShopping.successRate,
         bundled_web_shopping_progress_score: entry.targets.bundledWebShopping.progressScore,
+        group_travel_planning_success_rate: entry.targets.groupTravelPlanning.successRate,
         group_travel_planning_progress_score: entry.targets.groupTravelPlanning.progressScore,
         group_travel_planning_soft_progress_score: entry.targets.groupTravelPlanning.softProgressScore,
         progressive_search_success_rate: entry.targets.progressiveWebSearch.successRate,
