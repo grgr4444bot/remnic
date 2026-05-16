@@ -558,6 +558,7 @@ async function main() {
   assert(diagnostics, 'codex-cli diagnostics are required to prove provider/model/reasoning/service-tier for public evidence');
   assert(diagnostics.checked > 0, 'diagnostics must include at least one completed record');
   assert(diagnostics.inFlight === 0, 'diagnostics must not include in-flight records at evidence cutoff');
+  assert(diagnostics.afterCutoff === 0, 'diagnostics must not include records after evidence cutoff');
   assert(diagnostics.errored === 0, 'diagnostics must have zero errors');
   assert(diagnostics.nonzero === 0, 'diagnostics must have zero nonzero exits');
   assert(diagnostics.providers?.['codex-cli'] === diagnostics.checked, 'diagnostics provider distribution must be all codex-cli');
