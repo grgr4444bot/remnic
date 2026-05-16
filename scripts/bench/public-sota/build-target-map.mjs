@@ -51,7 +51,11 @@ function fetchJson(url) {
           reject(new Error(`${url} returned ${res.statusCode}: ${body.slice(0, 200)}`));
           return;
         }
-        resolve(JSON.parse(body));
+        try {
+          resolve(JSON.parse(body));
+        } catch (error) {
+          reject(new Error(`${url} returned invalid JSON: ${String(error)}`));
+        }
       });
     }).on('error', reject);
   });
