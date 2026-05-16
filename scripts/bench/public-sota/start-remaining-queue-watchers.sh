@@ -27,6 +27,7 @@ for benchmark in "${publish_benchmarks[@]}"; do
 done
 
 transitions=(
+  "amemgym longmemeval"
   "longmemeval locomo"
   "locomo beam"
   "beam memoryagentbench"
