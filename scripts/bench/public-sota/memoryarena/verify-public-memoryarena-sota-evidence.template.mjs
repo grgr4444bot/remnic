@@ -329,10 +329,12 @@ assert(
 assert(artifact.schemaVersion === 1, 'artifact schemaVersion must be 1');
 assert(artifact.benchmarkId === 'memory-arena', 'artifact benchmarkId must be memory-arena');
 assert(artifact.system?.name === 'remnic', 'artifact system.name must be remnic');
+assert(artifact.system?.gitSha === manifest.git?.commit, 'artifact git SHA must match manifest commit');
 assert(artifact.model === 'gpt-5.5', 'artifact model must be gpt-5.5');
 assert(artifact.seed === 1, 'artifact seed must be 1');
 assert(Array.isArray(artifact.perTaskScores) && artifact.perTaskScores.length > 0, 'artifact must include perTaskScores');
 assert(publicArtifactEntry.publicSafe === true, 'public artifact entry must be publicSafe');
+assert(publicArtifactEntry.gitSha === manifest.git?.commit, 'public artifact git SHA must match manifest commit');
 assert(publicArtifactEntry.sha256 === sha256File(artifactPath), 'public artifact sha256 mismatch');
 assert(publicArtifactEntry.taskCount === artifact.perTaskScores.length, 'public artifact taskCount mismatch');
 assert(publicArtifactEntry.sourceResultPath === rawResultEntry.path, 'source result path mismatch');
