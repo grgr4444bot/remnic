@@ -318,7 +318,14 @@ function resultManifestEntry(resultPath, resultsDir, result) {
 function artifactHashIdentity(manifest) {
   return {
     schemaVersion: manifest.schemaVersion,
-    run: manifest.run,
+    run: {
+      id: manifest.run?.id,
+      ...(manifest.run?.mode ? { mode: manifest.run.mode } : {}),
+      selectedBenchmarks: manifest.run?.selectedBenchmarks,
+      runtimeProfiles: manifest.run?.runtimeProfiles,
+      ...(Object.prototype.hasOwnProperty.call(manifest.run ?? {}, 'limit') ? { limit: manifest.run.limit } : {}),
+      ...(Object.prototype.hasOwnProperty.call(manifest.run ?? {}, 'seed') ? { seed: manifest.run.seed } : {}),
+    },
     git: {
       commit: manifest.git?.commit,
       shortCommit: manifest.git?.shortCommit,
@@ -337,7 +344,7 @@ function artifactHashIdentity(manifest) {
     configFiles: manifest.configFiles,
     datasets: manifest.datasets,
     results: manifest.results,
-    publicArtifacts: manifest.publicArtifacts,
+    ...(manifest.publicArtifacts ? { publicArtifacts: manifest.publicArtifacts } : {}),
   };
 }
 
