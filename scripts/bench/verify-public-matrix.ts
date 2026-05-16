@@ -83,6 +83,19 @@ interface ReproManifest {
     gitSha?: string;
     taskCount?: number;
   }>;
+  publicArtifacts?: Array<{
+    benchmark?: string;
+    path?: string;
+    sha256?: string;
+    resultId?: string;
+    mode?: string;
+    gitSha?: string;
+    taskCount?: number;
+    publicSafe?: boolean;
+    sourceResultPath?: string;
+    sourceResultSha256?: string;
+    sourceResultSizeBytes?: number;
+  }>;
   command?: {
     argv?: string[];
     envKeys?: string[];
@@ -99,10 +112,33 @@ interface ReproManifest {
 }
 
 type ReproManifestResult = NonNullable<ReproManifest["results"]>[number];
+type ReproManifestPublicArtifact = NonNullable<ReproManifest["publicArtifacts"]>[number];
 
 interface ManifestResultResolution {
   entry: ReproManifestResult;
   path: string;
+}
+
+interface ManifestPublicArtifactResolution {
+  entry: ReproManifestPublicArtifact;
+  path: string;
+}
+
+interface PublicBenchmarkArtifact {
+  schemaVersion?: number;
+  benchmarkId?: string;
+  system?: {
+    name?: string;
+    gitSha?: string;
+  };
+  model?: string;
+  seed?: number;
+  metrics?: Record<string, number>;
+  perTaskScores?: Array<{
+    taskId?: string;
+    category?: string;
+    scores?: Record<string, number>;
+  }>;
 }
 
 export interface PublicMatrixEvidenceIssue {
@@ -189,10 +225,13 @@ export async function verifyPublicMatrixEvidence(
           issues,
         )
       : undefined;
+    const manifestPublicArtifact = manifest
+      ? resolveManifestPublicArtifact(resultsDir, manifest, row.benchmark, issues)
+      : undefined;
     const resultPath = manifest
       ? manifestResult?.path
       : resolveLatestResultPath(summaries, row.benchmark);
-    if (!resultPath) {
+    if (!resultPath && !manifestPublicArtifact) {
       if (!manifest) {
         issues.push({
           code: "missing-full-result",
@@ -203,14 +242,41 @@ export async function verifyPublicMatrixEvidence(
       continue;
     }
 
-    row.resultPath = resultPath;
-    if (manifestResult) {
+    row.resultPath = resultPath ?? manifestPublicArtifact?.path;
+    if (manifestResult && resultPath && fs.existsSync(resultPath)) {
       await validateManifestResultFile(manifestResult.entry, resultPath, row.benchmark, issues);
     }
     let result: BenchmarkResult;
     try {
-      result = await loadBenchmarkResult(resultPath);
+      result = await loadBenchmarkResult(resultPath ?? "");
     } catch (error) {
+      if (manifestResult && manifestPublicArtifact) {
+        await validateManifestPublicArtifactFile(
+          manifestPublicArtifact.entry,
+          manifestPublicArtifact.path,
+          manifestResult.entry,
+          row.benchmark,
+          issues,
+        );
+        const publicArtifact = await loadPublicBenchmarkArtifact(
+          manifestPublicArtifact.path,
+          row.benchmark,
+          issues,
+        );
+        if (publicArtifact) {
+          row.resultPath = manifestPublicArtifact.path;
+          row.resultId = manifestPublicArtifact.entry.resultId;
+          row.taskCount = publicArtifact.perTaskScores?.length;
+          validatePublicBenchmarkArtifact(publicArtifact, manifestPublicArtifact.entry, manifestResult.entry, {
+            benchmark: row.benchmark,
+            path: manifestPublicArtifact.path,
+            expectedModel,
+            expectedGitSha,
+            issues,
+          });
+        }
+        continue;
+      }
       issues.push({
         code: "manifest-result-unreadable",
         benchmark: row.benchmark,
@@ -372,6 +438,7 @@ function buildManifestArtifactHashIdentity(manifest: ReproManifest): unknown {
     configFiles: manifest.configFiles,
     datasets: manifest.datasets,
     results: manifest.results,
+    ...(manifest.publicArtifacts ? { publicArtifacts: manifest.publicArtifacts } : {}),
   };
 }
 
@@ -599,6 +666,24 @@ function validateManifest(
     } else if (options.expectedGitSha && !gitShaMatches(result.gitSha ?? "", options.expectedGitSha)) {
       addIssue(options.issues, benchmark, manifestPath, "manifest-result-wrong-git", `Expected manifest result git to match ${options.expectedGitSha}, got ${String(result.gitSha)}.`);
     }
+
+    const publicArtifact = manifest.publicArtifacts?.find((entry) => entry.benchmark === benchmark);
+    if (publicArtifact) {
+      if (!isNonEmptyString(publicArtifact.path)) {
+        addIssue(options.issues, benchmark, manifestPath, "manifest-public-artifact-missing-path", "Manifest public artifact entry must include a relative artifact path.");
+      } else if (
+        publicArtifact.mode !== "full" ||
+        !Number.isInteger(publicArtifact.taskCount) ||
+        publicArtifact.taskCount <= 0 ||
+        publicArtifact.publicSafe !== true
+      ) {
+        addIssue(options.issues, benchmark, manifestPath, "manifest-public-artifact-not-full", `Manifest public artifact must be full and publicSafe; got mode=${String(publicArtifact.mode)} taskCount=${String(publicArtifact.taskCount)} publicSafe=${String(publicArtifact.publicSafe)}.`);
+      } else if (options.expectedGitSha && !gitShaMatches(publicArtifact.gitSha ?? "", options.expectedGitSha)) {
+        addIssue(options.issues, benchmark, manifestPath, "manifest-public-artifact-wrong-git", `Expected manifest public artifact git to match ${options.expectedGitSha}, got ${String(publicArtifact.gitSha)}.`);
+      } else if (result && publicArtifact.sourceResultSha256 !== result.sha256) {
+        addIssue(options.issues, benchmark, manifestPath, "manifest-public-artifact-source-mismatch", "Manifest public artifact sourceResultSha256 must match the raw result entry sha256.");
+      }
+    }
   }
 }
 
@@ -646,6 +731,27 @@ async function resolveManifestResult(
   return candidateResults[0];
 }
 
+function resolveManifestPublicArtifact(
+  resultsDir: string,
+  manifest: ReproManifest,
+  benchmark: string,
+  issues: PublicMatrixEvidenceIssue[],
+): ManifestPublicArtifactResolution | undefined {
+  const publicArtifact = manifest.publicArtifacts?.find((entry) => entry.benchmark === benchmark);
+  if (!publicArtifact || !isNonEmptyString(publicArtifact.path)) {
+    return undefined;
+  }
+
+  const resolvedPath = resolveManifestEntryPath(
+    resultsDir,
+    benchmark,
+    publicArtifact.path,
+    issues,
+    "public-artifact",
+  );
+  return resolvedPath ? { entry: publicArtifact, path: resolvedPath } : undefined;
+}
+
 async function validateManifestResultFile(
   entry: ReproManifestResult,
   resultPath: string,
@@ -689,6 +795,151 @@ async function validateManifestResultFile(
   }
 }
 
+async function validateManifestPublicArtifactFile(
+  entry: ReproManifestPublicArtifact,
+  artifactPath: string,
+  rawResultEntry: ReproManifestResult,
+  benchmark: string,
+  issues: PublicMatrixEvidenceIssue[],
+): Promise<void> {
+  if (!isSha256(entry.sha256)) {
+    addIssue(
+      issues,
+      benchmark,
+      artifactPath,
+      "manifest-public-artifact-missing-hash",
+      "Manifest public artifact entry must include the SHA-256 hash of the artifact file.",
+    );
+    return;
+  }
+  if (entry.sourceResultPath !== rawResultEntry.path || entry.sourceResultSha256 !== rawResultEntry.sha256) {
+    addIssue(
+      issues,
+      benchmark,
+      artifactPath,
+      "manifest-public-artifact-source-mismatch",
+      "Manifest public artifact source metadata must match the raw result entry.",
+    );
+  }
+
+  let actualHash: string;
+  try {
+    actualHash = await sha256File(artifactPath);
+  } catch (error) {
+    addIssue(
+      issues,
+      benchmark,
+      artifactPath,
+      "manifest-public-artifact-hash-unreadable",
+      `Could not hash manifest public artifact file: ${error instanceof Error ? error.message : String(error)}.`,
+    );
+    return;
+  }
+
+  const expectedHash = entry.sha256.toLowerCase();
+  if (actualHash !== expectedHash) {
+    addIssue(
+      issues,
+      benchmark,
+      artifactPath,
+      "manifest-public-artifact-hash-mismatch",
+      `Manifest public artifact hash mismatch: expected ${expectedHash}, got ${actualHash}.`,
+    );
+  }
+}
+
+async function loadPublicBenchmarkArtifact(
+  artifactPath: string,
+  benchmark: string,
+  issues: PublicMatrixEvidenceIssue[],
+): Promise<PublicBenchmarkArtifact | undefined> {
+  try {
+    const value = JSON.parse(await readFile(artifactPath, "utf8")) as unknown;
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      addIssue(issues, benchmark, artifactPath, "invalid-public-artifact", "Public artifact JSON must be an object.");
+      return undefined;
+    }
+    return value as PublicBenchmarkArtifact;
+  } catch (error) {
+    addIssue(
+      issues,
+      benchmark,
+      artifactPath,
+      "invalid-public-artifact",
+      `Could not parse public artifact: ${error instanceof Error ? error.message : String(error)}.`,
+    );
+    return undefined;
+  }
+}
+
+function validatePublicBenchmarkArtifact(
+  artifact: PublicBenchmarkArtifact,
+  artifactEntry: ReproManifestPublicArtifact,
+  rawResultEntry: ReproManifestResult,
+  options: {
+    benchmark: string;
+    path: string;
+    expectedModel: string;
+    expectedGitSha: string | undefined;
+    issues: PublicMatrixEvidenceIssue[];
+  },
+): void {
+  const benchmark = options.benchmark;
+  if (artifact.schemaVersion !== 1) {
+    addIssue(options.issues, benchmark, options.path, "invalid-public-artifact-schema", `Expected public artifact schemaVersion=1, got ${String(artifact.schemaVersion)}.`);
+  }
+  if (artifact.benchmarkId !== benchmark) {
+    addIssue(options.issues, benchmark, options.path, "public-artifact-benchmark-mismatch", `Expected public artifact benchmarkId=${benchmark}, got ${String(artifact.benchmarkId)}.`);
+  }
+  if (artifact.system?.name !== "remnic") {
+    addIssue(options.issues, benchmark, options.path, "public-artifact-system-mismatch", `Expected public artifact system.name=remnic, got ${String(artifact.system?.name)}.`);
+  }
+  if (options.expectedGitSha && !gitShaMatches(artifact.system?.gitSha ?? "", options.expectedGitSha)) {
+    addIssue(options.issues, benchmark, options.path, "public-artifact-wrong-git", `Expected public artifact git to match ${options.expectedGitSha}, got ${String(artifact.system?.gitSha)}.`);
+  }
+  if (artifact.model !== options.expectedModel) {
+    addIssue(options.issues, benchmark, options.path, "public-artifact-wrong-model", `Expected public artifact model=${options.expectedModel}, got ${String(artifact.model)}.`);
+  }
+  if (!Array.isArray(artifact.perTaskScores) || artifact.perTaskScores.length === 0) {
+    addIssue(options.issues, benchmark, options.path, "public-artifact-empty-task-set", "Public artifact has no per-task scores.");
+  } else if (
+    Number.isInteger(artifactEntry.taskCount) &&
+    artifact.perTaskScores.length !== artifactEntry.taskCount
+  ) {
+    addIssue(options.issues, benchmark, options.path, "public-artifact-task-count-mismatch", `Public artifact task count ${artifact.perTaskScores.length} does not match manifest count ${artifactEntry.taskCount}.`);
+  } else if (
+    Number.isInteger(rawResultEntry.taskCount) &&
+    artifact.perTaskScores.length !== rawResultEntry.taskCount
+  ) {
+    addIssue(options.issues, benchmark, options.path, "public-artifact-raw-task-count-mismatch", `Public artifact task count ${artifact.perTaskScores.length} does not match raw manifest count ${rawResultEntry.taskCount}.`);
+  }
+
+  if (!artifact.metrics || Object.keys(artifact.metrics).length === 0) {
+    addIssue(options.issues, benchmark, options.path, "public-artifact-empty-metrics", "Public artifact has no aggregate metrics.");
+  } else {
+    for (const [metric, score] of Object.entries(artifact.metrics)) {
+      if (!Number.isFinite(score) || score < 0) {
+        addIssue(options.issues, benchmark, options.path, "public-artifact-invalid-metric", `Public artifact metric ${metric} must be a finite non-negative number.`);
+      }
+    }
+  }
+
+  for (const task of artifact.perTaskScores ?? []) {
+    if (!isNonEmptyString(task.taskId)) {
+      addIssue(options.issues, benchmark, options.path, "public-artifact-task-missing-id", "Public artifact per-task score is missing taskId.");
+    }
+    if (!task.scores || Object.keys(task.scores).length === 0) {
+      addIssue(options.issues, benchmark, options.path, "public-artifact-task-missing-scores", `Public artifact task ${task.taskId ?? "<unknown>"} has no scores.`);
+      continue;
+    }
+    for (const [metric, score] of Object.entries(task.scores)) {
+      if (!Number.isFinite(score) || score < 0) {
+        addIssue(options.issues, benchmark, options.path, "public-artifact-invalid-task-score", `Public artifact task ${task.taskId ?? "<unknown>"} metric ${metric} must be a finite non-negative number.`);
+      }
+    }
+  }
+}
+
 function validateManifestResultIdentity(
   entry: ReproManifestResult,
   result: BenchmarkResult,
@@ -722,14 +973,15 @@ function resolveManifestEntryPath(
   benchmark: string,
   manifestPath: string,
   issues: PublicMatrixEvidenceIssue[],
+  kind = "result",
 ): string | undefined {
   if (path.isAbsolute(manifestPath)) {
     addIssue(
       issues,
       benchmark,
       manifestPath,
-      "manifest-result-absolute-path",
-      "Manifest result path must be relative to the results directory.",
+      `manifest-${kind}-absolute-path`,
+      `Manifest ${kind} path must be relative to the results directory.`,
     );
     return undefined;
   }
@@ -745,8 +997,8 @@ function resolveManifestEntryPath(
       issues,
       benchmark,
       resolvedPath,
-      "manifest-result-path-outside-dir",
-      "Manifest result path must stay inside the results directory.",
+      `manifest-${kind}-path-outside-dir`,
+      `Manifest ${kind} path must stay inside the results directory.`,
     );
     return undefined;
   }

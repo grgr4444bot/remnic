@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-16T15:36:55.909Z",
+  "manifestGeneratedAt": "2026-05-15T23:38:08.661Z",
+  "runId": "public-matrix-codex-bf9b2643-20260515T052919Z",
+  "cutoffMode": "finishedAt<=manifest.generatedAt",
+  "totalFiles": 11959,
+  "checked": 8307,
+  "complete": 8307,
+  "inFlight": 1,
+  "afterCutoff": 3651,
+  "errored": 0,
+  "nonzero": 0,
+  "providers": {
+    "codex-cli": 8307
+  },
+  "models": {
+    "gpt-5.5": 8307
+  },
+  "reasoningEfforts": {
+    "xhigh": 8307
+  },
+  "serviceTiers": {
+    "fast": 8307
+  },
+  "statuses": {
+    "0": 8307
+  },
+  "minStartedAt": "2026-05-15T05:29:32.862Z",
+  "maxFinishedAt": "2026-05-15T23:38:04.205Z"
+}

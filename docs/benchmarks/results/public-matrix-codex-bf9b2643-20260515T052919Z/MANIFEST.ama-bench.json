@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-15T23:38:08.661Z",
+  "run": {
+    "id": "public-matrix-codex-bf9b2643-20260515T052919Z",
+    "mode": "full",
+    "selectedBenchmarks": [
+      "ama-bench"
+    ],
+    "runtimeProfiles": [
+      "real"
+    ],
+    "seed": 1
+  },
+  "git": {
+    "commit": "bf9b264356a537e70fce1bddbca3495bf8a19b31",
+    "shortCommit": "bf9b2643",
+    "dirty": false,
+    "dirtyEntryCount": 0
+  },
+  "command": {
+    "cwd": "<repo-root>",
+    "argv": [
+      "bench",
+      "published",
+      "--name",
+      "ama-bench",
+      "--dataset",
+      "evals/datasets/ama-bench",
+      "--runtime-profile",
+      "real",
+      "--provider",
+      "codex-cli",
+      "--model",
+      "gpt-5.5",
+      "--system-codex-reasoning-effort",
+      "xhigh",
+      "--judge-provider",
+      "codex-cli",
+      "--judge-model",
+      "gpt-5.5",
+      "--judge-codex-reasoning-effort",
+      "xhigh",
+      "--internal-provider",
+      "codex-cli",
+      "--internal-model",
+      "gpt-5.5",
+      "--internal-codex-reasoning-effort",
+      "xhigh",
+      "--request-timeout",
+      "3600000",
+      "--drain-timeout",
+      "3600000",
+      "--max-429-wait",
+      "86400000",
+      "--seed",
+      "1",
+      "--results-dir",
+      "<results-dir>",
+      "--out",
+      "docs/benchmarks/results/public-matrix-codex-bf9b2643-20260515T052919Z",
+      "--ama-bench-judge-protocol",
+      "recommended",
+      "--trial-concurrency",
+      "6"
+    ],
+    "envKeys": [
+      "OPENAI_API_KEY"
+    ]
+  },
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "nodeVersion": "v26.0.0",
+    "packageManager": "pnpm@10.32.1"
+  },
+  "qmd": {
+    "collections": [
+      "openclaw-engram-hot-facts"
+    ]
+  },
+  "configFiles": [],
+  "datasets": [
+    {
+      "benchmark": "ama-bench",
+      "status": "hashed",
+      "path": "evals/datasets/ama-bench",
+      "realpath": "evals/datasets/ama-bench",
+      "fileCount": 1,
+      "totalBytes": 50451919,
+      "sha256": "90826eb21ce703a0b82078752e9eafeaca30b3976c897daff341a9f9ad77277e",
+      "files": [
+        {
+          "path": "open_end_qa_set.jsonl",
+          "kind": "file",
+          "sizeBytes": 50451919,
+          "sha256": "45c36052e1520d87ad9de4114f71c9df42d4aac9cf158c0c353e800b653d65ff"
+        }
+      ]
+    }
+  ],
+  "results": [
+    {
+      "path": "ama-bench-v9.3.388-2026-05-15T23-38-04-213Z.json",
+      "sha256": "7930b614b3a6085c007315c0a6470130c8d4ed956220a79b61ea822f621c609b",
+      "sizeBytes": 52351243,
+      "resultId": "de8d43ed-cbfd-452b-8a4e-0696571a5706",
+      "benchmark": "ama-bench",
+      "mode": "full",
+      "gitSha": "bf9b2643",
+      "runCount": 1,
+      "seeds": [
+        1
+      ],
+      "taskCount": 2496,
+      "configHash": "02da8f563277d8908924523ef3f41816e23cf318eed48220c99c988e53f0bfb2"
+    }
+  ],
+  "artifactHash": "6c7ada8333ae6590fd709c614a7036c4c7a4c18c1787e83605e52926cfe94129",
+  "publicArtifacts": [
+    {
+      "path": "2026-05-15-ama-bench-gpt-5.5-real-bf9b264.json",
+      "sha256": "7e4f0454657d10b8f240a61768a260b35cf520d0b745fbfec2573a0cd7ad2bb5",
+      "sizeBytes": 666982,
+      "resultId": "de8d43ed-cbfd-452b-8a4e-0696571a5706",
+      "benchmark": "ama-bench",
+      "mode": "full",
+      "gitSha": "bf9b2643",
+      "runCount": 1,
+      "seeds": [
+        1
+      ],
+      "taskCount": 2496,
+      "publicSafe": true,
+      "sourceResultPath": "ama-bench-v9.3.388-2026-05-15T23-38-04-213Z.json",
+      "sourceResultSha256": "7930b614b3a6085c007315c0a6470130c8d4ed956220a79b61ea822f621c609b",
+      "sourceResultSizeBytes": 52351243
+    }
+  ]
+}
