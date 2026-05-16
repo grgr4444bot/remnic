@@ -6,27 +6,6 @@ import path from 'node:path';
 const DEFAULT_EVIDENCE_DIR = 'docs/benchmarks/results/public-matrix-codex-bf9b2643-20260515T052919Z';
 const evidenceDir = process.argv[2] ?? DEFAULT_EVIDENCE_DIR;
 
-const MEMORY_ARENA_TARGETS = {
-  allTaskAverageSuccessRate: 0.19,
-  bundledWebShopping: {
-    successRate: 0.12,
-    progressScore: 0.79,
-  },
-  groupTravelPlanning: {
-    progressScore: 0.06,
-    softProgressScore: 0.62,
-  },
-  progressiveWebSearch: {
-    successRate: 0.28,
-    progressScore: 0.32,
-  },
-  formalReasoning: {
-    mathSuccessRate: 0.60,
-    physSuccessRate: 0.70,
-    processScore: 0.65,
-  },
-};
-
 function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
@@ -213,7 +192,7 @@ function verdict(actual, target, metric) {
   };
 }
 
-function compareMemoryArenaSota(result) {
+function compareMemoryArenaSota(result, targets) {
   const derived = deriveMemoryArenaOfficialMetrics(result);
   const bundled = byDomain(derived, 'bundled_shopping');
   const travel = byDomain(derived, 'group_travel_planner');
@@ -223,16 +202,16 @@ function compareMemoryArenaSota(result) {
   const formalProgressScore = (math.progressScore + phys.progressScore) / 2;
 
   const checks = [
-    verdict(derived.official.successRate, MEMORY_ARENA_TARGETS.allTaskAverageSuccessRate, 'all_task_average_success_rate'),
-    verdict(bundled.successRate, MEMORY_ARENA_TARGETS.bundledWebShopping.successRate, 'bundled_web_shopping_success_rate'),
-    verdict(bundled.progressScore, MEMORY_ARENA_TARGETS.bundledWebShopping.progressScore, 'bundled_web_shopping_progress_score'),
-    verdict(travel.progressScore, MEMORY_ARENA_TARGETS.groupTravelPlanning.progressScore, 'group_travel_planning_progress_score'),
-    verdict(travel.softProgressScore ?? 0, MEMORY_ARENA_TARGETS.groupTravelPlanning.softProgressScore, 'group_travel_planning_soft_progress_score'),
-    verdict(search.successRate, MEMORY_ARENA_TARGETS.progressiveWebSearch.successRate, 'progressive_search_success_rate'),
-    verdict(search.progressScore, MEMORY_ARENA_TARGETS.progressiveWebSearch.progressScore, 'progressive_search_progress_score'),
-    verdict(math.successRate, MEMORY_ARENA_TARGETS.formalReasoning.mathSuccessRate, 'formal_reasoning_math_success_rate'),
-    verdict(phys.successRate, MEMORY_ARENA_TARGETS.formalReasoning.physSuccessRate, 'formal_reasoning_phys_success_rate'),
-    verdict(formalProgressScore, MEMORY_ARENA_TARGETS.formalReasoning.processScore, 'formal_reasoning_process_score'),
+    verdict(derived.official.successRate, targets.allTaskAverageSuccessRate, 'all_task_average_success_rate'),
+    verdict(bundled.successRate, targets.bundledWebShopping?.successRate, 'bundled_web_shopping_success_rate'),
+    verdict(bundled.progressScore, targets.bundledWebShopping?.progressScore, 'bundled_web_shopping_progress_score'),
+    verdict(travel.progressScore, targets.groupTravelPlanning?.progressScore, 'group_travel_planning_progress_score'),
+    verdict(travel.softProgressScore ?? 0, targets.groupTravelPlanning?.softProgressScore, 'group_travel_planning_soft_progress_score'),
+    verdict(search.successRate, targets.progressiveWebSearch?.successRate, 'progressive_search_success_rate'),
+    verdict(search.progressScore, targets.progressiveWebSearch?.progressScore, 'progressive_search_progress_score'),
+    verdict(math.successRate, targets.formalReasoning?.mathSuccessRate, 'formal_reasoning_math_success_rate'),
+    verdict(phys.successRate, targets.formalReasoning?.physSuccessRate, 'formal_reasoning_phys_success_rate'),
+    verdict(formalProgressScore, targets.formalReasoning?.processScore, 'formal_reasoning_process_score'),
   ];
 
   return {
@@ -317,12 +296,16 @@ function officialMetricsForComparison(derived) {
 const manifestPath = path.join(evidenceDir, 'MANIFEST.memory-arena.json');
 const comparisonPath = path.join(evidenceDir, 'memory-arena-sota-comparison.json');
 const diagnosticsPath = path.join(evidenceDir, 'memory-arena-diagnostics-summary.json');
+const targetMapPath = path.join(evidenceDir, 'current-target-map.json');
 
 const manifest = readJson(manifestPath);
+const targetMap = readJson(targetMapPath);
 const publicArtifactEntry = manifest.publicArtifacts?.find((entry) => entry.benchmark === 'memory-arena');
 const rawResultEntry = manifest.results?.find((entry) => entry.benchmark === 'memory-arena');
+const targets = targetMap.benchmarks?.['memory-arena']?.targets;
 assert(publicArtifactEntry, 'manifest must include memory-arena public artifact');
 assert(rawResultEntry, 'manifest must include memory-arena raw result entry');
+assert(targets, 'target map missing memory-arena targets');
 
 const artifactPath = path.join(evidenceDir, publicArtifactEntry.path);
 const artifact = readJson(artifactPath);
@@ -369,7 +352,7 @@ if (typeof derived.official.softProgressScore === 'number') {
   assertClose(artifact.metrics?.memory_arena_official_soft_progress_score, derived.official.softProgressScore, 'official soft progress score');
 }
 
-const recomputedComparison = compareMemoryArenaSota(pseudoRawResult);
+const recomputedComparison = compareMemoryArenaSota(pseudoRawResult, targets);
 compareJson(comparison, recomputedComparison, 'SOTA comparison');
 assert(comparison.sotaAllCheckedMetrics === true, 'memory-arena comparison must be SOTA on all checked metrics');
 assert(comparison.atOrAboveAllCheckedMetrics === true, 'memory-arena comparison must be at or above all checked metrics');
