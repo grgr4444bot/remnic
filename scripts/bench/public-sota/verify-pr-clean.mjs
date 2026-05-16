@@ -2,7 +2,7 @@
 import { execFileSync } from 'node:child_process';
 
 const args = process.argv.slice(2);
-let repo = 'joshuaswarren/remnic';
+let repo = process.env.REPO;
 let prNumber;
 let requireMerged = false;
 let waitSeconds = 0;
@@ -25,6 +25,9 @@ for (let index = 0; index < args.length; index += 1) {
 if (!Number.isInteger(prNumber) || prNumber <= 0) {
   console.error('Usage: verify-pr-clean.mjs --pr <number> [--repo owner/name] [--require-merged] [--wait-seconds n]');
   process.exit(2);
+}
+if (!repo) {
+  throw new Error('Set --repo owner/name or REPO=owner/name');
 }
 if (!Number.isFinite(waitSeconds) || waitSeconds < 0) {
   throw new Error(`Invalid --wait-seconds value: ${waitSeconds}`);

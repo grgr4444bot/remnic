@@ -4,10 +4,12 @@ set -euo pipefail
 export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:${PATH}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT_DEFAULT="$(git -C "${SCRIPT_DIR}/../../.." rev-parse --show-toplevel 2>/dev/null || (cd "${SCRIPT_DIR}/../../.." && pwd))"
+REPO_ROOT="${REPO_ROOT:-${REPO_ROOT_DEFAULT}}"
 
 ACTIVE_SESSION="${ACTIVE_SESSION:-public-matrix-codex-bf9b2643-20260515T052919Z}"
 WATCHER_SESSION="${WATCHER_SESSION:-remnic-memoryarena-publish-watcher-bf9b2643}"
-REPO="${REPO:-joshuaswarren/remnic}"
+REPO="${REPO:-$(git -C "${REPO_ROOT}" remote get-url origin | sed -E 's#.*github.com[:/]([^/]+/[^/.]+)(\.git)?$#\1#')}"
 MEMORYARENA_BRANCH="${MEMORYARENA_BRANCH:-codex/publish-memoryarena-sota-bf9b264}"
 BASE_BRANCH="${BASE_BRANCH:-bench/public-matrix-codex}"
 BENCHMARK="${1:-amemgym}"

@@ -15,7 +15,8 @@ REPO_ROOT="${REPO_ROOT:-${REPO_ROOT_DEFAULT}}"
 DATASET_DIR="${DATASET_DIR:-${REPO_ROOT}/evals/datasets/memory-arena}"
 OUT_ROOT="${OUT_ROOT:-${TMP_ROOT}/remnic-memoryarena-evidence}"
 OUT_DIR="${OUT_DIR:-${OUT_ROOT}/${RUN_ID}}"
-TARGET_MAP="${TARGET_MAP:-${OUT_DIR}/current-target-map.json}"
+PACKAGED_TARGET_MAP="${OUT_DIR}/current-target-map.json"
+TARGET_MAP="${TARGET_MAP:-${PACKAGED_TARGET_MAP}}"
 SESSION="${SESSION:-${RUN_ID}}"
 
 COMPARE_SCRIPT="${SCRIPT_DIR}/compare-memoryarena-sota.mjs"
@@ -44,8 +45,8 @@ fi
 mkdir -p "${OUT_DIR}"
 
 node "${PUBLIC_SOTA_DIR}/build-target-map.mjs" "${TARGET_MAP}"
-if ! cmp -s "${TARGET_MAP}" "${OUT_DIR}/current-target-map.json" 2>/dev/null; then
-  cp "${TARGET_MAP}" "${OUT_DIR}/current-target-map.json"
+if [[ "${TARGET_MAP}" != "${PACKAGED_TARGET_MAP}" ]]; then
+  cp "${TARGET_MAP}" "${PACKAGED_TARGET_MAP}"
 fi
 
 comparison_path="${OUT_DIR}/memory-arena-sota-comparison.raw.json"

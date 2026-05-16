@@ -6,7 +6,19 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const repo = process.env.REPO ?? 'joshuaswarren/remnic';
+const repoRoot = path.resolve(scriptDir, '../../..');
+const repo = process.env.REPO ?? (() => {
+  try {
+    const remote = execFileSync('git', ['-C', repoRoot, 'remote', 'get-url', 'origin'], { encoding: 'utf8' }).trim();
+    const match = remote.match(/github\.com[:/]([^/]+\/[^/.]+)(?:\.git)?$/);
+    if (match) {
+      return match[1];
+    }
+  } catch {
+    // Fall through to requiring REPO below.
+  }
+  throw new Error('Set REPO=owner/name or configure origin to a GitHub repository');
+})();
 const branchRef = process.env.BRANCH_REF ?? 'origin/bench/public-matrix-codex';
 const auditWorktree = process.env.AUDIT_WORKTREE ?? path.join(os.tmpdir(), 'remnic-public-sota-completion-audit');
 const targetMapPath = process.env.TARGET_MAP ?? path.join(scriptDir, 'current-target-map.json');

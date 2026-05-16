@@ -12,7 +12,7 @@ BRANCH="${BRANCH:-codex/publish-memoryarena-sota-bf9b264}"
 BASE_BRANCH="${BASE_BRANCH:-bench/public-matrix-codex}"
 TITLE="${TITLE:-Publish MemoryArena SOTA evidence}"
 BODY_FILE="${BODY_FILE:-${TMP_ROOT}/remnic-memoryarena-pr-body.md}"
-REPO="${REPO:-joshuaswarren/remnic}"
+REPO="${REPO:-$(git -C "${SCRIPT_DIR}/../../../.." remote get-url origin | sed -E 's#.*github.com[:/]([^/]+/[^/.]+)(\.git)?$#\1#')}"
 
 if [[ ! -d "${WORKTREE}/.git" && ! -f "${WORKTREE}/.git" ]]; then
   echo "waiting: MemoryArena PR worktree does not exist at ${WORKTREE}" >&2

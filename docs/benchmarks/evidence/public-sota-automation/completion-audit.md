@@ -135,7 +135,7 @@ Prompt-to-artifact checklist:
     now explicitly prepend `/opt/homebrew/bin:/opt/homebrew/sbin` to `PATH`, so
     unattended tmux runs can find `node`, `npx`, `gh`, and `gitleaks`.
   - `gh auth status --hostname github.com` confirmed an active authenticated
-    GitHub session for `joshuaswarren`.
+    GitHub session.
 - Queue and command notes: `scripts/bench/public-sota/next-run-queue.md`
 - Generic non-MemoryArena completion helper:
   `scripts/bench/public-sota/complete-public-benchmark-if-ready.sh`

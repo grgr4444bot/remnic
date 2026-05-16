@@ -38,7 +38,8 @@ fi
 
 RESULTS_DIR="${RESULTS_ROOT}/${run_id}"
 OUT_DIR="${OUT_ROOT}/${run_id}"
-TARGET_MAP="${TARGET_MAP:-${OUT_DIR}/current-target-map.json}"
+PACKAGED_TARGET_MAP="${OUT_DIR}/current-target-map.json"
+TARGET_MAP="${TARGET_MAP:-${PACKAGED_TARGET_MAP}}"
 DATASET_DIR="${REPO_ROOT}/evals/datasets/${benchmark}"
 SESSION="${SESSION:-${run_id}}"
 COMPARE_SCRIPT="${SCRIPT_DIR}/compare-public-benchmark-sota.mjs"
@@ -63,8 +64,8 @@ fi
 
 mkdir -p "${OUT_DIR}"
 node "${SCRIPT_DIR}/build-target-map.mjs" "${TARGET_MAP}"
-if ! cmp -s "${TARGET_MAP}" "${OUT_DIR}/current-target-map.json" 2>/dev/null; then
-  cp "${TARGET_MAP}" "${OUT_DIR}/current-target-map.json"
+if [[ "${TARGET_MAP}" != "${PACKAGED_TARGET_MAP}" ]]; then
+  cp "${TARGET_MAP}" "${PACKAGED_TARGET_MAP}"
 fi
 
 comparison_path="${OUT_DIR}/${benchmark}-sota-comparison.raw.json"

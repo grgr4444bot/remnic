@@ -20,7 +20,7 @@ case "${PREVIOUS}:${NEXT}" in
     ;;
 esac
 
-REPO="${REPO:-joshuaswarren/remnic}"
+REPO="${REPO:-$(git -C "${SCRIPT_DIR}/../../.." remote get-url origin | sed -E 's#.*github.com[:/]([^/]+/[^/.]+)(\.git)?$#\1#')}"
 BASE_BRANCH="${BASE_BRANCH:-bench/public-matrix-codex}"
 PREVIOUS_BRANCH="${PREVIOUS_BRANCH:-codex/publish-${PREVIOUS}-sota-bf9b264}"
 PREVIOUS_WATCHER="${PREVIOUS_WATCHER:-remnic-${PREVIOUS}-publish-watcher}"
