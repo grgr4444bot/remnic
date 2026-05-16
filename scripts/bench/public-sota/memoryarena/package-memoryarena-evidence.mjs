@@ -112,13 +112,6 @@ function aggregateMeans(result) {
   return out;
 }
 
-function compareStrings(a, b) {
-  if (a === b) {
-    return 0;
-  }
-  return a < b ? -1 : 1;
-}
-
 function gitOutput(repoRoot, args) {
   try {
     return execFileSync('git', args, {

@@ -25,6 +25,7 @@ required=(
   "${SOURCE_EVIDENCE_DIR}/MANIFEST.memory-arena.json"
   "${SOURCE_EVIDENCE_DIR}/memory-arena-diagnostics-summary.json"
   "${SOURCE_EVIDENCE_DIR}/memory-arena-sota-comparison.json"
+  "${SOURCE_EVIDENCE_DIR}/current-target-map.json"
 )
 
 for file in "${required[@]}"; do
@@ -53,7 +54,8 @@ if [[ ! -f "${artifact_path}" ]]; then
   exit 0
 fi
 
-node "${SCRIPT_DIR}/verify-memoryarena-sota-evidence.mjs" "${SOURCE_EVIDENCE_DIR}" "${PUBLIC_SOTA_DIR}/current-target-map.json"
+PACKAGED_TARGET_MAP="${SOURCE_EVIDENCE_DIR}/current-target-map.json"
+node "${SCRIPT_DIR}/verify-memoryarena-sota-evidence.mjs" "${SOURCE_EVIDENCE_DIR}" "${PACKAGED_TARGET_MAP}"
 
 git -C "${REPO_ROOT}" worktree prune
 
@@ -74,6 +76,7 @@ mkdir -p "${WORKTREE}/${RESULTS_REL}" "${WORKTREE}/$(dirname "${EVIDENCE_DOC_REL
 cp "${SOURCE_EVIDENCE_DIR}/MANIFEST.memory-arena.json" "${WORKTREE}/${RESULTS_REL}/"
 cp "${SOURCE_EVIDENCE_DIR}/memory-arena-diagnostics-summary.json" "${WORKTREE}/${RESULTS_REL}/"
 cp "${SOURCE_EVIDENCE_DIR}/memory-arena-sota-comparison.json" "${WORKTREE}/${RESULTS_REL}/"
+cp "${PACKAGED_TARGET_MAP}" "${WORKTREE}/${RESULTS_REL}/"
 cp "${artifact_path}" "${WORKTREE}/${RESULTS_REL}/"
 cp "${VERIFY_TEMPLATE}" "${WORKTREE}/${VERIFY_SCRIPT_REL}"
 node "${DOC_GENERATOR}" \

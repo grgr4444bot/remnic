@@ -198,9 +198,22 @@ function runTargetFreshnessCheck(row, item) {
         mismatches.push({ metric: check.metric, actualTarget: check.target, expectedTarget });
       }
     }
-    for (const metric of Object.keys(expected)) {
-      if (!(comparison.checks ?? []).some((check) => check.metric === metric)) {
-        mismatches.push({ metric, issue: 'missing metric in comparison' });
+    const comparisonMetrics = new Set((comparison.checks ?? []).map((check) => check.metric));
+    if (item.benchmark === 'memoryagentbench') {
+      const hasAggregate = comparisonMetrics.has('memoryagentbench_overall_score');
+      const hasTable3 = comparisonMetrics.has('memoryagentbench_table3_overall_score')
+        && comparisonMetrics.has('memoryagentbench_table3_strongest_memory_agent_overall_score');
+      if (!hasAggregate && !hasTable3) {
+        mismatches.push({
+          metric: 'memoryagentbench',
+          issue: 'missing aggregate or Table 3 metric set in comparison',
+        });
+      }
+    } else {
+      for (const metric of Object.keys(expected)) {
+        if (!comparisonMetrics.has(metric)) {
+          mismatches.push({ metric, issue: 'missing metric in comparison' });
+        }
       }
     }
     return {

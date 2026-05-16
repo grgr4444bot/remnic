@@ -15,7 +15,7 @@ REPO_ROOT="${REPO_ROOT:-${REPO_ROOT_DEFAULT}}"
 DATASET_DIR="${DATASET_DIR:-${REPO_ROOT}/evals/datasets/memory-arena}"
 OUT_ROOT="${OUT_ROOT:-${TMP_ROOT}/remnic-memoryarena-evidence}"
 OUT_DIR="${OUT_DIR:-${OUT_ROOT}/${RUN_ID}}"
-TARGET_MAP="${TARGET_MAP:-${OUT_DIR}/memory-arena-target-map.json}"
+TARGET_MAP="${TARGET_MAP:-${OUT_DIR}/current-target-map.json}"
 SESSION="${SESSION:-${RUN_ID}}"
 
 COMPARE_SCRIPT="${SCRIPT_DIR}/compare-memoryarena-sota.mjs"
