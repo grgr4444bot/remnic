@@ -91,6 +91,24 @@ function cleanedScores(scores) {
   );
 }
 
+function assertNoInvalidRawScores(result) {
+  for (const [metric, aggregate] of Object.entries(result.results?.aggregates ?? {})) {
+    const value = aggregate?.mean;
+    assert(
+      typeof value !== 'number' || (Number.isFinite(value) && value >= 0),
+      `raw aggregate ${metric}.mean must be non-negative finite`,
+    );
+  }
+  for (const task of result.results?.tasks ?? []) {
+    for (const [metric, score] of Object.entries(task.scores ?? {})) {
+      assert(
+        typeof score !== 'number' || (Number.isFinite(score) && score >= 0),
+        `raw task ${task.taskId ?? '<unknown>'} score ${metric} must be non-negative finite`,
+      );
+    }
+  }
+}
+
 function publicTaskCategory(benchmark, task) {
   switch (benchmark) {
     case 'amemgym':
@@ -457,6 +475,7 @@ async function main() {
   assert(result.config.systemProvider?.provider === 'codex-cli', 'system provider must be codex-cli');
   assert(result.config.systemProvider?.model === 'gpt-5.5', 'system model must be gpt-5.5');
   assert(result.config.systemProvider?.reasoningEffort === 'xhigh', 'system reasoning must be xhigh');
+  assertNoInvalidRawScores(result);
 
   const comparison = comparePublicBenchmarkSota(result, targetMap);
   const dataset = await scanDataset(args['dataset-dir'], repoRoot, benchmark);
