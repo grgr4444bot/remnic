@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { comparePublicBenchmarkSota } from './compare-public-benchmark-sota.mjs';
+import { assertRealRuntime } from './runtime-profile-proof.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_TARGET_MAP = path.join(scriptDir, 'current-target-map.json');
@@ -471,7 +472,7 @@ async function main() {
   const rel = path.relative(resultsDir, resultPath);
   assert(rel && !rel.startsWith('..') && !path.isAbsolute(rel), 'raw result must be inside --results-dir');
   assert(result.meta.mode === 'full', 'result must be full mode');
-  assert(result.config.runtimeProfile === 'real', 'result must use real runtime');
+  assertRealRuntime(result, baseManifest, 'raw result');
   assert(result.config.systemProvider?.provider === 'codex-cli', 'system provider must be codex-cli');
   assert(result.config.systemProvider?.model === 'gpt-5.5', 'system model must be gpt-5.5');
   assert(result.config.systemProvider?.reasoningEffort === 'xhigh', 'system reasoning must be xhigh');

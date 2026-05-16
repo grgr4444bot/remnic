@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 import { compareMemoryArenaSota } from './compare-memoryarena-sota.mjs';
 import { deriveMemoryArenaOfficialMetrics } from './derive-memoryarena-official-metrics.mjs';
+import { assertRealRuntime } from '../runtime-profile-proof.mjs';
 
 const publicSotaDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const DEFAULT_TARGET_MAP = path.join(publicSotaDir, 'current-target-map.json');
@@ -458,9 +459,10 @@ async function main() {
   );
 
   const result = readJson(resultPath);
+  const baseManifest = fs.existsSync(baseManifestPath) ? readJson(baseManifestPath) : {};
   assert(result.meta?.benchmark === 'memory-arena', 'raw result must be memory-arena');
   assert(result.meta?.mode === 'full', 'raw result must be full mode');
-  assert(result.config?.runtimeProfile === 'real', 'raw result must use real runtime profile');
+  assertRealRuntime(result, baseManifest, 'raw result');
   assert(result.config?.systemProvider?.provider === 'codex-cli', 'system provider must be codex-cli');
   assert(result.config?.systemProvider?.model === 'gpt-5.5', 'system model must be gpt-5.5');
   assert(result.config?.systemProvider?.reasoningEffort === 'xhigh', 'system reasoning must be xhigh');
@@ -484,7 +486,6 @@ async function main() {
   const artifactStats = fs.statSync(artifactPath);
 
   const rawEntry = resultManifestEntry(resultPath, resultsDir, result);
-  const baseManifest = fs.existsSync(baseManifestPath) ? readJson(baseManifestPath) : {};
   const generatedResultPrefix = `docs/benchmarks/results/${path.basename(resultsDir)}/`;
   const git = gitInfo(repoRoot, result, [generatedResultPrefix]);
   const publicEntry = {
