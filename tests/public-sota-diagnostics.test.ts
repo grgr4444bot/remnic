@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
@@ -22,6 +23,23 @@ async function writeJson(file: string, value: unknown): Promise<void> {
   await writeFile(file, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
+function sha256String(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableStringify(entry)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify((value as Record<string, unknown>)[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "undefined";
+}
+
 async function createRunDirs(prefix: string): Promise<{
   root: string;
   datasetDir: string;
@@ -34,10 +52,38 @@ async function createRunDirs(prefix: string): Promise<{
   const resultsDir = path.join(root, RUN_ID);
   const diagnosticsDir = path.join(resultsDir, "codex-cli-diagnostics");
   const outDir = path.join(root, "out");
+  const datasetFixture = "{}\n";
   await mkdir(datasetDir, { recursive: true });
   await mkdir(diagnosticsDir, { recursive: true });
-  await writeFile(path.join(datasetDir, "fixture.json"), "{}\n", "utf8");
+  await writeFile(path.join(datasetDir, "fixture.json"), datasetFixture, "utf8");
   return { root, datasetDir, diagnosticsDir, outDir, resultsDir };
+}
+
+async function writeBaseManifest(resultsDir: string, benchmark: string, overrides: Record<string, unknown> = {}): Promise<void> {
+  const datasetFile = {
+    path: "fixture.json",
+    kind: "file",
+    sizeBytes: Buffer.byteLength("{}\n", "utf8"),
+    sha256: sha256String("{}\n"),
+  };
+  const dataset = {
+    benchmark,
+    status: "hashed",
+    fileCount: 1,
+    totalBytes: datasetFile.sizeBytes,
+    sha256: sha256String(stableStringify([datasetFile])),
+    files: [datasetFile],
+    ...overrides,
+  };
+  await writeJson(path.join(resultsDir, "MANIFEST.json"), {
+    schemaVersion: 1,
+    run: {
+      id: RUN_ID,
+      selectedBenchmarks: [benchmark],
+      runtimeProfiles: ["real"],
+    },
+    datasets: [dataset],
+  });
 }
 
 async function writeDiagnostics(diagnosticsDir: string): Promise<void> {
@@ -80,9 +126,107 @@ async function assertRejectsInvalidDiagnostics(
   );
 }
 
+async function assertRejectsDatasetDrift(
+  script: string,
+  args: string[],
+  benchmark: string,
+): Promise<void> {
+  await assert.rejects(
+    execFileAsync(process.execPath, [script, ...args], {
+      cwd: process.cwd(),
+      maxBuffer: 1024 * 1024,
+    }),
+    (error: unknown) => {
+      assert(error && typeof error === "object");
+      const output = `${(error as { stdout?: string }).stdout ?? ""}\n${(error as { stderr?: string }).stderr ?? ""}`;
+      assert.match(output, new RegExp(`dataset hash for ${benchmark} does not match the run manifest`));
+      return true;
+    },
+  );
+}
+
+async function writeAmemGymResult(resultPath: string): Promise<void> {
+  await writeJson(resultPath, {
+    meta: {
+      id: "amemgym-test-result",
+      benchmark: "amemgym",
+      mode: "full",
+      gitSha: "0123456789abcdef0123456789abcdef01234567",
+      remnicVersion: "test",
+      runCount: 1,
+      seeds: [1],
+      timestamp: FINISHED_AT,
+    },
+    config: {
+      runtimeProfile: "real",
+      systemProvider: CODEX_PROVIDER,
+      judgeProvider: CODEX_PROVIDER,
+      internalProvider: CODEX_PROVIDER,
+      remnicConfig: {},
+    },
+    environment: {
+      nodeVersion: process.version,
+      os: process.platform,
+      hardware: process.arch,
+    },
+    results: {
+      aggregates: {
+        normalized_memory_score: { mean: 1 },
+      },
+      tasks: [
+        {
+          taskId: "profile-q1",
+          details: { profileId: "profile", questionIndex: 1 },
+          scores: { normalized_memory_score: 1 },
+        },
+      ],
+    },
+  });
+}
+
+async function writeMemoryArenaResult(resultPath: string): Promise<void> {
+  await writeJson(resultPath, {
+    meta: {
+      id: "memory-arena-test-result",
+      benchmark: "memory-arena",
+      mode: "full",
+      gitSha: "0123456789abcdef0123456789abcdef01234567",
+      remnicVersion: "test",
+      runCount: 1,
+      seeds: [1],
+      timestamp: FINISHED_AT,
+    },
+    config: {
+      runtimeProfile: "real",
+      systemProvider: CODEX_PROVIDER,
+      judgeProvider: CODEX_PROVIDER,
+      internalProvider: CODEX_PROVIDER,
+      remnicConfig: {},
+    },
+    environment: {
+      nodeVersion: process.version,
+      os: process.platform,
+      hardware: process.arch,
+    },
+    results: {
+      aggregates: {
+        process_score: { mean: 1 },
+      },
+      tasks: [
+        memoryArenaTask("bundled_shopping", 1),
+        memoryArenaTask("group_travel_planner", 2, { plan_field_recall: 1 }),
+        memoryArenaTask("progressive_search", 3),
+        memoryArenaTask("formal_reasoning_math", 4),
+        memoryArenaTask("formal_reasoning_phys", 5),
+      ],
+    },
+  });
+}
+
 test("generic public SOTA packager rejects diagnostics with invalid timestamps", async () => {
   const dirs = await createRunDirs("remnic-public-sota-generic-");
   try {
+    await writeBaseManifest(dirs.resultsDir, "amemgym");
     await writeDiagnostics(dirs.diagnosticsDir);
     await writeFile(
       path.join(dirs.resultsDir, "status.tsv"),
@@ -90,42 +234,7 @@ test("generic public SOTA packager rejects diagnostics with invalid timestamps",
       "utf8",
     );
     const resultPath = path.join(dirs.resultsDir, "amemgym-result.json");
-    await writeJson(resultPath, {
-      meta: {
-        id: "amemgym-test-result",
-        benchmark: "amemgym",
-        mode: "full",
-        gitSha: "0123456789abcdef0123456789abcdef01234567",
-        remnicVersion: "test",
-        runCount: 1,
-        seeds: [1],
-        timestamp: FINISHED_AT,
-      },
-      config: {
-        runtimeProfile: "real",
-        systemProvider: CODEX_PROVIDER,
-        judgeProvider: CODEX_PROVIDER,
-        internalProvider: CODEX_PROVIDER,
-        remnicConfig: {},
-      },
-      environment: {
-        nodeVersion: process.version,
-        os: process.platform,
-        hardware: process.arch,
-      },
-      results: {
-        aggregates: {
-          normalized_memory_score: { mean: 1 },
-        },
-        tasks: [
-          {
-            taskId: "profile-q1",
-            details: { profileId: "profile", questionIndex: 1 },
-            scores: { normalized_memory_score: 1 },
-          },
-        ],
-      },
-    });
+    await writeAmemGymResult(resultPath);
 
     await assertRejectsInvalidDiagnostics(
       path.join("scripts", "bench", "public-sota", "package-public-benchmark-evidence.mjs"),
@@ -145,6 +254,7 @@ test("generic public SOTA packager rejects diagnostics with invalid timestamps",
 test("MemoryArena public SOTA packager rejects diagnostics with invalid timestamps", async () => {
   const dirs = await createRunDirs("remnic-public-sota-memoryarena-");
   try {
+    await writeBaseManifest(dirs.resultsDir, "memory-arena");
     await writeDiagnostics(dirs.diagnosticsDir);
     await writeFile(
       path.join(dirs.resultsDir, "status.tsv"),
@@ -152,42 +262,7 @@ test("MemoryArena public SOTA packager rejects diagnostics with invalid timestam
       "utf8",
     );
     const resultPath = path.join(dirs.resultsDir, "memory-arena-result.json");
-    await writeJson(resultPath, {
-      meta: {
-        id: "memory-arena-test-result",
-        benchmark: "memory-arena",
-        mode: "full",
-        gitSha: "0123456789abcdef0123456789abcdef01234567",
-        remnicVersion: "test",
-        runCount: 1,
-        seeds: [1],
-        timestamp: FINISHED_AT,
-      },
-      config: {
-        runtimeProfile: "real",
-        systemProvider: CODEX_PROVIDER,
-        judgeProvider: CODEX_PROVIDER,
-        internalProvider: CODEX_PROVIDER,
-        remnicConfig: {},
-      },
-      environment: {
-        nodeVersion: process.version,
-        os: process.platform,
-        hardware: process.arch,
-      },
-      results: {
-        aggregates: {
-          process_score: { mean: 1 },
-        },
-        tasks: [
-          memoryArenaTask("bundled_shopping", 1),
-          memoryArenaTask("group_travel_planner", 2, { plan_field_recall: 1 }),
-          memoryArenaTask("progressive_search", 3),
-          memoryArenaTask("formal_reasoning_math", 4),
-          memoryArenaTask("formal_reasoning_phys", 5),
-        ],
-      },
-    });
+    await writeMemoryArenaResult(resultPath);
 
     await assertRejectsInvalidDiagnostics(
       path.join("scripts", "bench", "public-sota", "memoryarena", "package-memoryarena-evidence.mjs"),
@@ -198,6 +273,52 @@ test("MemoryArena public SOTA packager rejects diagnostics with invalid timestam
         "--repo-root", process.cwd(),
         "--out-dir", dirs.outDir,
       ],
+    );
+  } finally {
+    await rm(dirs.root, { recursive: true, force: true });
+  }
+});
+
+test("generic public SOTA packager rejects dataset drift from the run manifest", async () => {
+  const dirs = await createRunDirs("remnic-public-sota-generic-dataset-");
+  try {
+    await writeBaseManifest(dirs.resultsDir, "amemgym", { sha256: "different-dataset-hash" });
+    const resultPath = path.join(dirs.resultsDir, "amemgym-result.json");
+    await writeAmemGymResult(resultPath);
+
+    await assertRejectsDatasetDrift(
+      path.join("scripts", "bench", "public-sota", "package-public-benchmark-evidence.mjs"),
+      [
+        "--result", resultPath,
+        "--results-dir", dirs.resultsDir,
+        "--dataset-dir", dirs.datasetDir,
+        "--repo-root", process.cwd(),
+        "--out-dir", dirs.outDir,
+      ],
+      "amemgym",
+    );
+  } finally {
+    await rm(dirs.root, { recursive: true, force: true });
+  }
+});
+
+test("MemoryArena public SOTA packager rejects dataset drift from the run manifest", async () => {
+  const dirs = await createRunDirs("remnic-public-sota-memoryarena-dataset-");
+  try {
+    await writeBaseManifest(dirs.resultsDir, "memory-arena", { sha256: "different-dataset-hash" });
+    const resultPath = path.join(dirs.resultsDir, "memory-arena-result.json");
+    await writeMemoryArenaResult(resultPath);
+
+    await assertRejectsDatasetDrift(
+      path.join("scripts", "bench", "public-sota", "memoryarena", "package-memoryarena-evidence.mjs"),
+      [
+        "--result", resultPath,
+        "--results-dir", dirs.resultsDir,
+        "--dataset-dir", dirs.datasetDir,
+        "--repo-root", process.cwd(),
+        "--out-dir", dirs.outDir,
+      ],
+      "memory-arena",
     );
   } finally {
     await rm(dirs.root, { recursive: true, force: true });

@@ -233,6 +233,17 @@ async function scanDataset(datasetDir, repoRoot, benchmark) {
   };
 }
 
+function assertDatasetMatchesRunManifest(baseManifest, benchmark, dataset) {
+  const manifestDataset = Array.isArray(baseManifest.datasets)
+    ? baseManifest.datasets.find((entry) => entry?.benchmark === benchmark)
+    : undefined;
+  assert(manifestDataset, `run manifest must include dataset entry for ${benchmark}`);
+  assert(manifestDataset.status === 'hashed', `run manifest dataset entry for ${benchmark} must be hashed`);
+  assert(manifestDataset.sha256 === dataset.sha256, `dataset hash for ${benchmark} does not match the run manifest`);
+  assert(manifestDataset.fileCount === dataset.fileCount, `dataset file count for ${benchmark} does not match the run manifest`);
+  assert(manifestDataset.totalBytes === dataset.totalBytes, `dataset byte count for ${benchmark} does not match the run manifest`);
+}
+
 function scrubPath(repoRoot, value) {
   if (typeof value !== 'string') {
     return value;
@@ -508,6 +519,7 @@ async function main() {
 
   const comparison = comparePublicBenchmarkSota(result, targetMap);
   const dataset = await scanDataset(args['dataset-dir'], repoRoot, benchmark);
+  assertDatasetMatchesRunManifest(baseManifest, benchmark, dataset);
   const generatedAt = new Date().toISOString();
   const times = statusTimes(resultsDir, benchmark, result.meta.timestamp);
   const artifact = buildArtifact(result, dataset, comparison, times.startedAt);

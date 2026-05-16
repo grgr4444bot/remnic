@@ -243,6 +243,17 @@ async function scanDataset(datasetDir, repoRoot) {
   };
 }
 
+function assertDatasetMatchesRunManifest(baseManifest, dataset) {
+  const manifestDataset = Array.isArray(baseManifest.datasets)
+    ? baseManifest.datasets.find((entry) => entry?.benchmark === 'memory-arena')
+    : undefined;
+  assert(manifestDataset, 'run manifest must include dataset entry for memory-arena');
+  assert(manifestDataset.status === 'hashed', 'run manifest dataset entry for memory-arena must be hashed');
+  assert(manifestDataset.sha256 === dataset.sha256, 'dataset hash for memory-arena does not match the run manifest');
+  assert(manifestDataset.fileCount === dataset.fileCount, 'dataset file count for memory-arena does not match the run manifest');
+  assert(manifestDataset.totalBytes === dataset.totalBytes, 'dataset byte count for memory-arena does not match the run manifest');
+}
+
 function statusTimes(resultsDir) {
   const statusPath = path.join(resultsDir, 'status.tsv');
   const rows = fs.existsSync(statusPath)
@@ -493,6 +504,7 @@ async function main() {
   const derived = deriveMemoryArenaOfficialMetrics(result);
   const comparison = compareMemoryArenaSota(result, targetMap);
   const dataset = await scanDataset(args['dataset-dir'], repoRoot);
+  assertDatasetMatchesRunManifest(baseManifest, dataset);
   const times = statusTimes(resultsDir);
   const startedAt = times.startedAt ?? result.meta.timestamp;
   const finishedAt = result.meta.timestamp;
