@@ -143,11 +143,12 @@ function refreshTargetMap() {
 
 const currentTargetMap = refreshTargetMap();
 
-function expectedComparisonTargets(benchmark) {
+function expectedComparisonTargets(benchmark, checks = []) {
   const entry = currentTargetMap.benchmarks?.[benchmark];
   if (!entry) {
     return {};
   }
+  const comparisonMetrics = new Set(checks.map((check) => check.metric));
   switch (benchmark) {
     case 'memory-arena':
       return {
@@ -179,6 +180,20 @@ function expectedComparisonTargets(benchmark) {
         personamem_32k_mcq_accuracy: entry.targets['32k'].score,
       };
     case 'memoryagentbench':
+      if (comparisonMetrics.has('memoryagentbench_overall_score')) {
+        return {
+          memoryagentbench_overall_score: entry.targets.overallScore.score,
+        };
+      }
+      if (
+        comparisonMetrics.has('memoryagentbench_table3_overall_score') ||
+        comparisonMetrics.has('memoryagentbench_table3_strongest_memory_agent_overall_score')
+      ) {
+        return {
+          memoryagentbench_table3_overall_score: entry.targets.overallScore.score,
+          memoryagentbench_table3_strongest_memory_agent_overall_score: entry.targets.strongestMemoryAgentOverall.score,
+        };
+      }
       return {
         memoryagentbench_overall_score: entry.targets.overallScore.score,
         memoryagentbench_table3_overall_score: entry.targets.overallScore.score,
@@ -208,7 +223,7 @@ function runTargetFreshnessCheck(row, item) {
       return { ok: false, error: `missing comparison artifact ${path.posix.join(resultDir, `${item.benchmark}-sota-comparison.json`)}` };
     }
     const comparison = readJson(comparisonPath);
-    const expected = expectedComparisonTargets(item.benchmark);
+    const expected = expectedComparisonTargets(item.benchmark, comparison.checks ?? []);
     const mismatches = [];
     for (const check of comparison.checks ?? []) {
       if (check.publishAsSota === false && !Object.prototype.hasOwnProperty.call(expected, check.metric)) {

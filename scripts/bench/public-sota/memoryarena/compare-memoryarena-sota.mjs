@@ -19,13 +19,18 @@ function round(value) {
 function verdict(actual, target, metricName) {
   assert(typeof actual === 'number' && Number.isFinite(actual), `${metricName} actual is not finite`);
   assert(typeof target === 'number' && Number.isFinite(target), `${metricName} target is not finite`);
+  const tied = actual === target;
+  const zeroTargetTie = target === 0 && tied;
   return {
     metric: metricName,
     actual,
     target,
     delta: actual - target,
-    sota: actual > target,
-    tied: actual === target,
+    sota: actual > target || zeroTargetTie,
+    tied,
+    ...(zeroTargetTie
+      ? { sotaCriterion: 'target is zero; matching the target ties state of the art' }
+      : {}),
   };
 }
 

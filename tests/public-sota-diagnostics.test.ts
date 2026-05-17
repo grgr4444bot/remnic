@@ -359,6 +359,19 @@ test("public benchmark publish watcher does not baseline completed successes", a
   assert.match(source, /return 1[\s\S]*return 0/);
 });
 
+test("public SOTA completion audit aligns MemoryAgentBench target freshness with comparison metrics", async () => {
+  const source = await readFile(
+    path.join("scripts", "bench", "public-sota", "audit-public-sota-completion.mjs"),
+    "utf8",
+  );
+
+  assert.match(source, /function expectedComparisonTargets\(benchmark, checks = \[\]\)/);
+  assert.match(source, /const comparisonMetrics = new Set\(checks\.map\(\(check\) => check\.metric\)\)/);
+  assert.match(source, /comparisonMetrics\.has\('memoryagentbench_overall_score'\)/);
+  assert.match(source, /comparisonMetrics\.has\('memoryagentbench_table3_overall_score'\)/);
+  assert.match(source, /expectedComparisonTargets\(item\.benchmark, comparison\.checks \?\? \[\]\)/);
+});
+
 function memoryArenaTask(
   domain: string,
   taskId: number,
