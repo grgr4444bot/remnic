@@ -18,9 +18,13 @@ WORKTREE="${WORKTREE:-${TMP_ROOT}/remnic-memoryarena-sota-pr}"
 RESULTS_REL="docs/benchmarks/results/${RUN_ID}"
 EVIDENCE_DOC_REL="${EVIDENCE_DOC_REL:-docs/benchmarks/evidence/memory-arena-gpt-5.5-sota-2026-05.md}"
 VERIFY_TEMPLATE="${SCRIPT_DIR}/verify-public-memoryarena-sota-evidence.template.mjs"
+VERIFY_CORE_SCRIPT="${SCRIPT_DIR}/verify-memoryarena-sota-evidence.mjs"
+COMPARE_MODULE="${SCRIPT_DIR}/compare-memoryarena-sota.mjs"
+DERIVE_MODULE="${SCRIPT_DIR}/derive-memoryarena-official-metrics.mjs"
 INTEGRITY_MODULE="${PUBLIC_SOTA_DIR}/evidence-integrity.mjs"
 DOC_GENERATOR="${SCRIPT_DIR}/generate-memoryarena-evidence-doc.mjs"
 VERIFY_SCRIPT_REL="scripts/bench/verify-public-memoryarena-sota-evidence.mjs"
+MEMORYARENA_MODULE_DIR_REL="scripts/bench/memoryarena"
 INTEGRITY_MODULE_REL="scripts/bench/evidence-integrity.mjs"
 
 required=(
@@ -79,9 +83,11 @@ fi
   cd "${WORKTREE}"
   find docs/benchmarks/results -mindepth 1 -maxdepth 1 -type d -name 'public-matrix-codex-*' ! -name "${RUN_ID}" -exec rm -rf {} + 2>/dev/null || true
   rm -f "${EVIDENCE_DOC_REL}" "${VERIFY_SCRIPT_REL}" "${INTEGRITY_MODULE_REL}"
+  rm -rf "${MEMORYARENA_MODULE_DIR_REL}"
 )
 
 mkdir -p "${WORKTREE}/${RESULTS_REL}" "${WORKTREE}/$(dirname "${EVIDENCE_DOC_REL}")" "${WORKTREE}/scripts/bench"
+mkdir -p "${WORKTREE}/${MEMORYARENA_MODULE_DIR_REL}"
 
 cp "${SOURCE_EVIDENCE_DIR}/MANIFEST.memory-arena.json" "${WORKTREE}/${RESULTS_REL}/"
 cp "${SOURCE_EVIDENCE_DIR}/memory-arena-diagnostics-summary.json" "${WORKTREE}/${RESULTS_REL}/"
@@ -89,6 +95,9 @@ cp "${SOURCE_EVIDENCE_DIR}/memory-arena-sota-comparison.json" "${WORKTREE}/${RES
 cp "${PACKAGED_TARGET_MAP}" "${WORKTREE}/${RESULTS_REL}/"
 cp "${artifact_path}" "${WORKTREE}/${RESULTS_REL}/"
 cp "${VERIFY_TEMPLATE}" "${WORKTREE}/${VERIFY_SCRIPT_REL}"
+cp "${VERIFY_CORE_SCRIPT}" "${WORKTREE}/${MEMORYARENA_MODULE_DIR_REL}/verify-memoryarena-sota-evidence.mjs"
+cp "${COMPARE_MODULE}" "${WORKTREE}/${MEMORYARENA_MODULE_DIR_REL}/compare-memoryarena-sota.mjs"
+cp "${DERIVE_MODULE}" "${WORKTREE}/${MEMORYARENA_MODULE_DIR_REL}/derive-memoryarena-official-metrics.mjs"
 cp "${INTEGRITY_MODULE}" "${WORKTREE}/${INTEGRITY_MODULE_REL}"
 node "${DOC_GENERATOR}" \
   --evidence-dir "${SOURCE_EVIDENCE_DIR}" \

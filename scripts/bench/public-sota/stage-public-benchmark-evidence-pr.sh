@@ -30,9 +30,13 @@ BASE_BRANCH="${BASE_BRANCH:-bench/public-matrix-codex}"
 BRANCH="${BRANCH:-codex/publish-${benchmark}-sota-bf9b264}"
 WORKTREE="${WORKTREE:-${TMP_ROOT}/remnic-${benchmark}-sota-pr}"
 VERIFY_TEMPLATE="${SCRIPT_DIR}/verify-public-generic-sota-evidence.template.mjs"
+VERIFY_CORE_SCRIPT="${SCRIPT_DIR}/verify-public-benchmark-sota-evidence.mjs"
+COMPARE_MODULE="${SCRIPT_DIR}/compare-public-benchmark-sota.mjs"
 INTEGRITY_MODULE="${SCRIPT_DIR}/evidence-integrity.mjs"
 DOC_GENERATOR="${SCRIPT_DIR}/generate-public-benchmark-evidence-doc.mjs"
 VERIFY_SCRIPT_REL="scripts/bench/verify-public-${benchmark}-sota-evidence.mjs"
+VERIFY_CORE_SCRIPT_REL="scripts/bench/verify-public-benchmark-sota-evidence.mjs"
+COMPARE_MODULE_REL="scripts/bench/compare-public-benchmark-sota.mjs"
 INTEGRITY_MODULE_REL="scripts/bench/evidence-integrity.mjs"
 
 if [[ -z "${run_id}" ]]; then
@@ -107,7 +111,7 @@ fi
 (
   cd "${WORKTREE}"
   find docs/benchmarks/results -mindepth 1 -maxdepth 1 -type d -name "public-${benchmark}-codex-*" ! -name "${run_id}" -exec rm -rf {} + 2>/dev/null || true
-  rm -f "${EVIDENCE_DOC_REL}" "${VERIFY_SCRIPT_REL}" "${INTEGRITY_MODULE_REL}"
+  rm -f "${EVIDENCE_DOC_REL}" "${VERIFY_SCRIPT_REL}" "${VERIFY_CORE_SCRIPT_REL}" "${COMPARE_MODULE_REL}" "${INTEGRITY_MODULE_REL}"
 )
 
 mkdir -p "${WORKTREE}/${RESULTS_REL}" "${WORKTREE}/$(dirname "${EVIDENCE_DOC_REL}")" "${WORKTREE}/scripts/bench"
@@ -118,6 +122,8 @@ cp "${SOURCE_EVIDENCE_DIR}/${benchmark}-sota-comparison.json" "${WORKTREE}/${RES
 cp "${PACKAGED_TARGET_MAP}" "${WORKTREE}/${RESULTS_REL}/"
 cp "${artifact_path}" "${WORKTREE}/${RESULTS_REL}/"
 cp "${VERIFY_TEMPLATE}" "${WORKTREE}/${VERIFY_SCRIPT_REL}"
+cp "${VERIFY_CORE_SCRIPT}" "${WORKTREE}/${VERIFY_CORE_SCRIPT_REL}"
+cp "${COMPARE_MODULE}" "${WORKTREE}/${COMPARE_MODULE_REL}"
 cp "${INTEGRITY_MODULE}" "${WORKTREE}/${INTEGRITY_MODULE_REL}"
 node "${DOC_GENERATOR}" \
   --evidence-dir "${SOURCE_EVIDENCE_DIR}" \

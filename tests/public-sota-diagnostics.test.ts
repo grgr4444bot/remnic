@@ -1005,6 +1005,17 @@ test("MemoryArena transition helper retries active-session launch collisions", a
   assert.match(source, /exit 0[\s\S]*if \[\[ "\$\{launch_status\}" -ne 0 \]\]; then/);
 });
 
+test("MemoryArena publish watcher ignores derived evidence JSON files", async () => {
+  const source = await readFile(
+    path.join("scripts", "bench", "public-sota", "memoryarena", "watch-and-publish-memoryarena.sh"),
+    "utf8",
+  );
+
+  assert.match(source, /-name 'memory-arena-\*\.json'/);
+  assert.match(source, /! -name 'memory-arena-sota-comparison\.json'/);
+  assert.match(source, /! -name 'memory-arena-diagnostics-summary\.json'/);
+});
+
 test("public SOTA staging helpers start from base and prune stale evidence", async () => {
   const generic = await readFile(
     path.join("scripts", "bench", "public-sota", "stage-public-benchmark-evidence-pr.sh"),
@@ -1020,20 +1031,40 @@ test("public SOTA staging helpers start from base and prune stale evidence", asy
     assert.match(source, /reset --hard "origin\/\$\{BASE_BRANCH\}"/);
     assert.match(source, /git -C "\$\{WORKTREE\}" clean -fd/);
     assert.match(source, /find docs\/benchmarks\/results[\s\S]*-exec rm -rf \{\} \+/);
-    assert.match(source, /rm -f "\$\{EVIDENCE_DOC_REL\}" "\$\{VERIFY_SCRIPT_REL\}" "\$\{INTEGRITY_MODULE_REL\}"/);
+    assert.match(source, /rm -f "\$\{EVIDENCE_DOC_REL\}" "\$\{VERIFY_SCRIPT_REL\}"/);
     assert.match(source, /cp "\$\{INTEGRITY_MODULE\}" "\$\{WORKTREE\}\/\$\{INTEGRITY_MODULE_REL\}"/);
   }
+  assert.match(generic, /cp "\$\{VERIFY_CORE_SCRIPT\}" "\$\{WORKTREE\}\/\$\{VERIFY_CORE_SCRIPT_REL\}"/);
+  assert.match(generic, /cp "\$\{COMPARE_MODULE\}" "\$\{WORKTREE\}\/\$\{COMPARE_MODULE_REL\}"/);
+  assert.match(memoryArena, /rm -rf "\$\{MEMORYARENA_MODULE_DIR_REL\}"/);
+  assert.match(memoryArena, /cp "\$\{VERIFY_CORE_SCRIPT\}" "\$\{WORKTREE\}\/\$\{MEMORYARENA_MODULE_DIR_REL\}\/verify-memoryarena-sota-evidence\.mjs"/);
+  assert.match(memoryArena, /cp "\$\{COMPARE_MODULE\}" "\$\{WORKTREE\}\/\$\{MEMORYARENA_MODULE_DIR_REL\}\/compare-memoryarena-sota\.mjs"/);
+  assert.match(memoryArena, /cp "\$\{DERIVE_MODULE\}" "\$\{WORKTREE\}\/\$\{MEMORYARENA_MODULE_DIR_REL\}\/derive-memoryarena-official-metrics\.mjs"/);
 });
 
-test("MemoryArena verifier template treats zero-target ties as SOTA", async () => {
-  const source = await readFile(
+test("published SOTA verifier templates delegate to copied core verifier modules", async () => {
+  const genericTemplate = await readFile(
+    path.join("scripts", "bench", "public-sota", "verify-public-generic-sota-evidence.template.mjs"),
+    "utf8",
+  );
+  const memoryArenaTemplate = await readFile(
     path.join("scripts", "bench", "public-sota", "memoryarena", "verify-public-memoryarena-sota-evidence.template.mjs"),
     "utf8",
   );
+  const memoryArenaComparator = await readFile(
+    path.join("scripts", "bench", "public-sota", "memoryarena", "compare-memoryarena-sota.mjs"),
+    "utf8",
+  );
 
-  assert.match(source, /const zeroTargetTie = target === 0 && tied/);
-  assert.match(source, /sota: delta > 1e-9 \|\| zeroTargetTie/);
-  assert.match(source, /sotaCriterion: 'target is zero; matching the target ties state of the art'/);
+  assert.match(genericTemplate, /verify-public-benchmark-sota-evidence\.mjs/);
+  assert.match(genericTemplate, /spawnSync/);
+  assert.doesNotMatch(genericTemplate, /function comparePublicBenchmarkSota/);
+  assert.match(memoryArenaTemplate, /verify-memoryarena-sota-evidence\.mjs/);
+  assert.match(memoryArenaTemplate, /spawnSync/);
+  assert.doesNotMatch(memoryArenaTemplate, /function compareMemoryArenaSota/);
+  assert.doesNotMatch(memoryArenaTemplate, /function deriveMemoryArenaOfficialMetrics/);
+  assert.match(memoryArenaComparator, /const publishableChecks = checks\.filter\(\(check\) => check\.publishAsSota !== false\)/);
+  assert.match(memoryArenaComparator, /sota: delta > 1e-9 \|\| zeroTargetTie/);
 });
 
 test("public SOTA evidence scripts share manifest hash identity helpers", async () => {
@@ -1042,8 +1073,6 @@ test("public SOTA evidence scripts share manifest hash identity helpers", async 
     path.join("scripts", "bench", "public-sota", "memoryarena", "package-memoryarena-evidence.mjs"),
     path.join("scripts", "bench", "public-sota", "verify-public-benchmark-sota-evidence.mjs"),
     path.join("scripts", "bench", "public-sota", "memoryarena", "verify-memoryarena-sota-evidence.mjs"),
-    path.join("scripts", "bench", "public-sota", "verify-public-generic-sota-evidence.template.mjs"),
-    path.join("scripts", "bench", "public-sota", "memoryarena", "verify-public-memoryarena-sota-evidence.template.mjs"),
   ];
 
   for (const file of files) {

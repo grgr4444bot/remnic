@@ -31,7 +31,11 @@ result_file() {
   if [[ ! -d "${RESULTS_DIR}" ]]; then
     return 0
   fi
-  find "${RESULTS_DIR}" -maxdepth 1 -type f -name 'memory-arena-*.json' -print 2>/dev/null | sort | tail -1 || true
+  find "${RESULTS_DIR}" -maxdepth 1 -type f \
+    -name 'memory-arena-*.json' \
+    ! -name 'memory-arena-sota-comparison.json' \
+    ! -name 'memory-arena-diagnostics-summary.json' \
+    -print 2>/dev/null | sort | tail -1 || true
 }
 
 while :; do
