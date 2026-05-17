@@ -42,6 +42,10 @@ stale_baseline_run() {
   if tmux has-session -t "${run_id}" 2>/dev/null; then
     return 1
   fi
+  local status_file="${RESULTS_ROOT}/${run_id}/status.tsv"
+  if [[ -f "${status_file}" ]] && awk -F '\t' -v benchmark="${BENCHMARK}" '$1 == benchmark && $2 == "success" { found = 1 } END { exit found ? 0 : 1 }' "${status_file}"; then
+    return 1
+  fi
   return 0
 }
 

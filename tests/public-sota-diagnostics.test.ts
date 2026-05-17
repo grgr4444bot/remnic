@@ -348,6 +348,17 @@ test("public SOTA publish helpers resume clean committed branches without a PR",
   }
 });
 
+test("public benchmark publish watcher does not baseline completed successes", async () => {
+  const source = await readFile(
+    path.join("scripts", "bench", "public-sota", "watch-public-benchmark-publish.sh"),
+    "utf8",
+  );
+
+  assert.match(source, /status_file="\$\{RESULTS_ROOT\}\/\$\{run_id\}\/status\.tsv"/);
+  assert.match(source, /awk -F '\\t' -v benchmark="\$\{BENCHMARK\}" '\$1 == benchmark && \$2 == "success"/);
+  assert.match(source, /return 1[\s\S]*return 0/);
+});
+
 function memoryArenaTask(
   domain: string,
   taskId: number,
