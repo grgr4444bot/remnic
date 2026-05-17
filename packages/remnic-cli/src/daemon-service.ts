@@ -1,7 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { findCommandOnPath as findCommandOnPathDefault } from "./daemon-service-candidates.js";
+import {
+  findCommandOnPath as findCommandOnPathDefault,
+  serverBinWrapperRequiredPath,
+} from "./daemon-service-candidates.js";
 import { expandTilde } from "./path-utils.js";
 
 export type ServerBinSource = "package" | "path" | "workspace-dist" | "workspace-source";
@@ -111,14 +114,6 @@ function isCandidateReady(
   existsSync: (candidate: string) => boolean,
 ): boolean {
   return existsSync(candidate.path) && (candidate.requiredPath ? existsSync(candidate.requiredPath) : true);
-}
-
-function serverBinWrapperRequiredPath(candidate: string): string | undefined {
-  const filename = path.basename(candidate);
-  if (filename !== "remnic-server.js" && filename !== "engram-server.js") return undefined;
-  const binDir = path.dirname(candidate);
-  if (path.basename(binDir) !== "bin") return undefined;
-  return path.join(path.dirname(binDir), "dist", "index.js");
 }
 
 export function resolveServerBin(options: ResolveServerBinOptions = {}): string {

@@ -125,7 +125,7 @@ export function resolveServerBinPath(importMetaDir: string, pathEnv = process.en
   return path.resolve(importMetaDir, "../../remnic-server/src/index.ts");
 }
 
-function serverBinWrapperRequiredPath(candidate: string): string | undefined {
+export function serverBinWrapperRequiredPath(candidate: string): string | undefined {
   const filename = path.basename(candidate);
   if (filename !== "remnic-server.js" && filename !== "engram-server.js") return undefined;
   const binDir = path.dirname(candidate);
