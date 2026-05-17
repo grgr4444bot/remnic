@@ -8497,9 +8497,11 @@ export function registerCli(
         .command("resolve <pairId>")
         .description("Resolve a contradiction pair")
         .requiredOption("--verb <verb>", "Resolution verb: keep-a, keep-b, merge, both-valid, needs-more-context")
+        .option("--merged-memory-id <id>", "Existing merged memory ID to use when --verb merge")
+        .option("--merged-content <content>", "Content for a new merged memory when --verb merge")
         .action(async (...args: unknown[]) => {
           const pairId = typeof args[0] === "string" ? args[0] : "";
-          const cmdOpts = (args[1] ?? {}) as Record<string, string>;
+          const cmdOpts = (args[1] ?? {}) as Record<string, string | undefined>;
           if (!pairId) {
             console.error("pairId is required");
             process.exit(1);
@@ -8514,7 +8516,10 @@ export function registerCli(
             console.error(`Invalid verb: ${verb}. Must be one of: keep-a, keep-b, merge, both-valid, needs-more-context`);
             process.exit(1);
           }
-          const result = await executeResolution(orchestrator.config.memoryDir, orchestrator.storage, pairId, verb);
+          const result = await executeResolution(orchestrator.config.memoryDir, orchestrator.storage, pairId, verb, {
+            mergedMemoryId: cmdOpts.mergedMemoryId,
+            mergedContent: cmdOpts.mergedContent,
+          });
           console.log(result.message);
           if (result.affectedIds.length > 0) {
             console.log(`Affected: ${result.affectedIds.join(", ")}`);

@@ -1163,7 +1163,10 @@ export class EngramAccessHttpServer {
         this.respondJson(res, 400, { error: `Invalid verb: ${verb}. Must be one of: keep-a, keep-b, merge, both-valid, needs-more-context` });
         return;
       }
-      const result = await executeResolution(this.service.memoryDir, this.service.storageRef, pairId, verb);
+      const result = await executeResolution(this.service.memoryDir, this.service.storageRef, pairId, verb, {
+        mergedMemoryId: typeof body.mergedMemoryId === "string" ? body.mergedMemoryId : undefined,
+        mergedContent: typeof body.mergedContent === "string" ? body.mergedContent : undefined,
+      });
       this.respondJson(res, 200, result);
       return;
     }

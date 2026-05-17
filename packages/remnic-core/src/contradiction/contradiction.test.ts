@@ -15,8 +15,12 @@ import {
   type ContradictionPair,
 } from "./contradiction-review.js";
 import { _pairKey, _contentHash } from "./contradiction-judge.js";
-import { isValidResolutionVerb } from "./resolution.js";
+import { executeResolution, isValidResolutionVerb } from "./resolution.js";
 import { ACTIVE_STATUSES } from "./contradiction-scan.js";
+import type { StorageManager } from "../storage.js";
+import type { MemoryCategory, MemoryFile, MemoryFrontmatter } from "../types.js";
+
+type FrontmatterLifecycleOptions = Parameters<StorageManager["writeMemoryFrontmatter"]>[2];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +41,130 @@ function makePair(overrides?: Partial<ContradictionPair>): Omit<ContradictionPai
     detectedAt: new Date().toISOString(),
     ...overrides,
   };
+}
+
+function makeMemory(id: string, category: MemoryCategory = "fact"): MemoryFile {
+  const now = "2026-05-17T00:00:00.000Z";
+  return {
+    path: `/tmp/${id}.md`,
+    content: `content for ${id}`,
+    frontmatter: {
+      id,
+      category,
+      created: now,
+      updated: now,
+      source: "test",
+      confidence: 0.9,
+      confidenceTier: "explicit",
+      tags: [],
+    },
+  };
+}
+
+function cloneMemory(memory: MemoryFile): MemoryFile {
+  return {
+    path: memory.path,
+    content: memory.content,
+    frontmatter: {
+      ...memory.frontmatter,
+      tags: [...(memory.frontmatter.tags ?? [])],
+      lineage: memory.frontmatter.lineage ? [...memory.frontmatter.lineage] : undefined,
+      derived_from: memory.frontmatter.derived_from ? [...memory.frontmatter.derived_from] : undefined,
+    },
+  };
+}
+
+function makeResolutionStorage(options: {
+  failSupersedeFor?: string;
+  failRollbackFor?: string;
+  partialSupersedeBeforeFailureFor?: string;
+} = {}) {
+  const memories = new Map<string, MemoryFile>([
+    ["mem-a-001", makeMemory("mem-a-001")],
+    ["mem-b-002", makeMemory("mem-b-002")],
+    ["mem-merged-003", makeMemory("mem-merged-003")],
+  ]);
+  const supersedeCalls: Array<{ oldId: string; newId: string; reason: string }> = [];
+  const frontmatterWrites: Array<{
+    memoryId: string;
+    beforeStatus: MemoryFrontmatter["status"];
+    patch: Partial<MemoryFrontmatter>;
+    lifecycle?: FrontmatterLifecycleOptions;
+  }> = [];
+  const removedFactHashIds: string[] = [];
+
+  const storage = {
+    memories,
+    supersedeCalls,
+    frontmatterWrites,
+    removedFactHashIds,
+    async getMemoryById(id: string) {
+      const memory = memories.get(id);
+      return memory ? cloneMemory(memory) : null;
+    },
+    async writeMemory(category: MemoryCategory, content: string, writeOptions: {
+      lineage?: string[];
+      derivedFrom?: string[];
+      derivedVia?: string;
+      tags?: string[];
+    }) {
+      const id = `merged-created-${memories.size}`;
+      const memory = makeMemory(id, category);
+      memory.content = content;
+      memory.frontmatter.tags = writeOptions.tags ?? [];
+      memory.frontmatter.lineage = writeOptions.lineage;
+      memory.frontmatter.derived_from = writeOptions.derivedFrom;
+      memory.frontmatter.derived_via = writeOptions.derivedVia as MemoryFrontmatter["derived_via"];
+      memories.set(id, memory);
+      return id;
+    },
+    async supersedeMemory(oldId: string, newId: string, reason: string) {
+      supersedeCalls.push({ oldId, newId, reason });
+      if (oldId === options.failSupersedeFor) return false;
+      const memory = memories.get(oldId);
+      if (!memory) return false;
+      const supersededMemory: MemoryFile = {
+        ...memory,
+        frontmatter: {
+          ...memory.frontmatter,
+          status: "superseded",
+          supersededBy: newId,
+          supersededAt: "2026-05-17T00:01:00.000Z",
+        },
+      };
+      memories.set(oldId, supersededMemory);
+      if (oldId === options.partialSupersedeBeforeFailureFor) return false;
+      return true;
+    },
+    async writeMemoryFrontmatter(
+      memory: MemoryFile,
+      patch: Partial<MemoryFrontmatter>,
+      lifecycle?: FrontmatterLifecycleOptions,
+    ) {
+      const existing = memories.get(memory.frontmatter.id);
+      if (!existing) return false;
+      frontmatterWrites.push({
+        memoryId: memory.frontmatter.id,
+        beforeStatus: memory.frontmatter.status,
+        patch,
+        lifecycle,
+      });
+      if (memory.frontmatter.id === options.failRollbackFor) return false;
+      memories.set(memory.frontmatter.id, {
+        ...memory,
+        frontmatter: { ...memory.frontmatter, ...patch },
+      });
+      return true;
+    },
+    async invalidateMemory(id: string) {
+      return memories.delete(id);
+    },
+    async removeFactContentHashesForMemories(hashMemories: MemoryFile[]) {
+      removedFactHashIds.push(...hashMemories.map((memory) => memory.frontmatter.id));
+    },
+  };
+
+  return storage as typeof storage & StorageManager;
 }
 
 // ── Pair ID determinism ────────────────────────────────────────────────────────
@@ -239,6 +367,219 @@ test("isValidResolutionVerb rejects invalid verbs", () => {
   assert.equal(isValidResolutionVerb("delete"), false);
   assert.equal(isValidResolutionVerb(""), false);
   assert.equal(isValidResolutionVerb("unknown"), false);
+});
+
+test("executeResolution merge requires a real merged memory", async () => {
+  const { dir, cleanup } = await makeTempDir();
+  try {
+    const written = writePair(dir, makePair());
+    const storage = makeResolutionStorage();
+
+    const result = await executeResolution(dir, storage, written.pairId, "merge");
+
+    assert.deepEqual(storage.supersedeCalls, []);
+    assert.match(result.message, /requires mergedMemoryId or mergedContent/);
+    assert.equal(readPair(dir, written.pairId)?.resolution, undefined);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("executeResolution merge supersedes both sources to a verified merged memory", async () => {
+  const { dir, cleanup } = await makeTempDir();
+  try {
+    const written = writePair(dir, makePair());
+    const storage = makeResolutionStorage();
+
+    const result = await executeResolution(dir, storage, written.pairId, "merge", {
+      mergedMemoryId: "mem-merged-003",
+    });
+
+    assert.deepEqual(
+      storage.supersedeCalls.map(({ oldId, newId }) => ({ oldId, newId })),
+      [
+        { oldId: "mem-a-001", newId: "mem-merged-003" },
+        { oldId: "mem-b-002", newId: "mem-merged-003" },
+      ],
+    );
+    assert.deepEqual(result.affectedIds, ["mem-a-001", "mem-b-002"]);
+    assert.equal(storage.memories.get("mem-a-001")?.frontmatter.status, "superseded");
+    assert.equal(storage.memories.get("mem-a-001")?.frontmatter.supersededBy, "mem-merged-003");
+    assert.equal(storage.memories.get("mem-b-002")?.frontmatter.status, "superseded");
+    assert.equal(storage.memories.get("mem-b-002")?.frontmatter.supersededBy, "mem-merged-003");
+    assert.equal(readPair(dir, written.pairId)?.resolution, "merge");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("executeResolution merge can create and verify a merged memory from content", async () => {
+  const { dir, cleanup } = await makeTempDir();
+  try {
+    const written = writePair(dir, makePair());
+    const storage = makeResolutionStorage();
+
+    const result = await executeResolution(dir, storage, written.pairId, "merge", {
+      mergedContent: "merged canonical fact",
+    });
+
+    const mergedId = storage.supersedeCalls[0]?.newId;
+    assert.ok(mergedId);
+    assert.deepEqual(result.affectedIds, ["mem-a-001", "mem-b-002"]);
+    assert.equal(storage.memories.get(mergedId)?.content, "merged canonical fact");
+    assert.deepEqual(storage.memories.get(mergedId)?.frontmatter.derived_from, ["mem-a-001", "mem-b-002"]);
+    assert.equal(storage.memories.get(mergedId)?.frontmatter.derived_via, "merge");
+    assert.equal(readPair(dir, written.pairId)?.resolution, "merge");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("executeResolution merge rolls back the first supersession when the second fails", async () => {
+  const { dir, cleanup } = await makeTempDir();
+  try {
+    const written = writePair(dir, makePair());
+    const storage = makeResolutionStorage({ failSupersedeFor: "mem-b-002" });
+
+    const result = await executeResolution(dir, storage, written.pairId, "merge", {
+      mergedMemoryId: "mem-merged-003",
+    });
+
+    assert.deepEqual(
+      storage.supersedeCalls.map(({ oldId, newId }) => ({ oldId, newId })),
+      [
+        { oldId: "mem-a-001", newId: "mem-merged-003" },
+        { oldId: "mem-b-002", newId: "mem-merged-003" },
+      ],
+    );
+    assert.match(result.message, /restored mem-a-001 and mem-b-002/);
+    assert.deepEqual(result.affectedIds, []);
+    assert.deepEqual(
+      storage.frontmatterWrites.map(({ memoryId, lifecycle }) => ({
+        memoryId,
+        actor: lifecycle?.actor,
+        reasonCode: lifecycle?.reasonCode,
+      })),
+      [
+        {
+          memoryId: "mem-a-001",
+          actor: "contradiction-resolution",
+          reasonCode: "contradiction-resolution:merge-rollback",
+        },
+        {
+          memoryId: "mem-b-002",
+          actor: "contradiction-resolution",
+          reasonCode: "contradiction-resolution:merge-rollback",
+        },
+      ],
+    );
+    assert.equal(storage.memories.get("mem-a-001")?.frontmatter.status, undefined);
+    assert.equal(storage.memories.get("mem-a-001")?.frontmatter.supersededBy, undefined);
+    assert.equal(storage.memories.get("mem-b-002")?.frontmatter.status, undefined);
+    assert.equal(readPair(dir, written.pairId)?.resolution, undefined);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("executeResolution merge restores the second source after partial supersede failure", async () => {
+  const { dir, cleanup } = await makeTempDir();
+  try {
+    const written = writePair(dir, makePair());
+    const storage = makeResolutionStorage({ partialSupersedeBeforeFailureFor: "mem-b-002" });
+
+    const result = await executeResolution(dir, storage, written.pairId, "merge", {
+      mergedContent: "merged canonical fact",
+    });
+
+    const mergedId = storage.supersedeCalls[0]?.newId;
+    assert.ok(mergedId);
+    assert.match(result.message, /restored mem-a-001 and mem-b-002/);
+    assert.deepEqual(result.affectedIds, []);
+    assert.equal(storage.memories.get("mem-a-001")?.frontmatter.status, undefined);
+    assert.equal(storage.memories.get("mem-b-002")?.frontmatter.status, undefined);
+    assert.equal(storage.memories.has(mergedId), false);
+    assert.deepEqual(
+      storage.frontmatterWrites.map(({ memoryId, beforeStatus }) => ({ memoryId, beforeStatus })),
+      [
+        { memoryId: "mem-a-001", beforeStatus: "superseded" },
+        { memoryId: "mem-b-002", beforeStatus: "superseded" },
+      ],
+    );
+    assert.deepEqual(storage.removedFactHashIds, [mergedId]);
+    assert.equal(readPair(dir, written.pairId)?.resolution, undefined);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("executeResolution merge restores the first source after partial supersede failure", async () => {
+  const { dir, cleanup } = await makeTempDir();
+  try {
+    const written = writePair(dir, makePair());
+    const storage = makeResolutionStorage({ partialSupersedeBeforeFailureFor: "mem-a-001" });
+
+    const result = await executeResolution(dir, storage, written.pairId, "merge", {
+      mergedContent: "merged canonical fact",
+    });
+
+    const mergedId = storage.supersedeCalls[0]?.newId;
+    assert.ok(mergedId);
+    assert.match(result.message, /restored mem-a-001/);
+    assert.deepEqual(result.affectedIds, []);
+    assert.deepEqual(
+      storage.frontmatterWrites.map(({ memoryId, lifecycle }) => ({
+        memoryId,
+        actor: lifecycle?.actor,
+        reasonCode: lifecycle?.reasonCode,
+      })),
+      [
+        {
+          memoryId: "mem-a-001",
+          actor: "contradiction-resolution",
+          reasonCode: "contradiction-resolution:merge-rollback",
+        },
+      ],
+    );
+    assert.equal(storage.memories.get("mem-a-001")?.frontmatter.status, undefined);
+    assert.equal(storage.memories.get("mem-a-001")?.frontmatter.supersededBy, undefined);
+    assert.equal(storage.memories.get("mem-b-002")?.frontmatter.status, undefined);
+    assert.equal(storage.memories.has(mergedId), false);
+    assert.deepEqual(
+      storage.frontmatterWrites.map(({ memoryId, beforeStatus }) => ({ memoryId, beforeStatus })),
+      [{ memoryId: "mem-a-001", beforeStatus: "superseded" }],
+    );
+    assert.deepEqual(storage.removedFactHashIds, [mergedId]);
+    assert.equal(readPair(dir, written.pairId)?.resolution, undefined);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("executeResolution merge keeps created replacement when rollback fails", async () => {
+  const { dir, cleanup } = await makeTempDir();
+  try {
+    const written = writePair(dir, makePair());
+    const storage = makeResolutionStorage({
+      failSupersedeFor: "mem-b-002",
+      failRollbackFor: "mem-a-001",
+    });
+
+    const result = await executeResolution(dir, storage, written.pairId, "merge", {
+      mergedContent: "merged canonical fact",
+    });
+
+    const mergedId = storage.supersedeCalls[0]?.newId;
+    assert.ok(mergedId);
+    assert.match(result.message, /rollback incomplete for mem-a-001/);
+    assert.equal(storage.memories.get("mem-a-001")?.frontmatter.status, "superseded");
+    assert.equal(storage.memories.get("mem-a-001")?.frontmatter.supersededBy, mergedId);
+    assert.equal(storage.memories.get(mergedId)?.content, "merged canonical fact");
+    assert.deepEqual(storage.removedFactHashIds, []);
+    assert.equal(readPair(dir, written.pairId)?.resolution, undefined);
+  } finally {
+    await cleanup();
+  }
 });
 
 // ── resolvePair ────────────────────────────────────────────────────────────────

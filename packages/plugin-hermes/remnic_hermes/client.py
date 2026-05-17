@@ -260,8 +260,8 @@ class RemnicClient:
     async def review_list(self, **kwargs: Any) -> dict[str, Any]:
         return await self._mcp_tool("engram.review_list", kwargs)
 
-    async def review_resolve(self, pair_id: str, verb: str) -> dict[str, Any]:
-        return await self._mcp_tool("engram.review_resolve", {"pairId": pair_id, "verb": verb})
+    async def review_resolve(self, pair_id: str, verb: str, **kwargs: Any) -> dict[str, Any]:
+        return await self._mcp_tool("engram.review_resolve", {"pairId": pair_id, "verb": verb, **kwargs})
 
     async def suggestion_submit(self, content: str, **kwargs: Any) -> dict[str, Any]:
         return await self._mcp_tool("engram.suggestion_submit", {"content": content, **kwargs})
