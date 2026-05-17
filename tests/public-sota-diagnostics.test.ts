@@ -59,7 +59,12 @@ async function createRunDirs(prefix: string): Promise<{
   return { root, datasetDir, diagnosticsDir, outDir, resultsDir };
 }
 
-async function writeBaseManifest(resultsDir: string, benchmark: string, overrides: Record<string, unknown> = {}): Promise<void> {
+async function writeBaseManifest(
+  resultsDir: string,
+  benchmark: string,
+  resultPath: string,
+  overrides: Record<string, unknown> = {},
+): Promise<void> {
   const datasetFile = {
     path: "fixture.json",
     kind: "file",
@@ -75,6 +80,21 @@ async function writeBaseManifest(resultsDir: string, benchmark: string, override
     files: [datasetFile],
     ...overrides,
   };
+  const rawResult = JSON.parse(await readFile(resultPath, "utf8"));
+  const resultBody = await readFile(resultPath);
+  const resultEntry = {
+    path: path.relative(resultsDir, resultPath).split(path.sep).join("/"),
+    sha256: createHash("sha256").update(resultBody).digest("hex"),
+    sizeBytes: resultBody.byteLength,
+    resultId: rawResult.meta.id,
+    benchmark,
+    mode: rawResult.meta.mode,
+    gitSha: rawResult.meta.gitSha,
+    runCount: rawResult.meta.runCount,
+    seeds: rawResult.meta.seeds,
+    taskCount: rawResult.results.tasks.length,
+    configHash: sha256String(stableStringify(rawResult.config)),
+  };
   await writeJson(path.join(resultsDir, "MANIFEST.json"), {
     schemaVersion: 1,
     run: {
@@ -83,6 +103,7 @@ async function writeBaseManifest(resultsDir: string, benchmark: string, override
       runtimeProfiles: ["real"],
     },
     datasets: [dataset],
+    results: [resultEntry],
   });
 }
 
@@ -140,6 +161,24 @@ async function assertRejectsDatasetDrift(
       assert(error && typeof error === "object");
       const output = `${(error as { stdout?: string }).stdout ?? ""}\n${(error as { stderr?: string }).stderr ?? ""}`;
       assert.match(output, new RegExp(`dataset hash for ${benchmark} does not match the run manifest`));
+      return true;
+    },
+  );
+}
+
+async function assertRejectsRawResultDrift(
+  script: string,
+  args: string[],
+): Promise<void> {
+  await assert.rejects(
+    execFileAsync(process.execPath, [script, ...args], {
+      cwd: process.cwd(),
+      maxBuffer: 1024 * 1024,
+    }),
+    (error: unknown) => {
+      assert(error && typeof error === "object");
+      const output = `${(error as { stdout?: string }).stdout ?? ""}\n${(error as { stderr?: string }).stderr ?? ""}`;
+      assert.match(output, /raw result sha256 .* does not match the run manifest/);
       return true;
     },
   );
@@ -226,7 +265,6 @@ async function writeMemoryArenaResult(resultPath: string): Promise<void> {
 test("generic public SOTA packager rejects diagnostics with invalid timestamps", async () => {
   const dirs = await createRunDirs("remnic-public-sota-generic-");
   try {
-    await writeBaseManifest(dirs.resultsDir, "amemgym");
     await writeDiagnostics(dirs.diagnosticsDir);
     await writeFile(
       path.join(dirs.resultsDir, "status.tsv"),
@@ -235,6 +273,7 @@ test("generic public SOTA packager rejects diagnostics with invalid timestamps",
     );
     const resultPath = path.join(dirs.resultsDir, "amemgym-result.json");
     await writeAmemGymResult(resultPath);
+    await writeBaseManifest(dirs.resultsDir, "amemgym", resultPath);
 
     await assertRejectsInvalidDiagnostics(
       path.join("scripts", "bench", "public-sota", "package-public-benchmark-evidence.mjs"),
@@ -254,7 +293,6 @@ test("generic public SOTA packager rejects diagnostics with invalid timestamps",
 test("MemoryArena public SOTA packager rejects diagnostics with invalid timestamps", async () => {
   const dirs = await createRunDirs("remnic-public-sota-memoryarena-");
   try {
-    await writeBaseManifest(dirs.resultsDir, "memory-arena");
     await writeDiagnostics(dirs.diagnosticsDir);
     await writeFile(
       path.join(dirs.resultsDir, "status.tsv"),
@@ -263,6 +301,7 @@ test("MemoryArena public SOTA packager rejects diagnostics with invalid timestam
     );
     const resultPath = path.join(dirs.resultsDir, "memory-arena-result.json");
     await writeMemoryArenaResult(resultPath);
+    await writeBaseManifest(dirs.resultsDir, "memory-arena", resultPath);
 
     await assertRejectsInvalidDiagnostics(
       path.join("scripts", "bench", "public-sota", "memoryarena", "package-memoryarena-evidence.mjs"),
@@ -282,9 +321,9 @@ test("MemoryArena public SOTA packager rejects diagnostics with invalid timestam
 test("generic public SOTA packager rejects dataset drift from the run manifest", async () => {
   const dirs = await createRunDirs("remnic-public-sota-generic-dataset-");
   try {
-    await writeBaseManifest(dirs.resultsDir, "amemgym", { sha256: "different-dataset-hash" });
     const resultPath = path.join(dirs.resultsDir, "amemgym-result.json");
     await writeAmemGymResult(resultPath);
+    await writeBaseManifest(dirs.resultsDir, "amemgym", resultPath, { sha256: "different-dataset-hash" });
 
     await assertRejectsDatasetDrift(
       path.join("scripts", "bench", "public-sota", "package-public-benchmark-evidence.mjs"),
@@ -305,9 +344,9 @@ test("generic public SOTA packager rejects dataset drift from the run manifest",
 test("MemoryArena public SOTA packager rejects dataset drift from the run manifest", async () => {
   const dirs = await createRunDirs("remnic-public-sota-memoryarena-dataset-");
   try {
-    await writeBaseManifest(dirs.resultsDir, "memory-arena", { sha256: "different-dataset-hash" });
     const resultPath = path.join(dirs.resultsDir, "memory-arena-result.json");
     await writeMemoryArenaResult(resultPath);
+    await writeBaseManifest(dirs.resultsDir, "memory-arena", resultPath, { sha256: "different-dataset-hash" });
 
     await assertRejectsDatasetDrift(
       path.join("scripts", "bench", "public-sota", "memoryarena", "package-memoryarena-evidence.mjs"),
@@ -319,6 +358,56 @@ test("MemoryArena public SOTA packager rejects dataset drift from the run manife
         "--out-dir", dirs.outDir,
       ],
       "memory-arena",
+    );
+  } finally {
+    await rm(dirs.root, { recursive: true, force: true });
+  }
+});
+
+test("generic public SOTA packager rejects raw result drift from the run manifest", async () => {
+  const dirs = await createRunDirs("remnic-public-sota-generic-result-");
+  try {
+    const resultPath = path.join(dirs.resultsDir, "amemgym-result.json");
+    await writeAmemGymResult(resultPath);
+    await writeBaseManifest(dirs.resultsDir, "amemgym", resultPath);
+    const result = JSON.parse(await readFile(resultPath, "utf8"));
+    result.meta.id = "amemgym-drifted-result";
+    await writeJson(resultPath, result);
+
+    await assertRejectsRawResultDrift(
+      path.join("scripts", "bench", "public-sota", "package-public-benchmark-evidence.mjs"),
+      [
+        "--result", resultPath,
+        "--results-dir", dirs.resultsDir,
+        "--dataset-dir", dirs.datasetDir,
+        "--repo-root", process.cwd(),
+        "--out-dir", dirs.outDir,
+      ],
+    );
+  } finally {
+    await rm(dirs.root, { recursive: true, force: true });
+  }
+});
+
+test("MemoryArena public SOTA packager rejects raw result drift from the run manifest", async () => {
+  const dirs = await createRunDirs("remnic-public-sota-memoryarena-result-");
+  try {
+    const resultPath = path.join(dirs.resultsDir, "memory-arena-result.json");
+    await writeMemoryArenaResult(resultPath);
+    await writeBaseManifest(dirs.resultsDir, "memory-arena", resultPath);
+    const result = JSON.parse(await readFile(resultPath, "utf8"));
+    result.meta.id = "memory-arena-drifted-result";
+    await writeJson(resultPath, result);
+
+    await assertRejectsRawResultDrift(
+      path.join("scripts", "bench", "public-sota", "memoryarena", "package-memoryarena-evidence.mjs"),
+      [
+        "--result", resultPath,
+        "--results-dir", dirs.resultsDir,
+        "--dataset-dir", dirs.datasetDir,
+        "--repo-root", process.cwd(),
+        "--out-dir", dirs.outDir,
+      ],
     );
   } finally {
     await rm(dirs.root, { recursive: true, force: true });
@@ -381,6 +470,18 @@ test("chained public benchmark watcher retries active-session launch collisions"
   assert.match(source, /if \[\[ "\$\{launch_status\}" -eq 3 \]\]; then/);
   assert.match(source, /waiting: active public benchmark scoring session blocked \$\{NEXT\} launch; retrying/);
   assert.match(source, /sleep "\$\{INTERVAL_SECONDS\}"[\s\S]*continue[\s\S]*if \[\[ "\$\{launch_status\}" -ne 0 \]\]; then/);
+});
+
+test("MemoryArena transition helper retries active-session launch collisions", async () => {
+  const source = await readFile(
+    path.join("scripts", "bench", "public-sota", "launch-next-after-memoryarena.sh"),
+    "utf8",
+  );
+
+  assert.match(source, /launch_status=\$\?/);
+  assert.match(source, /if \[\[ "\$\{launch_status\}" -eq 3 \]\]; then/);
+  assert.match(source, /waiting: active public benchmark scoring session blocked \$\{BENCHMARK\} launch; retrying/);
+  assert.match(source, /exit 0[\s\S]*if \[\[ "\$\{launch_status\}" -ne 0 \]\]; then/);
 });
 
 function memoryArenaTask(

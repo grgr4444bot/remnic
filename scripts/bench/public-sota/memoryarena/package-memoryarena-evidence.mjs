@@ -340,6 +340,19 @@ function resultManifestEntry(resultPath, resultsDir, result) {
   };
 }
 
+function assertResultMatchesRunManifest(baseManifest, rawEntry) {
+  const manifestResult = Array.isArray(baseManifest.results)
+    ? baseManifest.results.find((entry) => entry?.path === rawEntry.path)
+    : undefined;
+  assert(manifestResult, `run manifest must include result entry for ${rawEntry.path}`);
+  for (const field of ['sha256', 'resultId', 'gitSha', 'taskCount']) {
+    assert(
+      manifestResult[field] === rawEntry[field],
+      `raw result ${field} for ${rawEntry.path} does not match the run manifest`,
+    );
+  }
+}
+
 function buildArtifactHashIdentity(manifest) {
   return {
     schemaVersion: manifest.schemaVersion,
@@ -519,6 +532,7 @@ async function main() {
   const artifactStats = fs.statSync(artifactPath);
 
   const rawEntry = resultManifestEntry(resultPath, resultsDir, result);
+  assertResultMatchesRunManifest(baseManifest, rawEntry);
   const generatedResultPrefix = `docs/benchmarks/results/${path.basename(resultsDir)}/`;
   const git = gitInfo(repoRoot, result, [generatedResultPrefix]);
   const publicEntry = {

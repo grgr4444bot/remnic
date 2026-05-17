@@ -50,8 +50,18 @@ if [[ "${clean_status}" -ne 0 ]]; then
   exit 0
 fi
 
-launch_output="$(bash "${SCRIPT_DIR}/launch-next-public-benchmark.sh" "${BENCHMARK}")"
+set +e
+launch_output="$(bash "${SCRIPT_DIR}/launch-next-public-benchmark.sh" "${BENCHMARK}" 2>&1)"
+launch_status=$?
+set -e
 printf '%s\n' "${launch_output}"
+if [[ "${launch_status}" -eq 3 ]]; then
+  echo "waiting: active public benchmark scoring session blocked ${BENCHMARK} launch; retrying" >&2
+  exit 0
+fi
+if [[ "${launch_status}" -ne 0 ]]; then
+  exit "${launch_status}"
+fi
 
 results_dir="$(printf '%s\n' "${launch_output}" | awk -F= '$1 == "results_dir" { print $2 }')"
 if [[ -z "${results_dir}" ]]; then
