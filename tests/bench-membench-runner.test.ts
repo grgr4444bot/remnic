@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import type {
   BenchMemoryAdapter,
   BenchResponder,
@@ -464,6 +464,71 @@ test("runBenchmark accepts upstream MemBench export filenames in full mode", asy
   assert.equal(result.results.tasks[0]?.expected, "Lisbon");
   assert.equal(result.results.tasks[0]?.details.memoryType, "factual");
   assert.equal(result.results.tasks[0]?.details.scenario, "participant");
+});
+
+test("runBenchmark rejects partial MemBench datasets when a recognized shard fails", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "remnic-bench-membench-partial-"));
+  const datasetDir = path.join(tmpDir, "datasets", "membench");
+  const adapter = new FakeMemoryAdapter();
+
+  try {
+    await mkdir(datasetDir, { recursive: true });
+    await writeFile(
+      path.join(datasetDir, "membench.json"),
+      JSON.stringify(createDatasetCases()),
+      "utf8",
+    );
+    await writeFile(
+      path.join(datasetDir, "FirstAgentDataHighLevel.jsonl"),
+      "{not json}\n",
+      "utf8",
+    );
+
+    await assert.rejects(
+      () =>
+        runBenchmark("membench", {
+          mode: "full",
+          datasetDir,
+          system: adapter,
+        }),
+      /MemBench dataset under .* has invalid recognized shard\(s\).*FirstAgentDataHighLevel\.jsonl/,
+    );
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("runBenchmark validates later recognized shards after the limit is reached", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "remnic-bench-membench-limited-partial-"));
+  const datasetDir = path.join(tmpDir, "datasets", "membench");
+  const adapter = new FakeMemoryAdapter();
+
+  try {
+    await mkdir(datasetDir, { recursive: true });
+    await writeFile(
+      path.join(datasetDir, "membench.json"),
+      JSON.stringify(createDatasetCases()),
+      "utf8",
+    );
+    await writeFile(
+      path.join(datasetDir, "ThirdAgentDataHighLevel.jsonl"),
+      "{not json}\n",
+      "utf8",
+    );
+
+    await assert.rejects(
+      () =>
+        runBenchmark("membench", {
+          mode: "full",
+          datasetDir,
+          limit: 1,
+          system: adapter,
+        }),
+      /MemBench dataset under .* has invalid recognized shard\(s\).*ThirdAgentDataHighLevel\.jsonl/,
+    );
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test("runBenchmark normalizes nested published MemBench trajectory and qa structures", async () => {

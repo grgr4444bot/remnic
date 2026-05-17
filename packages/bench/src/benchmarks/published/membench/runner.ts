@@ -295,18 +295,18 @@ async function loadDataset(
     const cases: MemBenchCase[] = [];
     let remainingLimit = normalizedLimit;
     for (const filename of filenames) {
-      if (remainingLimit === 0) {
-        break;
-      }
-
       try {
         const raw = await readFile(path.join(datasetDir, filename), "utf8");
         const parsed = filename.endsWith(".jsonl")
           ? parseJsonlDataset(raw, filename)
           : parseJsonDataset(raw, filename);
-        const limitedCases = applyLimit(parsed, remainingLimit);
-        cases.push(...limitedCases);
-        if (remainingLimit !== undefined) {
+        const limitedCases = remainingLimit === 0
+          ? []
+          : applyLimit(parsed, remainingLimit);
+        if (limitedCases.length > 0) {
+          cases.push(...limitedCases);
+        }
+        if (remainingLimit !== undefined && limitedCases.length > 0) {
           remainingLimit = Math.max(remainingLimit - limitedCases.length, 0);
         }
       } catch (error) {
@@ -316,11 +316,15 @@ async function loadDataset(
       }
     }
 
+    if (datasetErrors.length > 0) {
+      throw new Error(buildDatasetLoadError(datasetDir, datasetErrors));
+    }
+
     if (cases.length > 0) {
       return ensureDatasetCases(cases);
     }
 
-    throw new Error(buildDatasetNotFoundError(datasetDir, undefined, datasetErrors));
+    throw new Error(buildDatasetNotFoundError(datasetDir, undefined, []));
   }
 
   if (mode === "full") {
@@ -522,6 +526,16 @@ function buildDatasetNotFoundError(
   return details.length > 0
     ? `MemBench dataset not found under ${datasetDir}. Tried ${tried}. Errors: ${details}`
     : `MemBench dataset not found under ${datasetDir}. Tried ${tried}.`;
+}
+
+function buildDatasetLoadError(
+  datasetDir: string,
+  datasetErrors: string[],
+): string {
+  return [
+    `MemBench dataset under ${datasetDir} has invalid recognized shard(s).`,
+    `Errors: ${datasetErrors.join(" | ")}`,
+  ].join(" ");
 }
 
 function normalizePublishedDataset(
