@@ -80,3 +80,47 @@ test("BEAM SOTA comparison uses llm_judge when the whole split has it", () => {
   assert.equal(comparison.checks[0]?.metric, "beam_4k");
   assert.equal(comparison.checks[0]?.actual, 0.9);
 });
+
+test("BEAM SOTA comparison treats floating-point ties as ties, not SOTA", () => {
+  const comparison = comparePublicBenchmarkSota(
+    {
+      meta: {
+        benchmark: "beam",
+        gitSha: "0123456789abcdef0123456789abcdef01234567",
+      },
+      results: {
+        tasks: [
+          {
+            taskId: "4k-1",
+            details: { scale: "4k" },
+            scores: {
+              rubric_coverage: 0.1,
+            },
+          },
+          {
+            taskId: "4k-2",
+            details: { scale: "4k" },
+            scores: {
+              rubric_coverage: 0.2,
+            },
+          },
+        ],
+      },
+    },
+    {
+      benchmarks: {
+        beam: {
+          targets: {
+            "4k": { score: 0.15 },
+          },
+        },
+      },
+    },
+  );
+
+  assert.equal(comparison.checks[0]?.metric, "beam_4k");
+  assert.equal(comparison.checks[0]?.sota, false);
+  assert.equal(comparison.checks[0]?.tied, true);
+  assert.equal(comparison.sotaAllCheckedMetrics, false);
+  assert.equal(comparison.atOrAboveAllCheckedMetrics, true);
+});

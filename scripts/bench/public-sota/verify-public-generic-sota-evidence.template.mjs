@@ -43,13 +43,14 @@ function finiteScore(value, label) {
 }
 
 function metricResult(metric, actual, target, meta = {}) {
+  const delta = actual - target;
   return {
     metric,
     actual,
     target,
-    delta: actual - target,
-    sota: actual > target,
-    tied: actual === target,
+    delta,
+    sota: delta > FLOAT_EPSILON,
+    tied: Math.abs(delta) <= FLOAT_EPSILON,
     ...meta,
   };
 }
@@ -515,6 +516,8 @@ assert(publicArtifactEntry.taskCount === artifact.perTaskScores.length, 'public 
 assert(publicArtifactEntry.sourceResultPath === rawResultEntry.path, 'source result path mismatch');
 assert(publicArtifactEntry.sourceResultSha256 === rawResultEntry.sha256, 'source result sha mismatch');
 assert(publicArtifactEntry.sourceResultSizeBytes === rawResultEntry.sizeBytes, 'source result size mismatch');
+assert(publicArtifactEntry.gitSha === manifest.git?.commit, 'public artifact git SHA must match manifest commit');
+assert(rawResultEntry.gitSha === manifest.git?.commit, 'raw result git SHA must match manifest commit');
 assert(rawResultEntry.mode === 'full', 'raw result manifest entry must be full');
 
 const recomputedMetricMeans = recomputeMetricMeans(artifact);

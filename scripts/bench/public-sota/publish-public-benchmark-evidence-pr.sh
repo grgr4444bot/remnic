@@ -88,7 +88,7 @@ pr_head_matches_worktree() {
 }
 
 if [[ -z "$(git -C "${WORKTREE}" status --porcelain --untracked-files=all)" ]]; then
-  existing_pr="$(gh pr list --repo "${REPO}" --head "${BRANCH}" --base "${BASE_BRANCH}" --state all --json number --jq 'sort_by(.number) | reverse | .[0].number // empty')"
+  existing_pr="$(gh pr list --repo "${REPO}" --head "${BRANCH}" --base "${BASE_BRANCH}" --state open --json number --jq 'sort_by(.number) | reverse | .[0].number // empty')"
   if [[ -z "${existing_pr}" ]]; then
     manifest_rel="$(cd "${WORKTREE}" && find docs/benchmarks/results -mindepth 2 -maxdepth 2 -name "MANIFEST.${benchmark}.json" -print 2>/dev/null | sort | tail -1)"
     if [[ -z "${manifest_rel}" ]]; then

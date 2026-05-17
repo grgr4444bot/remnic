@@ -53,6 +53,59 @@ test("MemoryArena SOTA comparison treats zero-target ties as state of the art", 
   assert.equal(comparison.atOrAboveAllCheckedMetrics, true);
 });
 
+test("MemoryArena SOTA comparison treats floating-point ties as ties, not SOTA", () => {
+  const result = {
+    meta: {
+      benchmark: "memory-arena",
+      mode: "full",
+      gitSha: "0123456789abcdef0123456789abcdef01234567",
+    },
+    results: {
+      tasks: [
+        memoryArenaSubtask("bundled_shopping", 1, 0, 1, 0.1),
+        memoryArenaSubtask("bundled_shopping", 2, 0, 1, 0.2),
+        memoryArenaSubtask("group_travel_planner", 2, 0, 1, 1),
+        memoryArenaSubtask("progressive_search", 3, 0, 1, 1),
+        memoryArenaSubtask("formal_reasoning_math", 4, 0, 1, 1),
+        memoryArenaSubtask("formal_reasoning_phys", 5, 0, 1, 1),
+      ],
+    },
+  };
+  const targetMap = {
+    benchmarks: {
+      "memory-arena": {
+        targets: {
+          allTaskAverageSuccessRate: { score: 0 },
+          bundledWebShopping: {
+            successRate: 0.15,
+            progressScore: 0,
+          },
+          groupTravelPlanning: {
+            successRate: 0,
+            progressScore: 0,
+            softProgressScore: 0,
+          },
+          progressiveWebSearch: {
+            successRate: 0,
+            progressScore: 0,
+          },
+          formalReasoning: {
+            mathSuccessRate: 0,
+            physSuccessRate: 0,
+            processScore: 0,
+          },
+        },
+      },
+    },
+  };
+
+  const comparison = compareMemoryArenaSota(result, targetMap);
+  const bundledProgress = comparison.checks.find((check) => check.metric === "bundled_web_shopping_success_rate");
+
+  assert.equal(bundledProgress?.sota, false);
+  assert.equal(bundledProgress?.tied, true);
+});
+
 function memoryArenaSubtask(
   domain: string,
   taskId: number,

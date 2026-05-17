@@ -52,13 +52,14 @@ function metricFromTasks(result, metric, predicate = () => true) {
 }
 
 function metricResult(metric, actual, target, meta = {}) {
+  const delta = actual - target;
   return {
     metric,
     actual,
     target,
-    delta: actual - target,
-    sota: actual > target,
-    tied: actual === target,
+    delta,
+    sota: delta > FLOAT_EPSILON,
+    tied: Math.abs(delta) <= FLOAT_EPSILON,
     ...meta,
   };
 }

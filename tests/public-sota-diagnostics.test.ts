@@ -249,6 +249,48 @@ async function runGenericVerifiers(evidenceDir: string, benchmark: string): Prom
   );
 }
 
+async function assertRejectsGenericVerifier(
+  evidenceDir: string,
+  benchmark: string,
+  pattern: RegExp,
+): Promise<void> {
+  await assert.rejects(
+    execFileAsync(
+      process.execPath,
+      [
+        path.join("scripts", "bench", "public-sota", "verify-public-benchmark-sota-evidence.mjs"),
+        evidenceDir,
+        path.join(evidenceDir, "current-target-map.json"),
+        benchmark,
+      ],
+      { cwd: process.cwd(), maxBuffer: 1024 * 1024 },
+    ),
+    (error: unknown) => {
+      assert(error && typeof error === "object");
+      const output = `${(error as { stdout?: string }).stdout ?? ""}\n${(error as { stderr?: string }).stderr ?? ""}`;
+      assert.match(output, pattern);
+      return true;
+    },
+  );
+  await assert.rejects(
+    execFileAsync(
+      process.execPath,
+      [
+        path.join("scripts", "bench", "public-sota", "verify-public-generic-sota-evidence.template.mjs"),
+        evidenceDir,
+        benchmark,
+      ],
+      { cwd: process.cwd(), maxBuffer: 1024 * 1024 },
+    ),
+    (error: unknown) => {
+      assert(error && typeof error === "object");
+      const output = `${(error as { stdout?: string }).stdout ?? ""}\n${(error as { stderr?: string }).stderr ?? ""}`;
+      assert.match(output, pattern);
+      return true;
+    },
+  );
+}
+
 async function writeDiagnostics(diagnosticsDir: string): Promise<void> {
   await writeValidDiagnostics(diagnosticsDir);
   await writeJson(path.join(diagnosticsDir, "invalid-started-at.json"), {
@@ -794,6 +836,94 @@ test("generic SOTA verifier mirrors BEAM incomplete llm_judge split fallback", a
   }
 });
 
+test("generic SOTA verifier rejects raw/public artifact git SHA drift", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "remnic-public-sota-gitsha-verify-"));
+  try {
+    const targetMap = {
+      benchmarks: {
+        beam: {
+          targets: {
+            "4k": { score: 0.2 },
+          },
+        },
+      },
+    };
+    const rawResult = {
+      meta: {
+        benchmark: "beam",
+        mode: "full",
+        gitSha: "0123456789abcdef0123456789abcdef01234567",
+      },
+      results: {
+        tasks: [
+          {
+            taskId: "4k-1",
+            details: { scale: "4k" },
+            scores: {
+              rubric_coverage: 0.4,
+            },
+          },
+        ],
+      },
+    };
+    const comparison = comparePublicBenchmarkSota(rawResult, targetMap);
+    const evidenceDir = await writeGenericVerifierFixture(
+      root,
+      "beam",
+      {
+        schemaVersion: 1,
+        benchmarkId: "beam",
+        datasetVersion: `sha256:${"c".repeat(64)}`,
+        system: {
+          name: "remnic",
+          version: "test",
+          gitSha: rawResult.meta.gitSha,
+        },
+        model: "gpt-5.5",
+        seed: 1,
+        metrics: {
+          rubric_coverage: 0.4,
+        },
+        perTaskScores: rawResult.results.tasks.map((task) => ({
+          taskId: task.taskId,
+          category: "4k",
+          scores: task.scores,
+          details: task.details,
+        })),
+        startedAt: STARTED_AT,
+        finishedAt: FINISHED_AT,
+        durationMs: 60_000,
+        env: {
+          node: process.version,
+          os: process.platform,
+          arch: process.arch,
+        },
+        note: "Fixture public artifact.",
+        sotaComparison: comparison,
+      },
+      comparison,
+      targetMap,
+    );
+
+    const manifestPath = path.join(evidenceDir, "MANIFEST.beam.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.results[0].gitSha = "fedcba9876543210fedcba9876543210fedcba98";
+    manifest.artifactHash = sha256String(stableStringify(manifestArtifactHashIdentity(manifest)));
+    await writeJson(manifestPath, manifest);
+
+    await assertRejectsGenericVerifier(evidenceDir, "beam", /raw result git SHA must match manifest commit/);
+
+    manifest.results[0].gitSha = rawResult.meta.gitSha;
+    manifest.publicArtifacts[0].gitSha = "fedcba9876543210fedcba9876543210fedcba98";
+    manifest.artifactHash = sha256String(stableStringify(manifestArtifactHashIdentity(manifest)));
+    await writeJson(manifestPath, manifest);
+
+    await assertRejectsGenericVerifier(evidenceDir, "beam", /public artifact git SHA must match manifest commit/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("public SOTA publish helpers resume clean committed branches without a PR", async () => {
   const generic = await readFile(
     path.join("scripts", "bench", "public-sota", "publish-public-benchmark-evidence-pr.sh"),
@@ -808,6 +938,8 @@ test("public SOTA publish helpers resume clean committed branches without a PR",
     ["generic", generic],
     ["memoryarena", memoryArena],
   ] as const) {
+    assert.match(source, /gh pr list --repo "\$\{REPO\}" --head "\$\{BRANCH\}" --base "\$\{BASE_BRANCH\}" --state open/);
+    assert.doesNotMatch(source, /gh pr list[^\n]+--state all/);
     assert.match(source, /resuming: .*evidence commit exists on clean .*\$\{BRANCH\}; pushing and creating PR/);
     assert.match(source, /pr_head_matches_worktree\(\)/);
     assert.match(source, /gh pr view "\$\{pr_number\}" --repo "\$\{REPO\}" --json headRefOid --jq '\.headRefOid'/);
@@ -896,7 +1028,7 @@ test("MemoryArena verifier template treats zero-target ties as SOTA", async () =
   );
 
   assert.match(source, /const zeroTargetTie = target === 0 && tied/);
-  assert.match(source, /sota: actual > target \|\| zeroTargetTie/);
+  assert.match(source, /sota: delta > 1e-9 \|\| zeroTargetTie/);
   assert.match(source, /sotaCriterion: 'target is zero; matching the target ties state of the art'/);
 });
 
