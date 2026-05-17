@@ -32,6 +32,7 @@ WORKTREE="${WORKTREE:-${TMP_ROOT}/remnic-${benchmark}-sota-pr}"
 VERIFY_TEMPLATE="${SCRIPT_DIR}/verify-public-generic-sota-evidence.template.mjs"
 VERIFY_CORE_SCRIPT="${SCRIPT_DIR}/verify-public-benchmark-sota-evidence.mjs"
 COMPARE_MODULE="${SCRIPT_DIR}/compare-public-benchmark-sota.mjs"
+COMPARISON_JSON_MODULE="${SCRIPT_DIR}/comparison-json.mjs"
 MEMORYARENA_COMPARE_MODULE="${SCRIPT_DIR}/memoryarena/compare-memoryarena-sota.mjs"
 MEMORYARENA_DERIVE_MODULE="${SCRIPT_DIR}/memoryarena/derive-memoryarena-official-metrics.mjs"
 INTEGRITY_MODULE="${SCRIPT_DIR}/evidence-integrity.mjs"
@@ -39,6 +40,7 @@ DOC_GENERATOR="${SCRIPT_DIR}/generate-public-benchmark-evidence-doc.mjs"
 VERIFY_SCRIPT_REL="scripts/bench/verify-public-${benchmark}-sota-evidence.mjs"
 VERIFY_CORE_SCRIPT_REL="scripts/bench/verify-public-benchmark-sota-evidence.mjs"
 COMPARE_MODULE_REL="scripts/bench/compare-public-benchmark-sota.mjs"
+COMPARISON_JSON_MODULE_REL="scripts/bench/comparison-json.mjs"
 MEMORYARENA_MODULE_DIR_REL="scripts/bench/memoryarena"
 INTEGRITY_MODULE_REL="scripts/bench/evidence-integrity.mjs"
 
@@ -114,7 +116,7 @@ fi
 (
   cd "${WORKTREE}"
   find docs/benchmarks/results -mindepth 1 -maxdepth 1 -type d -name "public-${benchmark}-codex-*" ! -name "${run_id}" -exec rm -rf {} + 2>/dev/null || true
-  rm -f "${EVIDENCE_DOC_REL}" "${VERIFY_SCRIPT_REL}" "${VERIFY_CORE_SCRIPT_REL}" "${COMPARE_MODULE_REL}" "${INTEGRITY_MODULE_REL}"
+  rm -f "${EVIDENCE_DOC_REL}" "${VERIFY_SCRIPT_REL}" "${VERIFY_CORE_SCRIPT_REL}" "${COMPARE_MODULE_REL}" "${COMPARISON_JSON_MODULE_REL}" "${INTEGRITY_MODULE_REL}"
   rm -rf "${MEMORYARENA_MODULE_DIR_REL}"
 )
 
@@ -129,6 +131,7 @@ cp "${artifact_path}" "${WORKTREE}/${RESULTS_REL}/"
 cp "${VERIFY_TEMPLATE}" "${WORKTREE}/${VERIFY_SCRIPT_REL}"
 cp "${VERIFY_CORE_SCRIPT}" "${WORKTREE}/${VERIFY_CORE_SCRIPT_REL}"
 cp "${COMPARE_MODULE}" "${WORKTREE}/${COMPARE_MODULE_REL}"
+cp "${COMPARISON_JSON_MODULE}" "${WORKTREE}/${COMPARISON_JSON_MODULE_REL}"
 cp "${MEMORYARENA_COMPARE_MODULE}" "${WORKTREE}/${MEMORYARENA_MODULE_DIR_REL}/compare-memoryarena-sota.mjs"
 cp "${MEMORYARENA_DERIVE_MODULE}" "${WORKTREE}/${MEMORYARENA_MODULE_DIR_REL}/derive-memoryarena-official-metrics.mjs"
 cp "${INTEGRITY_MODULE}" "${WORKTREE}/${INTEGRITY_MODULE_REL}"

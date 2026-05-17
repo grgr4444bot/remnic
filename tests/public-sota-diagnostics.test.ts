@@ -1204,6 +1204,7 @@ test("public SOTA staging helpers start from base and prune stale evidence", asy
   }
   assert.match(generic, /cp "\$\{VERIFY_CORE_SCRIPT\}" "\$\{WORKTREE\}\/\$\{VERIFY_CORE_SCRIPT_REL\}"/);
   assert.match(generic, /cp "\$\{COMPARE_MODULE\}" "\$\{WORKTREE\}\/\$\{COMPARE_MODULE_REL\}"/);
+  assert.match(generic, /cp "\$\{COMPARISON_JSON_MODULE\}" "\$\{WORKTREE\}\/\$\{COMPARISON_JSON_MODULE_REL\}"/);
   assert.match(generic, /rm -rf "\$\{MEMORYARENA_MODULE_DIR_REL\}"/);
   assert.match(generic, /cp "\$\{MEMORYARENA_COMPARE_MODULE\}" "\$\{WORKTREE\}\/\$\{MEMORYARENA_MODULE_DIR_REL\}\/compare-memoryarena-sota\.mjs"/);
   assert.match(generic, /cp "\$\{MEMORYARENA_DERIVE_MODULE\}" "\$\{WORKTREE\}\/\$\{MEMORYARENA_MODULE_DIR_REL\}\/derive-memoryarena-official-metrics\.mjs"/);
@@ -1211,6 +1212,7 @@ test("public SOTA staging helpers start from base and prune stale evidence", asy
   assert.match(memoryArena, /cp "\$\{VERIFY_CORE_SCRIPT\}" "\$\{WORKTREE\}\/\$\{MEMORYARENA_MODULE_DIR_REL\}\/verify-memoryarena-sota-evidence\.mjs"/);
   assert.match(memoryArena, /cp "\$\{COMPARE_MODULE\}" "\$\{WORKTREE\}\/\$\{MEMORYARENA_MODULE_DIR_REL\}\/compare-memoryarena-sota\.mjs"/);
   assert.match(memoryArena, /cp "\$\{DERIVE_MODULE\}" "\$\{WORKTREE\}\/\$\{MEMORYARENA_MODULE_DIR_REL\}\/derive-memoryarena-official-metrics\.mjs"/);
+  assert.match(memoryArena, /cp "\$\{COMPARISON_JSON_MODULE\}" "\$\{WORKTREE\}\/\$\{COMPARISON_JSON_MODULE_REL\}"/);
 });
 
 test("published SOTA verifier templates delegate to copied core verifier modules", async () => {
@@ -1234,6 +1236,8 @@ test("published SOTA verifier templates delegate to copied core verifier modules
   assert.match(memoryArenaTemplate, /spawnSync/);
   assert.doesNotMatch(memoryArenaTemplate, /function compareMemoryArenaSota/);
   assert.doesNotMatch(memoryArenaTemplate, /function deriveMemoryArenaOfficialMetrics/);
+  assert.match(memoryArenaComparator, /import \{ roundedJsonNumberReplacer \} from '\.\.\/comparison-json\.mjs'/);
+  assert.doesNotMatch(memoryArenaComparator, /function roundedJsonNumberReplacer/);
   assert.match(memoryArenaComparator, /const publishableChecks = checks\.filter\(\(check\) => check\.publishAsSota !== false\)/);
   assert.match(memoryArenaComparator, /sota: delta > 1e-9 \|\| zeroTargetTie/);
 });

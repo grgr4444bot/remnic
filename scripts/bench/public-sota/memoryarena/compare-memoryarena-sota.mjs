@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { roundedJsonNumberReplacer } from '../comparison-json.mjs';
 import { deriveMemoryArenaOfficialMetrics } from './derive-memoryarena-official-metrics.mjs';
 
 const publicSotaDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -10,18 +11,6 @@ function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
-}
-
-function round(value) {
-  return Math.round(value * 1_000_000) / 1_000_000;
-}
-
-function roundedJsonNumberReplacer(key, value) {
-  if (typeof value !== 'number') {
-    return value;
-  }
-  assert(Number.isFinite(value), `${key || '<root>'} must be finite before JSON serialization`);
-  return round(value);
 }
 
 function verdict(actual, target, metricName) {

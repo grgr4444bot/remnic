@@ -3,7 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { roundedJsonNumberReplacer } from './comparison-json.mjs';
 import { compareMemoryArenaSota } from './memoryarena/compare-memoryarena-sota.mjs';
+export { roundedJsonNumberReplacer } from './comparison-json.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_TARGET_MAP = path.join(scriptDir, 'current-target-map.json');
@@ -338,18 +340,6 @@ export function comparePublicBenchmarkSota(result, targetMap) {
       .filter((check) => check.publishAsSota !== false)
       .every((check) => check.sota || check.tied),
   };
-}
-
-function round(value) {
-  return Math.round(value * 1_000_000) / 1_000_000;
-}
-
-export function roundedJsonNumberReplacer(key, value) {
-  if (typeof value !== 'number') {
-    return value;
-  }
-  assert(Number.isFinite(value), `${key || '<root>'} must be finite before JSON serialization`);
-  return round(value);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
