@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 
 const execFileAsync = promisify(execFile);
 
@@ -322,6 +322,29 @@ test("MemoryArena public SOTA packager rejects dataset drift from the run manife
     );
   } finally {
     await rm(dirs.root, { recursive: true, force: true });
+  }
+});
+
+test("public SOTA publish helpers resume clean committed branches without a PR", async () => {
+  const generic = await readFile(
+    path.join("scripts", "bench", "public-sota", "publish-public-benchmark-evidence-pr.sh"),
+    "utf8",
+  );
+  const memoryArena = await readFile(
+    path.join("scripts", "bench", "public-sota", "memoryarena", "publish-memoryarena-evidence-pr.sh"),
+    "utf8",
+  );
+
+  for (const [label, source] of [
+    ["generic", generic],
+    ["memoryarena", memoryArena],
+  ] as const) {
+    assert.match(source, /resuming: .*evidence commit exists on clean .*\$\{BRANCH\}; pushing and creating PR/);
+    assert.match(source, /publish_or_update_pr\(\)/);
+    assert.doesNotMatch(
+      source,
+      new RegExp(`if \\[\\[ -z "\\$\\{existing_pr\\}" \\]\\]; then\\n\\s*echo "waiting: no staged or unstaged ${label === "generic" ? "\\$\\{benchmark\\}" : "MemoryArena"} evidence changes[^\\n]+and no PR exists`),
+    );
   }
 });
 

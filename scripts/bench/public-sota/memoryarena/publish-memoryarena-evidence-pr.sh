@@ -25,24 +25,53 @@ if [[ "${current_branch}" != "${BRANCH}" ]]; then
   exit 2
 fi
 
+publish_or_update_pr() {
+  (
+    cd "${WORKTREE}"
+    git push -u origin "${BRANCH}"
+  )
+
+  existing_pr="$(gh pr list --repo "${REPO}" --head "${BRANCH}" --base "${BASE_BRANCH}" --state open --json number --jq '.[0].number // empty')"
+  if [[ -n "${existing_pr}" ]]; then
+    gh pr edit "${existing_pr}" --repo "${REPO}" --title "${TITLE}" --body-file "${BODY_FILE}"
+    pr_number="${existing_pr}"
+  else
+    pr_url="$(gh pr create --repo "${REPO}" --base "${BASE_BRANCH}" --head "${BRANCH}" --title "${TITLE}" --body-file "${BODY_FILE}")"
+    pr_number="$(basename "${pr_url}")"
+  fi
+
+  gh pr view "${pr_number}" --repo "${REPO}" --json number,url,state,isDraft,headRefOid,baseRefName
+  node "${SCRIPT_DIR}/../verify-pr-clean.mjs" --repo "${REPO}" --pr "${pr_number}" --wait-seconds 1800
+}
+
+resume_clean_publish=0
+
 if [[ -z "$(git -C "${WORKTREE}" status --porcelain --untracked-files=all)" ]]; then
   existing_pr="$(gh pr list --repo "${REPO}" --head "${BRANCH}" --base "${BASE_BRANCH}" --state all --json number --jq 'sort_by(.number) | reverse | .[0].number // empty')"
   if [[ -z "${existing_pr}" ]]; then
-    echo "waiting: no staged or unstaged MemoryArena evidence changes in ${WORKTREE} and no PR exists for ${BRANCH}" >&2
+    manifest_rel="$(cd "${WORKTREE}" && find docs/benchmarks/results -mindepth 2 -maxdepth 2 -name 'MANIFEST.memory-arena.json' -print 2>/dev/null | sort | tail -1)"
+    if [[ -z "${manifest_rel}" ]]; then
+      echo "waiting: no staged or unstaged MemoryArena evidence changes in ${WORKTREE} and no committed evidence manifest exists for ${BRANCH}" >&2
+      exit 0
+    fi
+    results_rel="$(dirname "${manifest_rel}")"
+    run_id="$(basename "${results_rel}")"
+    echo "resuming: MemoryArena evidence commit exists on clean ${BRANCH}; pushing and creating PR" >&2
+    resume_clean_publish=1
+  else
+    gh pr view "${existing_pr}" --repo "${REPO}" --json number,url,state,isDraft,headRefOid,baseRefName
+    node "${SCRIPT_DIR}/../verify-pr-clean.mjs" --repo "${REPO}" --pr "${existing_pr}" --wait-seconds 1800
     exit 0
   fi
-  gh pr view "${existing_pr}" --repo "${REPO}" --json number,url,state,isDraft,headRefOid,baseRefName
-  node "${SCRIPT_DIR}/../verify-pr-clean.mjs" --repo "${REPO}" --pr "${existing_pr}" --wait-seconds 1800
-  exit 0
+else
+  manifest_rel="$(cd "${WORKTREE}" && find docs/benchmarks/results -mindepth 2 -maxdepth 2 -name 'MANIFEST.memory-arena.json' -print | sort | tail -1)"
+  if [[ -z "${manifest_rel}" ]]; then
+    echo "error: staged MemoryArena manifest not found in ${WORKTREE}/docs/benchmarks/results" >&2
+    exit 2
+  fi
+  results_rel="$(dirname "${manifest_rel}")"
+  run_id="$(basename "${results_rel}")"
 fi
-
-manifest_rel="$(cd "${WORKTREE}" && find docs/benchmarks/results -mindepth 2 -maxdepth 2 -name 'MANIFEST.memory-arena.json' -print | sort | tail -1)"
-if [[ -z "${manifest_rel}" ]]; then
-  echo "error: staged MemoryArena manifest not found in ${WORKTREE}/docs/benchmarks/results" >&2
-  exit 2
-fi
-results_rel="$(dirname "${manifest_rel}")"
-run_id="$(basename "${results_rel}")"
 
 cat > "${BODY_FILE}" <<'BODY'
 ## Summary
@@ -91,21 +120,12 @@ for (const [key, value] of Object.entries({
 fs.writeFileSync(file, body);
 '
 
-(
-  cd "${WORKTREE}"
-  git add docs/benchmarks/evidence docs/benchmarks/results scripts/bench
-  git commit -m "Publish MemoryArena SOTA evidence"
-  git push -u origin "${BRANCH}"
-)
-
-existing_pr="$(gh pr list --repo "${REPO}" --head "${BRANCH}" --base "${BASE_BRANCH}" --state open --json number --jq '.[0].number // empty')"
-if [[ -n "${existing_pr}" ]]; then
-  gh pr edit "${existing_pr}" --repo "${REPO}" --title "${TITLE}" --body-file "${BODY_FILE}"
-  pr_number="${existing_pr}"
-else
-  pr_url="$(gh pr create --repo "${REPO}" --base "${BASE_BRANCH}" --head "${BRANCH}" --title "${TITLE}" --body-file "${BODY_FILE}")"
-  pr_number="$(basename "${pr_url}")"
+if [[ "${resume_clean_publish}" != "1" ]]; then
+  (
+    cd "${WORKTREE}"
+    git add docs/benchmarks/evidence docs/benchmarks/results scripts/bench
+    git commit -m "Publish MemoryArena SOTA evidence"
+  )
 fi
 
-gh pr view "${pr_number}" --repo "${REPO}" --json number,url,state,isDraft,headRefOid,baseRefName
-node "${SCRIPT_DIR}/../verify-pr-clean.mjs" --repo "${REPO}" --pr "${pr_number}" --wait-seconds 1800
+publish_or_update_pr

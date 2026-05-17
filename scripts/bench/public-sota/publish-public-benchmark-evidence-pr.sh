@@ -39,17 +39,6 @@ if [[ "${current_branch}" != "${BRANCH}" ]]; then
   exit 2
 fi
 
-if [[ -z "$(git -C "${WORKTREE}" status --porcelain --untracked-files=all)" ]]; then
-  existing_pr="$(gh pr list --repo "${REPO}" --head "${BRANCH}" --base "${BASE_BRANCH}" --state all --json number --jq 'sort_by(.number) | reverse | .[0].number // empty')"
-  if [[ -z "${existing_pr}" ]]; then
-    echo "waiting: no staged or unstaged ${benchmark} evidence changes in ${WORKTREE} and no PR exists for ${BRANCH}" >&2
-    exit 0
-  fi
-  gh pr view "${existing_pr}" --repo "${REPO}" --json number,url,state,isDraft,headRefOid,baseRefName
-  node "${SCRIPT_DIR}/verify-pr-clean.mjs" --repo "${REPO}" --pr "${existing_pr}" --wait-seconds 1800
-  exit 0
-fi
-
 cat > "${BODY_FILE}" <<BODY
 ## Summary
 
@@ -70,21 +59,46 @@ The PR includes:
 Run the verifier commands shown in the committed evidence document.
 BODY
 
+publish_or_update_pr() {
+  (
+    cd "${WORKTREE}"
+    git push -u origin "${BRANCH}"
+  )
+
+  existing_pr="$(gh pr list --repo "${REPO}" --head "${BRANCH}" --base "${BASE_BRANCH}" --state open --json number --jq '.[0].number // empty')"
+  if [[ -n "${existing_pr}" ]]; then
+    gh pr edit "${existing_pr}" --repo "${REPO}" --title "${TITLE}" --body-file "${BODY_FILE}"
+    pr_number="${existing_pr}"
+  else
+    pr_url="$(gh pr create --repo "${REPO}" --base "${BASE_BRANCH}" --head "${BRANCH}" --title "${TITLE}" --body-file "${BODY_FILE}")"
+    pr_number="$(basename "${pr_url}")"
+  fi
+
+  gh pr view "${pr_number}" --repo "${REPO}" --json number,url,state,isDraft,headRefOid,baseRefName
+  node "${SCRIPT_DIR}/verify-pr-clean.mjs" --repo "${REPO}" --pr "${pr_number}" --wait-seconds 1800
+}
+
+if [[ -z "$(git -C "${WORKTREE}" status --porcelain --untracked-files=all)" ]]; then
+  existing_pr="$(gh pr list --repo "${REPO}" --head "${BRANCH}" --base "${BASE_BRANCH}" --state all --json number --jq 'sort_by(.number) | reverse | .[0].number // empty')"
+  if [[ -z "${existing_pr}" ]]; then
+    manifest_rel="$(cd "${WORKTREE}" && find docs/benchmarks/results -mindepth 2 -maxdepth 2 -name "MANIFEST.${benchmark}.json" -print 2>/dev/null | sort | tail -1)"
+    if [[ -z "${manifest_rel}" ]]; then
+      echo "waiting: no staged or unstaged ${benchmark} evidence changes in ${WORKTREE} and no committed evidence manifest exists for ${BRANCH}" >&2
+      exit 0
+    fi
+    echo "resuming: ${benchmark} evidence commit exists on clean ${BRANCH}; pushing and creating PR" >&2
+    publish_or_update_pr
+    exit 0
+  fi
+  gh pr view "${existing_pr}" --repo "${REPO}" --json number,url,state,isDraft,headRefOid,baseRefName
+  node "${SCRIPT_DIR}/verify-pr-clean.mjs" --repo "${REPO}" --pr "${existing_pr}" --wait-seconds 1800
+  exit 0
+fi
+
 (
   cd "${WORKTREE}"
   git add docs/benchmarks/evidence docs/benchmarks/results scripts/bench
   git commit -m "Publish ${benchmark} SOTA evidence"
-  git push -u origin "${BRANCH}"
 )
 
-existing_pr="$(gh pr list --repo "${REPO}" --head "${BRANCH}" --base "${BASE_BRANCH}" --state open --json number --jq '.[0].number // empty')"
-if [[ -n "${existing_pr}" ]]; then
-  gh pr edit "${existing_pr}" --repo "${REPO}" --title "${TITLE}" --body-file "${BODY_FILE}"
-  pr_number="${existing_pr}"
-else
-  pr_url="$(gh pr create --repo "${REPO}" --base "${BASE_BRANCH}" --head "${BRANCH}" --title "${TITLE}" --body-file "${BODY_FILE}")"
-  pr_number="$(basename "${pr_url}")"
-fi
-
-gh pr view "${pr_number}" --repo "${REPO}" --json number,url,state,isDraft,headRefOid,baseRefName
-node "${SCRIPT_DIR}/verify-pr-clean.mjs" --repo "${REPO}" --pr "${pr_number}" --wait-seconds 1800
+publish_or_update_pr
