@@ -46,7 +46,8 @@ function aggregateObjects(metrics, comparison) {
       check?.metric === 'memoryagentbench_overall_score' &&
       typeof check.sourceMetric === 'string' &&
       typeof check.units === 'string' &&
-      out[check.sourceMetric]
+      out[check.sourceMetric] &&
+      out[check.sourceMetric].mean > 1
     ) {
       out[check.sourceMetric] = {
         ...out[check.sourceMetric],

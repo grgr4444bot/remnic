@@ -1030,6 +1030,89 @@ test("generic SOTA verifier preserves MemoryAgentBench aggregate units from comp
   }
 });
 
+test("generic SOTA verifier preserves MemoryAgentBench fractional aggregate scaling", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "remnic-public-sota-memoryagentbench-fraction-verify-"));
+  try {
+    const targetMap = {
+      benchmarks: {
+        memoryagentbench: {
+          targets: {
+            overallScore: { score: 40 },
+          },
+        },
+      },
+    };
+    const rawResult = {
+      meta: {
+        benchmark: "memoryagentbench",
+        mode: "full",
+        gitSha: "0123456789abcdef0123456789abcdef01234567",
+      },
+      results: {
+        tasks: [
+          {
+            taskId: "memoryagentbench-fraction-task",
+            details: {
+              source: "aggregate_fixture",
+              officialProtocol: "aggregate",
+            },
+            scores: {
+              official_protocol_ready: 1,
+            },
+          },
+        ],
+        aggregates: {
+          overall_score: {
+            mean: 0.496,
+          },
+        },
+      },
+    };
+    const comparison = comparePublicBenchmarkSota(rawResult, targetMap);
+    const evidenceDir = await writeGenericVerifierFixture(
+      root,
+      "memoryagentbench",
+      {
+        schemaVersion: 1,
+        benchmarkId: "memoryagentbench",
+        datasetVersion: `sha256:${"c".repeat(64)}`,
+        system: {
+          name: "remnic",
+          version: "test",
+          gitSha: rawResult.meta.gitSha,
+        },
+        model: "gpt-5.5",
+        seed: 1,
+        metrics: {
+          overall_score: 0.496,
+        },
+        perTaskScores: rawResult.results.tasks.map((task) => ({
+          taskId: task.taskId,
+          category: "aggregate",
+          scores: task.scores,
+          details: task.details,
+        })),
+        startedAt: STARTED_AT,
+        finishedAt: FINISHED_AT,
+        durationMs: 60_000,
+        env: {
+          node: process.version,
+          os: process.platform,
+          arch: process.arch,
+        },
+        note: "Fixture public artifact.",
+        sotaComparison: comparison,
+      },
+      comparison,
+      targetMap,
+    );
+
+    await runGenericVerifiers(evidenceDir, "memoryagentbench");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("generic SOTA verifier uses MemBench split aggregate metrics without per-task re-derivation", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "remnic-public-sota-membench-verify-"));
   try {
