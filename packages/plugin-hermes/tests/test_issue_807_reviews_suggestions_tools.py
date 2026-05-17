@@ -24,7 +24,7 @@ async def test_issue_807_client_methods_call_daemon_mcp_tools(client: RemnicClie
 
     await client.review_queue_list(runId="run-1", namespace="project")
     await client.review_list(filter="duplicates", namespace="project", limit=5)
-    await client.review_resolve("pair-1", "merge")
+    await client.review_resolve("pair-1", "merge", mergedMemoryId="mem-merged-003")
     await client.suggestion_submit("Remember this after review.", category="fact", dryRun=True)
 
     calls = client._http.post.await_args_list
@@ -47,6 +47,7 @@ async def test_issue_807_client_methods_call_daemon_mcp_tools(client: RemnicClie
     assert calls[2].kwargs["json"]["params"]["arguments"] == {
         "pairId": "pair-1",
         "verb": "merge",
+        "mergedMemoryId": "mem-merged-003",
     }
     assert calls[3].kwargs["json"]["params"]["arguments"] == {
         "content": "Remember this after review.",
@@ -99,6 +100,8 @@ def test_issue_807_tools_are_registered_with_primary_and_legacy_names() -> None:
         "both-valid",
         "needs-more-context",
     ]
+    assert "mergedMemoryId" in ctx.tools["remnic_review_resolve"]["schema"]["parameters"]["properties"]
+    assert "mergedContent" in ctx.tools["remnic_review_resolve"]["schema"]["parameters"]["properties"]
     assert ctx.tools["remnic_suggestion_submit"]["schema"]["parameters"]["required"] == ["content"]
     assert ctx.tools["engram_suggestion_submit"]["schema"]["name"] == "engram_suggestion_submit"
 

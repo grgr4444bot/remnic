@@ -1413,6 +1413,8 @@ export class EngramMcpServer {
           properties: {
             pairId: { type: "string", description: "The contradiction pair ID to resolve." },
             verb: { type: "string", enum: ["keep-a", "keep-b", "merge", "both-valid", "needs-more-context"], description: "Resolution action." },
+            mergedMemoryId: { type: "string", description: "Existing merged memory ID to use when verb is merge." },
+            mergedContent: { type: "string", description: "Content for a new merged memory when verb is merge." },
           },
           required: ["pairId", "verb"],
           additionalProperties: false,
@@ -2813,7 +2815,10 @@ export class EngramMcpServer {
         const { isValidResolutionVerb } = await import("./contradiction/resolution.js");
         if (!isValidResolutionVerb(verb)) throw new Error(`Invalid verb: ${verb}. Must be one of: keep-a, keep-b, merge, both-valid, needs-more-context`);
         const { executeResolution } = await import("./contradiction/resolution.js");
-        return executeResolution(this.service.memoryDir, this.service.storageRef, pairId, verb);
+        return executeResolution(this.service.memoryDir, this.service.storageRef, pairId, verb, {
+          mergedMemoryId: typeof args.mergedMemoryId === "string" ? args.mergedMemoryId : undefined,
+          mergedContent: typeof args.mergedContent === "string" ? args.mergedContent : undefined,
+        });
       }
       case "engram.contradiction_scan_run":
       case "remnic.contradiction_scan_run": {

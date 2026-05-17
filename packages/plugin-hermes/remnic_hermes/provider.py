@@ -1000,6 +1000,14 @@ class RemnicMemoryProvider(HermesMemoryProvider):  # type: ignore[misc]
                 "enum": _REVIEW_RESOLUTION_VERBS,
                 "description": "Resolution action.",
             },
+            "mergedMemoryId": {
+                "type": "string",
+                "description": "Existing merged memory ID to use when verb is merge.",
+            },
+            "mergedContent": {
+                "type": "string",
+                "description": "Content for a new merged memory when verb is merge.",
+            },
         },
         ["pairId", "verb"],
     )
@@ -1608,7 +1616,7 @@ class RemnicMemoryProvider(HermesMemoryProvider):  # type: ignore[misc]
     async def review_resolve(self, pairId: str, verb: str, **kwargs: Any) -> dict[str, Any]:  # noqa: N803
         if not self._client:
             return {"error": "Not connected to Remnic"}
-        return await self._client.review_resolve(pair_id=pairId, verb=verb)
+        return await self._client.review_resolve(pair_id=pairId, verb=verb, **kwargs)
 
     async def suggestion_submit(self, content: str, **kwargs: Any) -> dict[str, Any]:
         if not self._client:
