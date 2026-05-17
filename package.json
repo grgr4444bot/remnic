@@ -1,6 +1,6 @@
 {
   "name": "remnic-workspace",
-  "version": "9.3.423",
+  "version": "9.3.424",
   "private": true,
   "type": "module",
   "description": "Workspace root for the Remnic monorepo.",
