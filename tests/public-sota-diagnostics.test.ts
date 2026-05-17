@@ -1287,6 +1287,7 @@ test("MemoryArena publish watcher ignores derived evidence JSON files", async ()
   assert.match(source, /stage_output="\$\(RUN_ID="\$\{RUN_ID\}" EVIDENCE_ROOT="\$\{EVIDENCE_ROOT\}" bash "\$\{SCRIPT_DIR\}\/stage-memoryarena-evidence-pr\.sh" 2>&1\)"/);
   assert.match(source, /publish_output="\$\(RUN_ID="\$\{RUN_ID\}" bash "\$\{SCRIPT_DIR\}\/publish-memoryarena-evidence-pr\.sh" 2>&1\)"/);
   assert.match(source, /if ! grep -q '\^ready: MemoryArena evidence PR worktree staged ' <<< "\$\{stage_output\}"; then[\s\S]*sleep "\$\{INTERVAL_SECONDS\}"[\s\S]*continue/);
+  assert.match(source, /if grep -q '\^done:' <<< "\$\{stage_output\}"; then[\s\S]*exit 0[\s\S]*fi/);
   assert.match(source, /if \[\[ "\$\{complete_status\}" -eq 4 \]\]; then[\s\S]*stopping: MemoryArena completion helper exited \$\{complete_status\}[\s\S]*exit "\$\{complete_status\}"/);
   assert.match(source, /waiting: MemoryArena completion helper exited \$\{complete_status\}; will retry[\s\S]*sleep "\$\{INTERVAL_SECONDS\}"[\s\S]*continue/);
 });
@@ -1301,6 +1302,7 @@ test("generic public benchmark publish watcher keeps completion and staging evid
   assert.match(source, /EVIDENCE_ROOT="\$\{EVIDENCE_ROOT\}" bash "\$\{SCRIPT_DIR\}\/stage-public-benchmark-evidence-pr\.sh"/);
   assert.match(source, /if \[\[ "\$\{complete_status\}" -eq 4 \]\]; then[\s\S]*stopping: \$\{BENCHMARK\} completion helper exited \$\{complete_status\}[\s\S]*exit "\$\{complete_status\}"/);
   assert.match(source, /waiting: \$\{BENCHMARK\} completion helper exited \$\{complete_status\}; will retry[\s\S]*sleep "\$\{INTERVAL_SECONDS\}"[\s\S]*continue/);
+  assert.match(source, /if grep -q '\^done:' <<< "\$\{stage_output\}"; then[\s\S]*exit 0[\s\S]*fi/);
 });
 
 test("public SOTA staging helpers start from base and prune stale evidence", async () => {
@@ -1320,6 +1322,9 @@ test("public SOTA staging helpers start from base and prune stale evidence", asy
     assert.match(source, /find docs\/benchmarks\/results[\s\S]*-exec rm -rf \{\} \+/);
     assert.match(source, /rm -f "\$\{EVIDENCE_DOC_REL\}" "\$\{VERIFY_SCRIPT_REL\}"/);
     assert.match(source, /cp "\$\{INTEGRITY_MODULE\}" "\$\{WORKTREE\}\/\$\{INTEGRITY_MODULE_REL\}"/);
+    assert.match(source, /staged_status="\$\(git -C "\$\{WORKTREE\}" status --porcelain --untracked-files=all\)"/);
+    assert.match(source, /if \[\[ -z "\$\{staged_status\}" \]\]; then[\s\S]*done: .* no PR staging changes[\s\S]*exit 0/);
+    assert.match(source, /printf '%s\\n' "\$\{staged_status\}"/);
   }
   assert.match(generic, /cp "\$\{VERIFY_CORE_SCRIPT\}" "\$\{WORKTREE\}\/\$\{VERIFY_CORE_SCRIPT_REL\}"/);
   assert.match(generic, /cp "\$\{COMPARE_MODULE\}" "\$\{WORKTREE\}\/\$\{COMPARE_MODULE_REL\}"/);

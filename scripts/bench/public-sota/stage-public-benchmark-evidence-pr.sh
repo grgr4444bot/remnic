@@ -151,7 +151,13 @@ node "${DOC_GENERATOR}" \
     --skip-git \
     --no-diagnostics
   gitleaks detect --source . --no-git --redact --exit-code 1
-  git status --short --untracked-files=all
 )
+
+staged_status="$(git -C "${WORKTREE}" status --porcelain --untracked-files=all)"
+if [[ -z "${staged_status}" ]]; then
+  echo "done: ${benchmark} evidence already present on ${BASE_BRANCH}; no PR staging changes"
+  exit 0
+fi
+printf '%s\n' "${staged_status}"
 
 echo "ready: ${benchmark} evidence PR worktree staged at ${WORKTREE} on ${BRANCH}"

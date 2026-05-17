@@ -105,6 +105,9 @@ EOF
     log "stopping: MemoryArena staging helper exited ${stage_status}"
     exit "${stage_status}"
   fi
+  if grep -q '^done:' <<< "${stage_output}"; then
+    exit 0
+  fi
   if ! grep -q '^ready: MemoryArena evidence PR worktree staged ' <<< "${stage_output}"; then
     sleep "${INTERVAL_SECONDS}"
     continue

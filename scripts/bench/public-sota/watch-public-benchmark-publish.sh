@@ -143,6 +143,9 @@ EOF
     log "stopping: ${BENCHMARK} staging helper exited ${stage_status}"
     exit "${stage_status}"
   fi
+  if grep -q '^done:' <<< "${stage_output}"; then
+    exit 0
+  fi
   if ! grep -q '^ready: .* evidence PR worktree staged ' <<< "${stage_output}"; then
     sleep "${INTERVAL_SECONDS}"
     continue
