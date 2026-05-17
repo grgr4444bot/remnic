@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import {
+  chmod,
   copyFile,
   mkdir,
   open,
@@ -63,6 +64,7 @@ const BACKUP_DIR = ".backup";
 const LOCK_RETRY_MS = 100;
 const LOCK_STALE_MS = 30_000;
 const LOCK_TIMEOUT_MS = 5_000;
+const TOKEN_STORE_MODE = 0o600;
 
 function resolvePlatform(options?: MigrationOptions): NodeJS.Platform {
   return options?.platform ?? process.platform;
@@ -134,6 +136,23 @@ async function ensureParent(filePath: string): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true });
 }
 
+async function secureTokenFilePermissions(filePath: string): Promise<void> {
+  await chmod(filePath, TOKEN_STORE_MODE);
+}
+
+async function writeOwnerOnlyFile(filePath: string, content: string): Promise<void> {
+  await writeFile(filePath, content, { encoding: "utf8", mode: TOKEN_STORE_MODE });
+  await chmod(filePath, TOKEN_STORE_MODE);
+}
+
+async function writeTokenStoreFile(filePath: string, content: string): Promise<void> {
+  await writeOwnerOnlyFile(filePath, content);
+}
+
+function isRemnicTokenStorePath(filePath: string, homeDir: string): boolean {
+  return path.resolve(filePath) === path.resolve(path.join(remnicRoot(homeDir), "tokens.json"));
+}
+
 async function copyTreeMissing(source: string, destination: string, copied: string[]): Promise<void> {
   if (!existsSync(source)) return;
   const sourceStat = await stat(source);
@@ -203,6 +222,7 @@ function parseTokenEntries(raw: unknown): TokenEntry[] {
 
 async function rewriteTokensIfPresent(filePath: string): Promise<number> {
   if (!existsSync(filePath)) return 0;
+  await secureTokenFilePermissions(filePath);
   let raw: Record<string, unknown>;
   try {
     raw = JSON.parse(await readFile(filePath, "utf8")) as Record<string, unknown>;
@@ -234,7 +254,7 @@ async function rewriteTokensIfPresent(filePath: string): Promise<number> {
   }
 
   if (rewritten > 0) {
-    await writeFile(filePath, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
+    await writeTokenStoreFile(filePath, `${JSON.stringify(raw, null, 2)}\n`);
   }
   return rewritten;
 }
@@ -247,6 +267,7 @@ async function mergeLegacyTokens(
   backupExisting: boolean,
 ): Promise<number> {
   if (!existsSync(remnicTokensPath)) return 0;
+  await secureTokenFilePermissions(remnicTokensPath);
   if (!existsSync(legacyTokensPath)) return rewriteTokensIfPresent(remnicTokensPath);
 
   let remnicRaw: unknown;
@@ -278,10 +299,9 @@ async function mergeLegacyTokens(
       await backupFile(remnicTokensPath, originalRemnic, homeDir, manifest);
     }
 
-    await writeFile(
+    await writeTokenStoreFile(
       remnicTokensPath,
       `${JSON.stringify({ tokens: recoveredEntries }, null, 2)}\n`,
-      "utf8",
     );
     return rewritten;
   }
@@ -318,10 +338,9 @@ async function mergeLegacyTokens(
     await backupFile(remnicTokensPath, originalRemnic, homeDir, manifest);
   }
 
-  await writeFile(
+  await writeTokenStoreFile(
     remnicTokensPath,
     `${JSON.stringify({ tokens: mergedEntries }, null, 2)}\n`,
-    "utf8",
   );
   return rewritten;
 }
@@ -376,7 +395,13 @@ async function backupFile(
   const digest = createHash("sha256").update(targetPath).digest("hex").slice(0, 12);
   const backupPath = path.join(backupRoot(homeDir), "mcp", `${digest}.json`);
   await ensureParent(backupPath);
-  await writeFile(backupPath, originalContent, "utf8");
+  if (isRemnicTokenStorePath(targetPath, homeDir)) {
+    await writeOwnerOnlyFile(backupPath, originalContent);
+  } else {
+    const originalMode = (await stat(targetPath)).mode & 0o777;
+    await writeFile(backupPath, originalContent, { encoding: "utf8", mode: originalMode });
+    await chmod(backupPath, originalMode);
+  }
   manifest.entries.push({ targetPath, backupPath });
 }
 
@@ -593,6 +618,9 @@ export async function rollbackFromEngramMigration(options?: MigrationOptions): P
     if (entry.backupPath && existsSync(entry.backupPath)) {
       await ensureParent(entry.targetPath);
       await copyFile(entry.backupPath, entry.targetPath);
+      if (isRemnicTokenStorePath(entry.targetPath, homeDir)) {
+        await secureTokenFilePermissions(entry.targetPath);
+      }
       restored.push(entry.targetPath);
       continue;
     }
