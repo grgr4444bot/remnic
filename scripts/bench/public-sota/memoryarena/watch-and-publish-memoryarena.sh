@@ -7,7 +7,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TMP_ROOT="${TMPDIR:-/tmp}"
 TMP_ROOT="${TMP_ROOT%/}"
 
-RUN_ID="${RUN_ID:-public-matrix-codex-bf9b2643-20260515T052919Z}"
+DEFAULT_RUN_ID="public-matrix-codex-bf9b2643-20260515T052919Z"
+if [[ -n "${RESULTS_DIR:-}" && -z "${RUN_ID:-}" ]]; then
+  RUN_ID="$(basename "${RESULTS_DIR%/}")"
+else
+  RUN_ID="${RUN_ID:-${DEFAULT_RUN_ID}}"
+fi
 RESULTS_DIR="${RESULTS_DIR:-${HOME}/.remnic/bench/results/${RUN_ID}}"
 EVIDENCE_ROOT="${EVIDENCE_ROOT:-${TMP_ROOT}/remnic-memoryarena-evidence}"
 SESSION="${SESSION:-${RUN_ID}}"
@@ -55,7 +60,7 @@ while :; do
   log "result detected: ${result}"
 
   set +e
-  OUT_ROOT="${EVIDENCE_ROOT}" bash "${SCRIPT_DIR}/complete-memoryarena-if-ready.sh" >> "${LOG_FILE}" 2>&1
+  RUN_ID="${RUN_ID}" RESULTS_DIR="${RESULTS_DIR}" SESSION="${SESSION}" OUT_ROOT="${EVIDENCE_ROOT}" bash "${SCRIPT_DIR}/complete-memoryarena-if-ready.sh" >> "${LOG_FILE}" 2>&1
   complete_status=$?
   set -e
   if [[ "${complete_status}" -ne 0 ]]; then
@@ -90,7 +95,7 @@ EOF
   fi
 
   set +e
-  stage_output="$(EVIDENCE_ROOT="${EVIDENCE_ROOT}" bash "${SCRIPT_DIR}/stage-memoryarena-evidence-pr.sh" 2>&1)"
+  stage_output="$(RUN_ID="${RUN_ID}" EVIDENCE_ROOT="${EVIDENCE_ROOT}" bash "${SCRIPT_DIR}/stage-memoryarena-evidence-pr.sh" 2>&1)"
   stage_status=$?
   set -e
   if [[ -n "${stage_output}" ]]; then
@@ -106,7 +111,7 @@ EOF
   fi
 
   set +e
-  publish_output="$(bash "${SCRIPT_DIR}/publish-memoryarena-evidence-pr.sh" 2>&1)"
+  publish_output="$(RUN_ID="${RUN_ID}" bash "${SCRIPT_DIR}/publish-memoryarena-evidence-pr.sh" 2>&1)"
   publish_status=$?
   set -e
   if [[ -n "${publish_output}" ]]; then

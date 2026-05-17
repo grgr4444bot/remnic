@@ -1282,8 +1282,10 @@ test("MemoryArena publish watcher ignores derived evidence JSON files", async ()
   assert.match(source, /-name 'memory-arena-\*\.json'/);
   assert.match(source, /! -name 'memory-arena-sota-comparison\.json'/);
   assert.match(source, /! -name 'memory-arena-diagnostics-summary\.json'/);
-  assert.match(source, /OUT_ROOT="\$\{EVIDENCE_ROOT\}" bash "\$\{SCRIPT_DIR\}\/complete-memoryarena-if-ready\.sh"/);
-  assert.match(source, /stage_output="\$\(EVIDENCE_ROOT="\$\{EVIDENCE_ROOT\}" bash "\$\{SCRIPT_DIR\}\/stage-memoryarena-evidence-pr\.sh" 2>&1\)"/);
+  assert.match(source, /RUN_ID="\$\(basename "\$\{RESULTS_DIR%\/\}"\)"/);
+  assert.match(source, /RUN_ID="\$\{RUN_ID\}" RESULTS_DIR="\$\{RESULTS_DIR\}" SESSION="\$\{SESSION\}" OUT_ROOT="\$\{EVIDENCE_ROOT\}" bash "\$\{SCRIPT_DIR\}\/complete-memoryarena-if-ready\.sh"/);
+  assert.match(source, /stage_output="\$\(RUN_ID="\$\{RUN_ID\}" EVIDENCE_ROOT="\$\{EVIDENCE_ROOT\}" bash "\$\{SCRIPT_DIR\}\/stage-memoryarena-evidence-pr\.sh" 2>&1\)"/);
+  assert.match(source, /publish_output="\$\(RUN_ID="\$\{RUN_ID\}" bash "\$\{SCRIPT_DIR\}\/publish-memoryarena-evidence-pr\.sh" 2>&1\)"/);
   assert.match(source, /if ! grep -q '\^ready: MemoryArena evidence PR worktree staged ' <<< "\$\{stage_output\}"; then[\s\S]*sleep "\$\{INTERVAL_SECONDS\}"[\s\S]*continue/);
   assert.match(source, /if \[\[ "\$\{complete_status\}" -eq 4 \]\]; then[\s\S]*stopping: MemoryArena completion helper exited \$\{complete_status\}[\s\S]*exit "\$\{complete_status\}"/);
   assert.match(source, /waiting: MemoryArena completion helper exited \$\{complete_status\}; will retry[\s\S]*sleep "\$\{INTERVAL_SECONDS\}"[\s\S]*continue/);
