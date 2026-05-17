@@ -28,9 +28,9 @@ pr_number="$(gh pr list \
   --repo "${REPO}" \
   --head "${MEMORYARENA_BRANCH}" \
   --base "${BASE_BRANCH}" \
-  --state open \
+  --state all \
   --json number,state \
-  --jq 'sort_by(.number) | reverse | .[0].number // empty')"
+  --jq 'map(select(.state == "OPEN" or .state == "MERGED")) | sort_by(.number) | reverse | .[0].number // empty')"
 
 if [[ -z "${pr_number}" ]]; then
   echo "waiting: no MemoryArena evidence PR found for ${MEMORYARENA_BRANCH} -> ${BASE_BRANCH}" >&2

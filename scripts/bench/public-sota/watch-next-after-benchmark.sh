@@ -52,9 +52,9 @@ while :; do
     --repo "${REPO}" \
     --head "${PREVIOUS_BRANCH}" \
     --base "${BASE_BRANCH}" \
-    --state open \
+    --state all \
     --json number,state \
-    --jq 'sort_by(.number) | reverse | .[0].number // empty')"
+    --jq 'map(select(.state == "OPEN" or .state == "MERGED")) | sort_by(.number) | reverse | .[0].number // empty')"
 
   if [[ -z "${pr_number}" ]]; then
     log "waiting: no ${PREVIOUS} evidence PR found for ${PREVIOUS_BRANCH} -> ${BASE_BRANCH}"

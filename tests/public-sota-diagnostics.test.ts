@@ -984,8 +984,8 @@ test("chained public benchmark watcher retries active-session launch collisions"
     "utf8",
   );
 
-  assert.match(source, /--state open/);
-  assert.doesNotMatch(source, /--state all/);
+  assert.match(source, /--state all/);
+  assert.match(source, /select\(\.state == "OPEN" or \.state == "MERGED"\)/);
   assert.match(source, /if \[\[ "\$\{launch_status\}" -eq 3 \]\]; then/);
   assert.match(source, /waiting: active public benchmark scoring session blocked \$\{NEXT\} launch; retrying/);
   assert.match(source, /sleep "\$\{INTERVAL_SECONDS\}"[\s\S]*continue[\s\S]*if \[\[ "\$\{launch_status\}" -ne 0 \]\]; then/);
@@ -997,8 +997,8 @@ test("MemoryArena transition helper retries active-session launch collisions", a
     "utf8",
   );
 
-  assert.match(source, /--state open/);
-  assert.doesNotMatch(source, /--state all/);
+  assert.match(source, /--state all/);
+  assert.match(source, /select\(\.state == "OPEN" or \.state == "MERGED"\)/);
   assert.match(source, /launch_status=\$\?/);
   assert.match(source, /if \[\[ "\$\{launch_status\}" -eq 3 \]\]; then/);
   assert.match(source, /waiting: active public benchmark scoring session blocked \$\{BENCHMARK\} launch; retrying/);
