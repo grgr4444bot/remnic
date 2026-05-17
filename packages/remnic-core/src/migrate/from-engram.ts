@@ -62,7 +62,6 @@ const LOCK_FILE = ".migration.lock";
 const ROLLBACK_MANIFEST = ".rollback.json";
 const BACKUP_DIR = ".backup";
 const LOCK_RETRY_MS = 100;
-const LOCK_STALE_MS = 30_000;
 const LOCK_TIMEOUT_MS = 5_000;
 const TOKEN_STORE_MODE = 0o600;
 
@@ -558,16 +557,18 @@ async function acquireLock(homeDir: string): Promise<() => Promise<void>> {
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== "EEXIST") throw error;
 
-      const details = await readFile(target, "utf8").catch(() => "");
-      const lines = details.split("\n");
-      const pid = Number.parseInt(lines[0] ?? "", 10);
-      const createdAt = Number.parseInt(lines[1] ?? "", 10);
-      const malformed = !Number.isSafeInteger(pid) || pid <= 0 || !Number.isFinite(createdAt);
-      const stale = Number.isFinite(createdAt) && Date.now() - createdAt > LOCK_STALE_MS;
-      const deadPid = !malformed && !processIsAlive(pid);
-      if (malformed || (stale && deadPid)) {
-        await removeLockIfUnchanged(target, details);
-        continue;
+      const details = await readFile(target, "utf8").catch(() => null);
+      if (details === null) {
+        if (await removeLock(target)) continue;
+      } else {
+        const lines = details.split("\n");
+        const pid = Number.parseInt(lines[0] ?? "", 10);
+        const createdAt = Number.parseInt(lines[1] ?? "", 10);
+        const malformed = !Number.isSafeInteger(pid) || pid <= 0 || !Number.isFinite(createdAt);
+        const deadPid = !malformed && !processIsAlive(pid);
+        if (malformed || deadPid) {
+          if (await removeLockIfUnchanged(target, details)) continue;
+        }
       }
       if (Date.now() - started > LOCK_TIMEOUT_MS) {
         throw new Error(`timed out waiting for migration lock: ${target}`);
@@ -577,10 +578,19 @@ async function acquireLock(homeDir: string): Promise<() => Promise<void>> {
   }
 }
 
-async function removeLockIfUnchanged(target: string, expectedContent: string): Promise<void> {
+async function removeLockIfUnchanged(target: string, expectedContent: string): Promise<boolean> {
   const current = await readFile(target, "utf8").catch(() => null);
-  if (current !== expectedContent) return;
-  await rm(target, { force: true }).catch(() => undefined);
+  if (current !== expectedContent) return false;
+  return removeLock(target);
+}
+
+async function removeLock(target: string): Promise<boolean> {
+  try {
+    await rm(target, { force: true });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function processIsAlive(pid: number): boolean {
