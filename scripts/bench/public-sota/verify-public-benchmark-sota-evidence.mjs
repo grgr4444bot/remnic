@@ -211,6 +211,7 @@ assert(publicArtifactEntry.sourceResultSizeBytes === rawResultEntry.sizeBytes, '
 assert(publicArtifactEntry.gitSha === manifest.git?.commit, 'public artifact git SHA must match manifest commit');
 assert(rawResultEntry.gitSha === manifest.git?.commit, 'raw result git SHA must match manifest commit');
 assert(rawResultEntry.mode === 'full', 'raw result manifest entry must be full');
+assert(rawResultEntry.taskCount === artifact.perTaskScores.length, 'raw result taskCount mismatch');
 
 const recomputedMetricMeans = recomputeMetricMeans(artifact);
 for (const [metric, recomputed] of Object.entries(recomputedMetricMeans)) {
@@ -234,6 +235,10 @@ assert(diagnostics.runId === manifest.run?.id, 'diagnostics runId must match man
 assert(diagnostics.benchmark === benchmark, `diagnostics benchmark must be ${benchmark}`);
 assert(diagnostics.checked > 0, 'diagnostics must include at least one completed record');
 assert(diagnostics.complete === diagnostics.checked, 'diagnostics complete count must match checked records');
+assert(
+  diagnostics.checked >= artifact.perTaskScores.length,
+  `diagnostics checked count must cover published task count (${diagnostics.checked} < ${artifact.perTaskScores.length})`,
+);
 assert(diagnostics.inFlight === 0, 'diagnostics must have zero in-flight records');
 assert(diagnostics.afterCutoff === 0, 'diagnostics must have zero after-cutoff records');
 assert(diagnostics.invalidTimestamps === 0, 'diagnostics must have zero invalid timestamps');

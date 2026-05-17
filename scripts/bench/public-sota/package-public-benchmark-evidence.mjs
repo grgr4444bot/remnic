@@ -580,6 +580,10 @@ async function main() {
   assert(diagnostics.invalidTimestamps === 0, 'diagnostics must have zero invalid timestamps');
   assert(diagnostics.errored === 0, 'diagnostics must have zero errors');
   assert(diagnostics.nonzero === 0, 'diagnostics must have zero nonzero exits');
+  assert(
+    diagnostics.checked >= result.results.tasks.length,
+    `diagnostics checked count must cover published task count (${diagnostics.checked} < ${result.results.tasks.length})`,
+  );
   assert(diagnostics.providers?.['codex-cli'] === diagnostics.checked, 'diagnostics provider distribution must be all codex-cli');
   assert(diagnostics.models?.['gpt-5.5'] === diagnostics.checked, 'diagnostics model distribution must be all gpt-5.5');
   assert(diagnostics.reasoningEfforts?.xhigh === diagnostics.checked, 'diagnostics reasoning distribution must be all xhigh');

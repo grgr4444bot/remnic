@@ -130,26 +130,27 @@ async function writeGenericVerifierFixture(
   const artifactPath = path.join(evidenceDir, artifactName);
   await writeJson(artifactPath, artifact);
   const artifactBody = await readFile(artifactPath);
+  const taskCount = Array.isArray(artifact.perTaskScores) ? artifact.perTaskScores.length : 0;
+  const diagnosticsCount = Math.max(1, taskCount);
 
   await writeJson(path.join(evidenceDir, `${benchmark}-sota-comparison.json`), comparison);
   await writeJson(path.join(evidenceDir, `${benchmark}-diagnostics-summary.json`), {
     runId: RUN_ID,
     benchmark,
-    checked: 1,
-    complete: 1,
+    checked: diagnosticsCount,
+    complete: diagnosticsCount,
     inFlight: 0,
     afterCutoff: 0,
     invalidTimestamps: 0,
     errored: 0,
     nonzero: 0,
-    providers: { "codex-cli": 1 },
-    models: { "gpt-5.5": 1 },
-    reasoningEfforts: { xhigh: 1 },
-    serviceTiers: { fast: 1 },
+    providers: { "codex-cli": diagnosticsCount },
+    models: { "gpt-5.5": diagnosticsCount },
+    reasoningEfforts: { xhigh: diagnosticsCount },
+    serviceTiers: { fast: diagnosticsCount },
   });
   await writeJson(path.join(evidenceDir, "current-target-map.json"), targetMap);
 
-  const taskCount = Array.isArray(artifact.perTaskScores) ? artifact.perTaskScores.length : 0;
   const gitSha = String((artifact.system as { gitSha?: string } | undefined)?.gitSha ?? "0123456789abcdef0123456789abcdef01234567");
   const rawEntry = {
     path: `${benchmark}-raw-result.json`,
@@ -307,17 +308,20 @@ async function writeDiagnostics(diagnosticsDir: string): Promise<void> {
   });
 }
 
-async function writeValidDiagnostics(diagnosticsDir: string): Promise<void> {
-  await writeJson(path.join(diagnosticsDir, "valid.json"), {
-    runId: RUN_ID,
-    startedAt: "2026-05-16T00:00:10.000Z",
-    finishedAt: "2026-05-16T00:00:20.000Z",
-    provider: "codex-cli",
-    model: "gpt-5.5",
-    reasoningEffort: "xhigh",
-    serviceTier: "fast",
-    result: { status: 0 },
-  });
+async function writeValidDiagnostics(diagnosticsDir: string, count = 1): Promise<void> {
+  for (let index = 0; index < count; index += 1) {
+    const suffix = count === 1 ? "valid" : `valid-${String(index + 1).padStart(2, "0")}`;
+    await writeJson(path.join(diagnosticsDir, `${suffix}.json`), {
+      runId: RUN_ID,
+      startedAt: new Date(Date.parse("2026-05-16T00:00:10.000Z") + index * 1000).toISOString(),
+      finishedAt: new Date(Date.parse("2026-05-16T00:00:20.000Z") + index * 1000).toISOString(),
+      provider: "codex-cli",
+      model: "gpt-5.5",
+      reasoningEffort: "xhigh",
+      serviceTier: "fast",
+      result: { status: 0 },
+    });
+  }
 }
 
 async function assertRejectsInvalidDiagnostics(
@@ -333,6 +337,24 @@ async function assertRejectsInvalidDiagnostics(
       assert(error && typeof error === "object");
       const output = `${(error as { stdout?: string }).stdout ?? ""}\n${(error as { stderr?: string }).stderr ?? ""}`;
       assert.match(output, /diagnostics must have zero invalid timestamps/);
+      return true;
+    },
+  );
+}
+
+async function assertRejectsDiagnosticsCoverage(
+  script: string,
+  args: string[],
+): Promise<void> {
+  await assert.rejects(
+    execFileAsync(process.execPath, [script, ...args], {
+      cwd: process.cwd(),
+      maxBuffer: 1024 * 1024,
+    }),
+    (error: unknown) => {
+      assert(error && typeof error === "object");
+      const output = `${(error as { stdout?: string }).stdout ?? ""}\n${(error as { stderr?: string }).stderr ?? ""}`;
+      assert.match(output, /diagnostics checked count must cover published task count/);
       return true;
     },
   );
@@ -375,7 +397,7 @@ async function assertRejectsRawResultDrift(
   );
 }
 
-async function writeAmemGymResult(resultPath: string): Promise<void> {
+async function writeAmemGymResult(resultPath: string, taskCount = 1): Promise<void> {
   await writeJson(resultPath, {
     meta: {
       id: "amemgym-test-result",
@@ -403,13 +425,11 @@ async function writeAmemGymResult(resultPath: string): Promise<void> {
       aggregates: {
         normalized_memory_score: { mean: 1 },
       },
-      tasks: [
-        {
-          taskId: "profile-q1",
-          details: { profileId: "profile", questionIndex: 1 },
-          scores: { normalized_memory_score: 1 },
-        },
-      ],
+      tasks: Array.from({ length: taskCount }, (_, index) => ({
+        taskId: `profile-q${index + 1}`,
+        details: { profileId: "profile", questionIndex: index + 1 },
+        scores: { normalized_memory_score: 1 },
+      })),
     },
   });
 }
@@ -495,6 +515,62 @@ test("MemoryArena public SOTA packager rejects diagnostics with invalid timestam
     await writeBaseManifest(dirs.resultsDir, "memory-arena", resultPath);
 
     await assertRejectsInvalidDiagnostics(
+      path.join("scripts", "bench", "public-sota", "memoryarena", "package-memoryarena-evidence.mjs"),
+      [
+        "--result", resultPath,
+        "--results-dir", dirs.resultsDir,
+        "--dataset-dir", dirs.datasetDir,
+        "--repo-root", process.cwd(),
+        "--out-dir", dirs.outDir,
+      ],
+    );
+  } finally {
+    await rm(dirs.root, { recursive: true, force: true });
+  }
+});
+
+test("generic public SOTA packager rejects diagnostics that do not cover published tasks", async () => {
+  const dirs = await createRunDirs("remnic-public-sota-generic-coverage-");
+  try {
+    await writeValidDiagnostics(dirs.diagnosticsDir);
+    await writeFile(
+      path.join(dirs.resultsDir, "status.tsv"),
+      `benchmark\tstatus\ttimestamp\namemgym\tstart\t${STARTED_AT}\namemgym\tsuccess\t${FINISHED_AT}\n`,
+      "utf8",
+    );
+    const resultPath = path.join(dirs.resultsDir, "amemgym-result.json");
+    await writeAmemGymResult(resultPath, 2);
+    await writeBaseManifest(dirs.resultsDir, "amemgym", resultPath);
+
+    await assertRejectsDiagnosticsCoverage(
+      path.join("scripts", "bench", "public-sota", "package-public-benchmark-evidence.mjs"),
+      [
+        "--result", resultPath,
+        "--results-dir", dirs.resultsDir,
+        "--dataset-dir", dirs.datasetDir,
+        "--repo-root", process.cwd(),
+        "--out-dir", dirs.outDir,
+      ],
+    );
+  } finally {
+    await rm(dirs.root, { recursive: true, force: true });
+  }
+});
+
+test("MemoryArena public SOTA packager rejects diagnostics that do not cover published tasks", async () => {
+  const dirs = await createRunDirs("remnic-public-sota-memoryarena-coverage-");
+  try {
+    await writeValidDiagnostics(dirs.diagnosticsDir);
+    await writeFile(
+      path.join(dirs.resultsDir, "status.tsv"),
+      `benchmark\tstatus\ttimestamp\nmemory-arena\tstart\t${STARTED_AT}\nmemory-arena\tsuccess\t${FINISHED_AT}\n`,
+      "utf8",
+    );
+    const resultPath = path.join(dirs.resultsDir, "memory-arena-result.json");
+    await writeMemoryArenaResult(resultPath);
+    await writeBaseManifest(dirs.resultsDir, "memory-arena", resultPath);
+
+    await assertRejectsDiagnosticsCoverage(
       path.join("scripts", "bench", "public-sota", "memoryarena", "package-memoryarena-evidence.mjs"),
       [
         "--result", resultPath,
@@ -608,7 +684,7 @@ test("MemoryArena public SOTA packager rejects raw result drift from the run man
 test("MemoryArena public SOTA packager redacts local temp paths from public manifests", async () => {
   const dirs = await createRunDirs("remnic-public-sota-memoryarena-redact-");
   try {
-    await writeValidDiagnostics(dirs.diagnosticsDir);
+    await writeValidDiagnostics(dirs.diagnosticsDir, 5);
     await writeFile(
       path.join(dirs.resultsDir, "status.tsv"),
       `benchmark\tstatus\ttimestamp\nmemory-arena\tstart\t${STARTED_AT}\nmemory-arena\tsuccess\t${FINISHED_AT}\n`,
@@ -754,7 +830,7 @@ test("generic public SOTA packager redacts local temp paths from public manifest
 test("MemoryArena SOTA verifier rejects raw result git SHA drift", async () => {
   const dirs = await createRunDirs("remnic-public-sota-memoryarena-gitsha-verify-");
   try {
-    await writeValidDiagnostics(dirs.diagnosticsDir);
+    await writeValidDiagnostics(dirs.diagnosticsDir, 5);
     await writeFile(
       path.join(dirs.resultsDir, "status.tsv"),
       `benchmark\tstatus\ttimestamp\nmemory-arena\tstart\t${STARTED_AT}\nmemory-arena\tsuccess\t${FINISHED_AT}\n`,
@@ -815,7 +891,7 @@ test("MemoryArena SOTA verifier rejects raw result git SHA drift", async () => {
 test("MemoryArena SOTA verifier rejects unsafe public task fields", async () => {
   const dirs = await createRunDirs("remnic-public-sota-memoryarena-safe-verify-");
   try {
-    await writeValidDiagnostics(dirs.diagnosticsDir);
+    await writeValidDiagnostics(dirs.diagnosticsDir, 5);
     await writeFile(
       path.join(dirs.resultsDir, "status.tsv"),
       `benchmark\tstatus\ttimestamp\nmemory-arena\tstart\t${STARTED_AT}\nmemory-arena\tsuccess\t${FINISHED_AT}\n`,
@@ -1141,6 +1217,99 @@ test("generic SOTA verifier mirrors BEAM incomplete llm_judge split fallback", a
     );
 
     await runGenericVerifiers(evidenceDir, "beam");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("generic SOTA verifier rejects diagnostics that do not cover public tasks", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "remnic-public-sota-diagnostics-coverage-verify-"));
+  try {
+    const targetMap = {
+      benchmarks: {
+        beam: {
+          targets: {
+            "4k": { score: 0.2 },
+          },
+        },
+      },
+    };
+    const rawResult = {
+      meta: {
+        benchmark: "beam",
+        mode: "full",
+        gitSha: "0123456789abcdef0123456789abcdef01234567",
+      },
+      results: {
+        tasks: [
+          {
+            taskId: "4k-1",
+            details: { scale: "4k" },
+            scores: { rubric_coverage: 0.4 },
+          },
+          {
+            taskId: "4k-2",
+            details: { scale: "4k" },
+            scores: { rubric_coverage: 0.5 },
+          },
+        ],
+      },
+    };
+    const comparison = comparePublicBenchmarkSota(rawResult, targetMap);
+    const evidenceDir = await writeGenericVerifierFixture(
+      root,
+      "beam",
+      {
+        schemaVersion: 1,
+        benchmarkId: "beam",
+        datasetVersion: `sha256:${"c".repeat(64)}`,
+        system: {
+          name: "remnic",
+          version: "test",
+          gitSha: rawResult.meta.gitSha,
+        },
+        model: "gpt-5.5",
+        seed: 1,
+        metrics: {
+          rubric_coverage: 0.45,
+        },
+        perTaskScores: rawResult.results.tasks.map((task) => ({
+          taskId: task.taskId,
+          category: "4k",
+          scores: task.scores,
+          details: task.details,
+        })),
+        startedAt: STARTED_AT,
+        finishedAt: FINISHED_AT,
+        durationMs: 60_000,
+        env: {
+          node: process.version,
+          os: process.platform,
+          arch: process.arch,
+        },
+        note: "Fixture public artifact.",
+        sotaComparison: comparison,
+      },
+      comparison,
+      targetMap,
+    );
+    await writeJson(path.join(evidenceDir, "beam-diagnostics-summary.json"), {
+      runId: RUN_ID,
+      benchmark: "beam",
+      checked: 1,
+      complete: 1,
+      inFlight: 0,
+      afterCutoff: 0,
+      invalidTimestamps: 0,
+      errored: 0,
+      nonzero: 0,
+      providers: { "codex-cli": 1 },
+      models: { "gpt-5.5": 1 },
+      reasoningEfforts: { xhigh: 1 },
+      serviceTiers: { fast: 1 },
+    });
+
+    await assertRejectsGenericVerifier(evidenceDir, "beam", /diagnostics checked count must cover published task count/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
