@@ -91,7 +91,7 @@ while :; do
   fi
 
   set +e
-  complete_output="$(bash "${SCRIPT_DIR}/complete-public-benchmark-if-ready.sh" "${BENCHMARK}" "${run_id}" 2>&1)"
+  complete_output="$(OUT_ROOT="${EVIDENCE_ROOT}" bash "${SCRIPT_DIR}/complete-public-benchmark-if-ready.sh" "${BENCHMARK}" "${run_id}" 2>&1)"
   complete_status=$?
   set -e
   if [[ -n "${complete_output}" ]]; then
@@ -130,7 +130,7 @@ EOF
   fi
 
   set +e
-  stage_output="$(bash "${SCRIPT_DIR}/stage-public-benchmark-evidence-pr.sh" "${BENCHMARK}" "${run_id}" 2>&1)"
+  stage_output="$(EVIDENCE_ROOT="${EVIDENCE_ROOT}" bash "${SCRIPT_DIR}/stage-public-benchmark-evidence-pr.sh" "${BENCHMARK}" "${run_id}" 2>&1)"
   stage_status=$?
   set -e
   if [[ -n "${stage_output}" ]]; then

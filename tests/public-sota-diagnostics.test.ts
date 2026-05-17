@@ -1182,6 +1182,18 @@ test("MemoryArena publish watcher ignores derived evidence JSON files", async ()
   assert.match(source, /-name 'memory-arena-\*\.json'/);
   assert.match(source, /! -name 'memory-arena-sota-comparison\.json'/);
   assert.match(source, /! -name 'memory-arena-diagnostics-summary\.json'/);
+  assert.match(source, /OUT_ROOT="\$\{EVIDENCE_ROOT\}" bash "\$\{SCRIPT_DIR\}\/complete-memoryarena-if-ready\.sh"/);
+  assert.match(source, /EVIDENCE_ROOT="\$\{EVIDENCE_ROOT\}" bash "\$\{SCRIPT_DIR\}\/stage-memoryarena-evidence-pr\.sh"/);
+});
+
+test("generic public benchmark publish watcher keeps completion and staging evidence roots aligned", async () => {
+  const source = await readFile(
+    path.join("scripts", "bench", "public-sota", "watch-public-benchmark-publish.sh"),
+    "utf8",
+  );
+
+  assert.match(source, /OUT_ROOT="\$\{EVIDENCE_ROOT\}" bash "\$\{SCRIPT_DIR\}\/complete-public-benchmark-if-ready\.sh"/);
+  assert.match(source, /EVIDENCE_ROOT="\$\{EVIDENCE_ROOT\}" bash "\$\{SCRIPT_DIR\}\/stage-public-benchmark-evidence-pr\.sh"/);
 });
 
 test("public SOTA staging helpers start from base and prune stale evidence", async () => {

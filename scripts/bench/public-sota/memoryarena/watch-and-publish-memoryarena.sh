@@ -55,7 +55,7 @@ while :; do
   log "result detected: ${result}"
 
   set +e
-  bash "${SCRIPT_DIR}/complete-memoryarena-if-ready.sh" >> "${LOG_FILE}" 2>&1
+  OUT_ROOT="${EVIDENCE_ROOT}" bash "${SCRIPT_DIR}/complete-memoryarena-if-ready.sh" >> "${LOG_FILE}" 2>&1
   complete_status=$?
   set -e
   if [[ "${complete_status}" -ne 0 ]]; then
@@ -87,7 +87,7 @@ EOF
   fi
 
   set +e
-  bash "${SCRIPT_DIR}/stage-memoryarena-evidence-pr.sh" >> "${LOG_FILE}" 2>&1
+  EVIDENCE_ROOT="${EVIDENCE_ROOT}" bash "${SCRIPT_DIR}/stage-memoryarena-evidence-pr.sh" >> "${LOG_FILE}" 2>&1
   stage_status=$?
   set -e
   if [[ "${stage_status}" -ne 0 ]]; then
