@@ -67,6 +67,10 @@ function isTerminalResolution(resolution: ResolutionVerb | undefined): boolean {
   return resolution === "keep-a" || resolution === "keep-b" || resolution === "merge";
 }
 
+function preservesDirectResolution(resolution: ResolutionVerb | undefined): boolean {
+  return isTerminalResolution(resolution) || resolution === "both-valid";
+}
+
 function isDormantReviewedPair(pair: ContradictionPair): boolean {
   return pair.verdict === "independent" || pair.resolution === "both-valid";
 }
@@ -348,7 +352,7 @@ export function deferPair(
 ): ContradictionPair | null {
   const existing = readPair(memoryDir, pairId);
   if (!existing) return null;
-  if (isTerminalResolution(existing.resolution)) return existing;
+  if (preservesDirectResolution(existing.resolution)) return existing;
 
   const updated: ContradictionPair = {
     ...existing,

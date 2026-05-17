@@ -879,17 +879,29 @@ test("resolvePair sets resolution and lastReviewedAt", async () => {
 test("needs-more-context deferral does not clear terminal resolutions", async () => {
   const { dir, cleanup } = await makeTempDir();
   try {
-    const written = writePair(dir, makePair());
-    const resolved = resolvePair(dir, written.pairId, "keep-a");
-    assert.equal(resolved?.resolution, "keep-a");
+    const keepPair = writePair(dir, makePair());
+    const keepResolved = resolvePair(dir, keepPair.pairId, "keep-a");
+    assert.equal(keepResolved?.resolution, "keep-a");
 
-    const deferredViaResolve = resolvePair(dir, written.pairId, "needs-more-context");
-    assert.equal(deferredViaResolve?.resolution, "keep-a");
-    assert.equal(deferredViaResolve?.deferredUntil, undefined);
+    const deferredKeepViaResolve = resolvePair(dir, keepPair.pairId, "needs-more-context");
+    assert.equal(deferredKeepViaResolve?.resolution, "keep-a");
+    assert.equal(deferredKeepViaResolve?.deferredUntil, undefined);
 
-    const deferredDirectly = deferPair(dir, written.pairId);
-    assert.equal(deferredDirectly?.resolution, "keep-a");
-    assert.equal(deferredDirectly?.deferredUntil, undefined);
+    const deferredKeepDirectly = deferPair(dir, keepPair.pairId);
+    assert.equal(deferredKeepDirectly?.resolution, "keep-a");
+    assert.equal(deferredKeepDirectly?.deferredUntil, undefined);
+
+    const bothValidPair = writePair(dir, makePair({ memoryIds: ["mem-a-003", "mem-b-004"] }));
+    const bothValidResolved = resolvePair(dir, bothValidPair.pairId, "both-valid");
+    assert.equal(bothValidResolved?.resolution, "both-valid");
+
+    const deferredBothValidViaResolve = resolvePair(dir, bothValidPair.pairId, "needs-more-context");
+    assert.equal(deferredBothValidViaResolve?.resolution, "both-valid");
+    assert.equal(deferredBothValidViaResolve?.deferredUntil, undefined);
+
+    const deferredBothValidDirectly = deferPair(dir, bothValidPair.pairId);
+    assert.equal(deferredBothValidDirectly?.resolution, "both-valid");
+    assert.equal(deferredBothValidDirectly?.deferredUntil, undefined);
     assert.equal(listPairs(dir, { filter: "unresolved" }).total, 0);
   } finally {
     await cleanup();
