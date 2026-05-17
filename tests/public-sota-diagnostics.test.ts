@@ -1617,6 +1617,24 @@ test("MemoryArena transition helper retries active-session launch collisions", a
   assert.match(source, /exit 0[\s\S]*if \[\[ "\$\{launch_status\}" -ne 0 \]\]; then/);
 });
 
+test("next public benchmark launcher falls back to a base-branch worktree with datasets", async () => {
+  const source = await readFile(
+    path.join("scripts", "bench", "public-sota", "launch-next-public-benchmark.sh"),
+    "utf8",
+  );
+
+  assert.match(source, /EXPLICIT_LAUNCH_REPO_ROOT="\$\{LAUNCH_REPO_ROOT:-\}"/);
+  assert.match(source, /BASE_BRANCH="\$\{BASE_BRANCH:-bench\/public-matrix-codex\}"/);
+  assert.match(source, /resolve_launch_repo_root\(\)/);
+  assert.match(source, /if \[\[ -n "\$\{EXPLICIT_LAUNCH_REPO_ROOT\}" \]\]; then[\s\S]*printf '%s\\n' "\$\{EXPLICIT_LAUNCH_REPO_ROOT\}"/);
+  assert.match(source, /if \[\[ -d "\$\{REPO_ROOT\}\/evals\/datasets\/\$\{benchmark\}" \]\]; then[\s\S]*printf '%s\\n' "\$\{REPO_ROOT\}"/);
+  assert.match(source, /git -C "\$\{REPO_ROOT\}" worktree list --porcelain/);
+  assert.match(source, /"\$\{branch\}" == "refs\/heads\/\$\{BASE_BRANCH\}"/);
+  assert.match(source, /-d "\$\{worktree\}\/evals\/datasets\/\$\{benchmark\}"/);
+  assert.match(source, /LAUNCH_REPO_ROOT="\$\(resolve_launch_repo_root\)"/);
+  assert.doesNotMatch(source, /LAUNCH_REPO_ROOT="\$\{LAUNCH_REPO_ROOT:-\$\{REPO_ROOT\}\}"/);
+});
+
 test("MemoryArena publish watcher ignores derived evidence JSON files", async () => {
   const source = await readFile(
     path.join("scripts", "bench", "public-sota", "memoryarena", "watch-and-publish-memoryarena.sh"),
