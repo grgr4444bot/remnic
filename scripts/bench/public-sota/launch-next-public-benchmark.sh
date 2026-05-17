@@ -7,18 +7,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT_DEFAULT="$(git -C "${SCRIPT_DIR}/../../.." rev-parse --show-toplevel 2>/dev/null || (cd "${SCRIPT_DIR}/../../.." && pwd))"
 
 REPO_ROOT="${REPO_ROOT:-${REPO_ROOT_DEFAULT}}"
-LAUNCH_REPO_ROOT="${LAUNCH_REPO_ROOT:-${REPO_ROOT}}"
+EXPLICIT_LAUNCH_REPO_ROOT="${LAUNCH_REPO_ROOT:-}"
+BASE_BRANCH="${BASE_BRANCH:-bench/public-matrix-codex}"
 RESULTS_ROOT="${RESULTS_ROOT:-${HOME}/.remnic/bench/results}"
 OUT_ROOT="${OUT_ROOT:-${RESULTS_ROOT}}"
-
-active_scoring_session="$(tmux list-sessions -F '#S' 2>/dev/null \
-  | grep -E '^public-.*-codex-.*[0-9]{8}T[0-9]{6}Z$' \
-  | head -1 || true)"
-
-if [[ -n "${active_scoring_session}" ]]; then
-  echo "Refusing to launch: active public benchmark scoring session ${active_scoring_session} is still running." >&2
-  exit 3
-fi
 
 benchmark="${1:-amemgym}"
 case "${benchmark}" in
@@ -28,6 +20,50 @@ case "${benchmark}" in
     exit 2
     ;;
 esac
+
+resolve_launch_repo_root() {
+  if [[ -n "${EXPLICIT_LAUNCH_REPO_ROOT}" ]]; then
+    printf '%s\n' "${EXPLICIT_LAUNCH_REPO_ROOT}"
+    return
+  fi
+
+  if [[ -d "${REPO_ROOT}/evals/datasets/${benchmark}" ]]; then
+    printf '%s\n' "${REPO_ROOT}"
+    return
+  fi
+
+  local worktree=""
+  local branch=""
+  local line=""
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    case "${line}" in
+      worktree\ *)
+        worktree="${line#worktree }"
+        branch=""
+        ;;
+      branch\ *)
+        branch="${line#branch }"
+        if [[ "${branch}" == "refs/heads/${BASE_BRANCH}" && -d "${worktree}/evals/datasets/${benchmark}" ]]; then
+          printf '%s\n' "${worktree}"
+          return
+        fi
+        ;;
+    esac
+  done < <(git -C "${REPO_ROOT}" worktree list --porcelain 2>/dev/null || true)
+
+  printf '%s\n' "${REPO_ROOT}"
+}
+
+LAUNCH_REPO_ROOT="$(resolve_launch_repo_root)"
+
+active_scoring_session="$(tmux list-sessions -F '#S' 2>/dev/null \
+  | grep -E '^public-.*-codex-.*[0-9]{8}T[0-9]{6}Z$' \
+  | head -1 || true)"
+
+if [[ -n "${active_scoring_session}" ]]; then
+  echo "Refusing to launch: active public benchmark scoring session ${active_scoring_session} is still running." >&2
+  exit 3
+fi
 
 if ! git -C "${LAUNCH_REPO_ROOT}" rev-parse --show-toplevel >/dev/null 2>&1; then
   echo "Launch repo is not a git checkout: ${LAUNCH_REPO_ROOT}" >&2
