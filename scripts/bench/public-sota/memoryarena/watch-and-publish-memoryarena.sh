@@ -90,12 +90,19 @@ EOF
   fi
 
   set +e
-  EVIDENCE_ROOT="${EVIDENCE_ROOT}" bash "${SCRIPT_DIR}/stage-memoryarena-evidence-pr.sh" >> "${LOG_FILE}" 2>&1
+  stage_output="$(EVIDENCE_ROOT="${EVIDENCE_ROOT}" bash "${SCRIPT_DIR}/stage-memoryarena-evidence-pr.sh" 2>&1)"
   stage_status=$?
   set -e
+  if [[ -n "${stage_output}" ]]; then
+    while IFS= read -r line; do log "${line}"; done <<< "${stage_output}"
+  fi
   if [[ "${stage_status}" -ne 0 ]]; then
     log "stopping: MemoryArena staging helper exited ${stage_status}"
     exit "${stage_status}"
+  fi
+  if ! grep -q '^ready: MemoryArena evidence PR worktree staged ' <<< "${stage_output}"; then
+    sleep "${INTERVAL_SECONDS}"
+    continue
   fi
 
   set +e
