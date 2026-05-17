@@ -1187,6 +1187,8 @@ test("MemoryArena publish watcher ignores derived evidence JSON files", async ()
   assert.match(source, /! -name 'memory-arena-diagnostics-summary\.json'/);
   assert.match(source, /OUT_ROOT="\$\{EVIDENCE_ROOT\}" bash "\$\{SCRIPT_DIR\}\/complete-memoryarena-if-ready\.sh"/);
   assert.match(source, /EVIDENCE_ROOT="\$\{EVIDENCE_ROOT\}" bash "\$\{SCRIPT_DIR\}\/stage-memoryarena-evidence-pr\.sh"/);
+  assert.match(source, /if \[\[ "\$\{complete_status\}" -eq 4 \]\]; then[\s\S]*stopping: MemoryArena completion helper exited \$\{complete_status\}[\s\S]*exit "\$\{complete_status\}"/);
+  assert.match(source, /waiting: MemoryArena completion helper exited \$\{complete_status\}; will retry[\s\S]*sleep "\$\{INTERVAL_SECONDS\}"[\s\S]*continue/);
 });
 
 test("generic public benchmark publish watcher keeps completion and staging evidence roots aligned", async () => {
@@ -1197,6 +1199,8 @@ test("generic public benchmark publish watcher keeps completion and staging evid
 
   assert.match(source, /OUT_ROOT="\$\{EVIDENCE_ROOT\}" bash "\$\{SCRIPT_DIR\}\/complete-public-benchmark-if-ready\.sh"/);
   assert.match(source, /EVIDENCE_ROOT="\$\{EVIDENCE_ROOT\}" bash "\$\{SCRIPT_DIR\}\/stage-public-benchmark-evidence-pr\.sh"/);
+  assert.match(source, /if \[\[ "\$\{complete_status\}" -eq 4 \]\]; then[\s\S]*stopping: \$\{BENCHMARK\} completion helper exited \$\{complete_status\}[\s\S]*exit "\$\{complete_status\}"/);
+  assert.match(source, /waiting: \$\{BENCHMARK\} completion helper exited \$\{complete_status\}; will retry[\s\S]*sleep "\$\{INTERVAL_SECONDS\}"[\s\S]*continue/);
 });
 
 test("public SOTA staging helpers start from base and prune stale evidence", async () => {

@@ -120,9 +120,12 @@ Next required action:
 6. Re-run this watcher or the completion/stage/publish helpers after rerun.
 EOF
       log "remediation-required: wrote ${remediation_file}"
+      log "stopping: ${BENCHMARK} completion helper exited ${complete_status}"
+      exit "${complete_status}"
     fi
-    log "stopping: ${BENCHMARK} completion helper exited ${complete_status}"
-    exit "${complete_status}"
+    log "waiting: ${BENCHMARK} completion helper exited ${complete_status}; will retry"
+    sleep "${INTERVAL_SECONDS}"
+    continue
   fi
   if ! grep -q '^ready: verified ' <<< "${complete_output}"; then
     sleep "${INTERVAL_SECONDS}"
