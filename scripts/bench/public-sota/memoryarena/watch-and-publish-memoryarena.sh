@@ -60,9 +60,12 @@ while :; do
   log "result detected: ${result}"
 
   set +e
-  RUN_ID="${RUN_ID}" RESULTS_DIR="${RESULTS_DIR}" SESSION="${SESSION}" OUT_ROOT="${EVIDENCE_ROOT}" bash "${SCRIPT_DIR}/complete-memoryarena-if-ready.sh" >> "${LOG_FILE}" 2>&1
+  complete_output="$(RUN_ID="${RUN_ID}" RESULTS_DIR="${RESULTS_DIR}" SESSION="${SESSION}" OUT_ROOT="${EVIDENCE_ROOT}" bash "${SCRIPT_DIR}/complete-memoryarena-if-ready.sh" 2>&1)"
   complete_status=$?
   set -e
+  if [[ -n "${complete_output}" ]]; then
+    while IFS= read -r line; do log "${line}"; done <<< "${complete_output}"
+  fi
   if [[ "${complete_status}" -ne 0 ]]; then
     if [[ "${complete_status}" -eq 4 ]]; then
       remediation_file="${RESULTS_DIR}/memory-arena-remediation-required.md"
@@ -90,6 +93,10 @@ EOF
       exit "${complete_status}"
     fi
     log "waiting: MemoryArena completion helper exited ${complete_status}; will retry"
+    sleep "${INTERVAL_SECONDS}"
+    continue
+  fi
+  if ! grep -q '^ready: verified ' <<< "${complete_output}"; then
     sleep "${INTERVAL_SECONDS}"
     continue
   fi

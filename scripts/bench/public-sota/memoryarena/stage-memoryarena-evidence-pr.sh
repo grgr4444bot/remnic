@@ -24,11 +24,13 @@ COMPARE_MODULE="${SCRIPT_DIR}/compare-memoryarena-sota.mjs"
 DERIVE_MODULE="${SCRIPT_DIR}/derive-memoryarena-official-metrics.mjs"
 COMPARISON_JSON_MODULE="${PUBLIC_SOTA_DIR}/comparison-json.mjs"
 INTEGRITY_MODULE="${PUBLIC_SOTA_DIR}/evidence-integrity.mjs"
+EVIDENCE_RUN_UTILS_MODULE="${PUBLIC_SOTA_DIR}/evidence-run-utils.mjs"
 DOC_GENERATOR="${SCRIPT_DIR}/generate-memoryarena-evidence-doc.mjs"
 VERIFY_SCRIPT_REL="scripts/bench/verify-public-memoryarena-sota-evidence.mjs"
 MEMORYARENA_MODULE_DIR_REL="scripts/bench/memoryarena"
 COMPARISON_JSON_MODULE_REL="scripts/bench/comparison-json.mjs"
 INTEGRITY_MODULE_REL="scripts/bench/evidence-integrity.mjs"
+EVIDENCE_RUN_UTILS_MODULE_REL="scripts/bench/evidence-run-utils.mjs"
 
 required=(
   "${SOURCE_EVIDENCE_DIR}/MANIFEST.memory-arena.json"
@@ -85,7 +87,7 @@ fi
 (
   cd "${WORKTREE}"
   find docs/benchmarks/results -mindepth 1 -maxdepth 1 -type d -name 'public-matrix-codex-*' ! -name "${RUN_ID}" -exec rm -rf {} + 2>/dev/null || true
-  rm -f "${EVIDENCE_DOC_REL}" "${VERIFY_SCRIPT_REL}" "${COMPARISON_JSON_MODULE_REL}" "${INTEGRITY_MODULE_REL}"
+  rm -f "${EVIDENCE_DOC_REL}" "${VERIFY_SCRIPT_REL}" "${COMPARISON_JSON_MODULE_REL}" "${INTEGRITY_MODULE_REL}" "${EVIDENCE_RUN_UTILS_MODULE_REL}"
   rm -rf "${MEMORYARENA_MODULE_DIR_REL}"
 )
 
@@ -103,6 +105,7 @@ cp "${COMPARE_MODULE}" "${WORKTREE}/${MEMORYARENA_MODULE_DIR_REL}/compare-memory
 cp "${DERIVE_MODULE}" "${WORKTREE}/${MEMORYARENA_MODULE_DIR_REL}/derive-memoryarena-official-metrics.mjs"
 cp "${COMPARISON_JSON_MODULE}" "${WORKTREE}/${COMPARISON_JSON_MODULE_REL}"
 cp "${INTEGRITY_MODULE}" "${WORKTREE}/${INTEGRITY_MODULE_REL}"
+cp "${EVIDENCE_RUN_UTILS_MODULE}" "${WORKTREE}/${EVIDENCE_RUN_UTILS_MODULE_REL}"
 node "${DOC_GENERATOR}" \
   --evidence-dir "${SOURCE_EVIDENCE_DIR}" \
   --out "${WORKTREE}/${EVIDENCE_DOC_REL}"

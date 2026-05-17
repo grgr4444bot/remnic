@@ -37,6 +37,7 @@ MEMORYARENA_COMPARE_MODULE="${SCRIPT_DIR}/memoryarena/compare-memoryarena-sota.m
 MEMORYARENA_DERIVE_MODULE="${SCRIPT_DIR}/memoryarena/derive-memoryarena-official-metrics.mjs"
 MEMORYARENA_VERIFY_MODULE="${SCRIPT_DIR}/memoryarena/verify-memoryarena-sota-evidence.mjs"
 INTEGRITY_MODULE="${SCRIPT_DIR}/evidence-integrity.mjs"
+EVIDENCE_RUN_UTILS_MODULE="${SCRIPT_DIR}/evidence-run-utils.mjs"
 DOC_GENERATOR="${SCRIPT_DIR}/generate-public-benchmark-evidence-doc.mjs"
 VERIFY_SCRIPT_REL="scripts/bench/verify-public-${benchmark}-sota-evidence.mjs"
 VERIFY_CORE_SCRIPT_REL="scripts/bench/verify-public-benchmark-sota-evidence.mjs"
@@ -44,6 +45,7 @@ COMPARE_MODULE_REL="scripts/bench/compare-public-benchmark-sota.mjs"
 COMPARISON_JSON_MODULE_REL="scripts/bench/comparison-json.mjs"
 MEMORYARENA_MODULE_DIR_REL="scripts/bench/memoryarena"
 INTEGRITY_MODULE_REL="scripts/bench/evidence-integrity.mjs"
+EVIDENCE_RUN_UTILS_MODULE_REL="scripts/bench/evidence-run-utils.mjs"
 
 if [[ -z "${run_id}" ]]; then
   run_id="$(find "${EVIDENCE_ROOT}" -maxdepth 1 -type d -name "public-${benchmark}-codex-*" -print 2>/dev/null | sort | tail -1 | xargs basename 2>/dev/null || true)"
@@ -117,7 +119,7 @@ fi
 (
   cd "${WORKTREE}"
   find docs/benchmarks/results -mindepth 1 -maxdepth 1 -type d -name "public-${benchmark}-codex-*" ! -name "${run_id}" -exec rm -rf {} + 2>/dev/null || true
-  rm -f "${EVIDENCE_DOC_REL}" "${VERIFY_SCRIPT_REL}" "${VERIFY_CORE_SCRIPT_REL}" "${COMPARE_MODULE_REL}" "${COMPARISON_JSON_MODULE_REL}" "${INTEGRITY_MODULE_REL}"
+  rm -f "${EVIDENCE_DOC_REL}" "${VERIFY_SCRIPT_REL}" "${VERIFY_CORE_SCRIPT_REL}" "${COMPARE_MODULE_REL}" "${COMPARISON_JSON_MODULE_REL}" "${INTEGRITY_MODULE_REL}" "${EVIDENCE_RUN_UTILS_MODULE_REL}"
 )
 
 mkdir -p "${WORKTREE}/${RESULTS_REL}" "${WORKTREE}/$(dirname "${EVIDENCE_DOC_REL}")" "${WORKTREE}/scripts/bench"
@@ -136,6 +138,7 @@ cp "${MEMORYARENA_COMPARE_MODULE}" "${WORKTREE}/${MEMORYARENA_MODULE_DIR_REL}/co
 cp "${MEMORYARENA_DERIVE_MODULE}" "${WORKTREE}/${MEMORYARENA_MODULE_DIR_REL}/derive-memoryarena-official-metrics.mjs"
 cp "${MEMORYARENA_VERIFY_MODULE}" "${WORKTREE}/${MEMORYARENA_MODULE_DIR_REL}/verify-memoryarena-sota-evidence.mjs"
 cp "${INTEGRITY_MODULE}" "${WORKTREE}/${INTEGRITY_MODULE_REL}"
+cp "${EVIDENCE_RUN_UTILS_MODULE}" "${WORKTREE}/${EVIDENCE_RUN_UTILS_MODULE_REL}"
 node "${DOC_GENERATOR}" \
   --evidence-dir "${SOURCE_EVIDENCE_DIR}" \
   --benchmark "${benchmark}" \
