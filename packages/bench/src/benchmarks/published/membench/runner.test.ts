@@ -152,3 +152,83 @@ test("MemBench adds recommendation cues without exposing them to answer context"
     await rm(datasetDir, { recursive: true, force: true });
   }
 });
+
+test("MemBench normalizes upstream JSONL trajectory QA records", async () => {
+  const datasetDir = await mkdtemp(path.join(tmpdir(), "remnic-membench-jsonl-"));
+  const storedMessages: string[] = [];
+
+  try {
+    await writeFile(
+      path.join(datasetDir, "FirstAgentDataLowLevel.jsonl"),
+      `${JSON.stringify({
+        trajectory: ["I moved to Lisbon."],
+        qa: [
+          {
+            question: "Where did I move?",
+            answer: "Lisbon",
+          },
+        ],
+      })}\n`,
+      "utf8",
+    );
+
+    const result = await runMemBenchBenchmark({
+      benchmark: memBenchDefinition,
+      mode: "full",
+      datasetDir,
+      system: {
+        async reset() {
+          storedMessages.length = 0;
+        },
+        async store(_sessionId, messages) {
+          storedMessages.push(...messages.map((message) => message.content));
+        },
+        async recall() {
+          return storedMessages.join("\n\n");
+        },
+        async search() {
+          return [];
+        },
+        async destroy() {},
+        async getStats() {
+          return { totalMessages: storedMessages.length, totalSummaryNodes: 0, maxDepth: 0 };
+        },
+        responder: {
+          async respond() {
+            return {
+              text: "Lisbon",
+              tokens: { input: 1, output: 1 },
+              latencyMs: 1,
+              model: "membench-test-responder",
+            };
+          },
+        },
+        judge: {
+          async score() {
+            return 1;
+          },
+          async scoreWithMetrics() {
+            return {
+              score: 1,
+              tokens: { input: 0, output: 0 },
+              latencyMs: 0,
+              model: "membench-test-judge",
+            };
+          },
+        },
+      },
+    });
+
+    assert.equal(result.results.tasks.length, 1);
+    const task = result.results.tasks[0]!;
+    assert.equal(task.question, "Where did I move?");
+    assert.equal(task.expected, "Lisbon");
+    assert.equal(task.details.memoryType, "factual");
+    assert.equal(task.details.scenario, "participant");
+    assert.equal(task.details.level, "low_level");
+    assert.match(storedMessages.join("\n"), /I moved to Lisbon/);
+    assert.equal(task.scores.membench_accuracy, 1);
+  } finally {
+    await rm(datasetDir, { recursive: true, force: true });
+  }
+});

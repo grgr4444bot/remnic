@@ -363,6 +363,7 @@ function parseJsonDataset(raw: string, filename: string): MemBenchCase[] {
 
 function parseJsonlDataset(raw: string, filename: string): MemBenchCase[] {
   const cases: MemBenchCase[] = [];
+  const hints = inferHintsFromLabel(filename, {});
   raw.split("\n").forEach((line, lineIndex) => {
     if (line.trim().length === 0) {
       return;
@@ -377,7 +378,14 @@ function parseJsonlDataset(raw: string, filename: string): MemBenchCase[] {
       );
     }
 
-    cases.push(parseCase(parsed, `${filename}:${lineIndex + 1}`));
+    const location = `${filename}:${lineIndex + 1}`;
+    const normalizedCases = normalizePublishedNode(parsed, hints, location);
+    if (normalizedCases.length > 0) {
+      cases.push(...normalizedCases);
+      return;
+    }
+
+    cases.push(parseCase(parsed, location));
   });
   return cases;
 }
