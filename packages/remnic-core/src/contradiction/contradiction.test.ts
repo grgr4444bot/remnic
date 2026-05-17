@@ -233,6 +233,102 @@ test("writePair preserves user resolution", async () => {
   }
 });
 
+test("writePair preserves both-valid resolutions without scan cooldown context", async () => {
+  const { dir, cleanup } = await makeTempDir();
+  try {
+    const written = writePair(dir, makePair({ confidence: 0.5 }));
+    resolvePair(dir, written.pairId, "both-valid");
+
+    const updated = writePair(dir, makePair({ confidence: 0.95 }));
+    assert.equal(updated.resolution, "both-valid");
+    assert.equal(updated.confidence, 0.5);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("writePair preserves dormant independent verdicts during cooldown", async () => {
+  const { dir, cleanup } = await makeTempDir();
+  try {
+    const now = new Date().toISOString();
+    const dormant = writePair(dir, makePair({
+      verdict: "independent",
+      confidence: 0.95,
+      lastReviewedAt: now,
+    }));
+
+    const refreshed = writePair(dir, makePair({
+      verdict: "contradicts",
+      confidence: 1,
+      rationale: "Fresh actionable judge result during cooldown",
+    }), { cooldownDays: 14 });
+
+    assert.equal(refreshed.pairId, dormant.pairId);
+    assert.equal(refreshed.verdict, "independent");
+    assert.equal(refreshed.confidence, 0.95);
+    assert.equal(refreshed.lastReviewedAt, now);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("writePair refreshes expired independent verdicts with actionable lower-confidence results", async () => {
+  const { dir, cleanup } = await makeTempDir();
+  try {
+    const expiredAt = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString();
+    const dormant = writePair(dir, makePair({
+      verdict: "independent",
+      confidence: 0.95,
+      detectedAt: expiredAt,
+      lastReviewedAt: expiredAt,
+    }));
+
+    const refreshed = writePair(dir, makePair({
+      verdict: "contradicts",
+      confidence: 0.5,
+      rationale: "Fresh actionable judge result after cooldown",
+    }), { cooldownDays: 14 });
+
+    assert.equal(refreshed.pairId, dormant.pairId);
+    assert.equal(refreshed.verdict, "contradicts");
+    assert.equal(refreshed.confidence, 0.5);
+    assert.equal(refreshed.resolution, undefined);
+    assert.equal(refreshed.lastReviewedAt, undefined);
+    assert.equal(readPair(dir, dormant.pairId)?.verdict, "contradicts");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("writePair refreshes expired both-valid resolutions with actionable results", async () => {
+  const { dir, cleanup } = await makeTempDir();
+  try {
+    const expiredAt = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString();
+    const written = writePair(dir, makePair({ confidence: 0.95 }));
+    const resolved = resolvePair(dir, written.pairId, "both-valid");
+    assert.ok(resolved);
+    await writeStoredPair(dir, {
+      ...resolved,
+      lastReviewedAt: expiredAt,
+    });
+
+    const refreshed = writePair(dir, makePair({
+      verdict: "contradicts",
+      confidence: 0.5,
+      rationale: "Fresh actionable judge result after both-valid cooldown",
+    }), { cooldownDays: 14 });
+
+    assert.equal(refreshed.pairId, written.pairId);
+    assert.equal(refreshed.verdict, "contradicts");
+    assert.equal(refreshed.confidence, 0.5);
+    assert.equal(refreshed.resolution, undefined);
+    assert.equal(refreshed.lastReviewedAt, undefined);
+    assert.equal(readPair(dir, written.pairId)?.resolution, undefined);
+  } finally {
+    await cleanup();
+  }
+});
+
 // ── Batch dedup (rule 49) ──────────────────────────────────────────────────────
 
 test("writePairs deduplicates batch inputs", async () => {
@@ -615,6 +711,74 @@ test("executeResolution merge keeps created replacement when rollback fails", as
     assert.equal(storage.memories.get("mem-a-001")?.frontmatter.supersededBy, mergedId);
     assert.equal(storage.memories.get(mergedId)?.content, "merged canonical fact");
     assert.deepEqual(storage.removedFactHashIds, []);
+    assert.equal(readPair(dir, written.pairId)?.resolution, undefined);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("executeResolution keep-a restores source after partial supersede failure", async () => {
+  const { dir, cleanup } = await makeTempDir();
+  try {
+    const written = writePair(dir, makePair());
+    const storage = makeResolutionStorage({ partialSupersedeBeforeFailureFor: "mem-b-002" });
+
+    const result = await executeResolution(dir, storage, written.pairId, "keep-a");
+
+    assert.match(result.message, /restored mem-b-002/);
+    assert.deepEqual(result.affectedIds, []);
+    assert.equal(storage.memories.get("mem-b-002")?.frontmatter.status, undefined);
+    assert.equal(storage.memories.get("mem-b-002")?.frontmatter.supersededBy, undefined);
+    assert.deepEqual(
+      storage.frontmatterWrites.map(({ memoryId, beforeStatus, lifecycle }) => ({
+        memoryId,
+        beforeStatus,
+        actor: lifecycle?.actor,
+        reasonCode: lifecycle?.reasonCode,
+      })),
+      [
+        {
+          memoryId: "mem-b-002",
+          beforeStatus: "superseded",
+          actor: "contradiction-resolution",
+          reasonCode: "contradiction-resolution:keep-a-rollback",
+        },
+      ],
+    );
+    assert.equal(readPair(dir, written.pairId)?.resolution, undefined);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("executeResolution keep-b restores source after partial supersede failure", async () => {
+  const { dir, cleanup } = await makeTempDir();
+  try {
+    const written = writePair(dir, makePair());
+    const storage = makeResolutionStorage({ partialSupersedeBeforeFailureFor: "mem-a-001" });
+
+    const result = await executeResolution(dir, storage, written.pairId, "keep-b");
+
+    assert.match(result.message, /restored mem-a-001/);
+    assert.deepEqual(result.affectedIds, []);
+    assert.equal(storage.memories.get("mem-a-001")?.frontmatter.status, undefined);
+    assert.equal(storage.memories.get("mem-a-001")?.frontmatter.supersededBy, undefined);
+    assert.deepEqual(
+      storage.frontmatterWrites.map(({ memoryId, beforeStatus, lifecycle }) => ({
+        memoryId,
+        beforeStatus,
+        actor: lifecycle?.actor,
+        reasonCode: lifecycle?.reasonCode,
+      })),
+      [
+        {
+          memoryId: "mem-a-001",
+          beforeStatus: "superseded",
+          actor: "contradiction-resolution",
+          reasonCode: "contradiction-resolution:keep-b-rollback",
+        },
+      ],
+    );
     assert.equal(readPair(dir, written.pairId)?.resolution, undefined);
   } finally {
     await cleanup();

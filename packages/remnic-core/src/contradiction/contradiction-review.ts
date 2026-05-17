@@ -50,6 +50,10 @@ export interface ContradictionListResult {
 }
 
 export type ContradictionFilter = ContradictionVerdict | "all" | "unresolved";
+export interface WritePairOptions {
+  /** Cooldown used by scan callers to preserve still-dormant reviewed pairs. */
+  cooldownDays?: number;
+}
 const NEEDS_MORE_CONTEXT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -60,7 +64,11 @@ export function computePairId(memoryIdA: string, memoryIdB: string): string {
 }
 
 function isTerminalResolution(resolution: ResolutionVerb | undefined): boolean {
-  return Boolean(resolution && resolution !== "needs-more-context");
+  return resolution === "keep-a" || resolution === "keep-b" || resolution === "merge";
+}
+
+function isDormantReviewedPair(pair: ContradictionPair): boolean {
+  return pair.verdict === "independent" || pair.resolution === "both-valid";
 }
 
 function parseIsoMillis(value: string | undefined): number | null {
@@ -115,7 +123,11 @@ function ensureDir(memoryDir: string): void {
  * Idempotent: if the pair already exists with a higher or equal confidence,
  * the existing entry is preserved.
  */
-export function writePair(memoryDir: string, pair: Omit<ContradictionPair, "pairId"> & { memoryIds: [string, string] }): ContradictionPair {
+export function writePair(
+  memoryDir: string,
+  pair: Omit<ContradictionPair, "pairId"> & { memoryIds: [string, string] },
+  options: WritePairOptions = {},
+): ContradictionPair {
   ensureDir(memoryDir);
   const pairId = computePairId(pair.memoryIds[0], pair.memoryIds[1]);
   const existing = readPair(memoryDir, pairId);
@@ -124,6 +136,9 @@ export function writePair(memoryDir: string, pair: Omit<ContradictionPair, "pair
   if (isTerminalResolution(existing?.resolution)) {
     return existing!;
   }
+  if (existing?.resolution === "both-valid" && options.cooldownDays === undefined) {
+    return existing;
+  }
 
   // Preserve active deferrals, but allow expired deferrals to be refreshed.
   const existingDeferralExpired = Boolean(existing && isDeferred(existing) && !isDeferralActive(existing));
@@ -131,17 +146,38 @@ export function writePair(memoryDir: string, pair: Omit<ContradictionPair, "pair
     return existing;
   }
 
-  // Preserve cooldown: don't overwrite a cooled-down entry with lower confidence
-  if (existing && !existingDeferralExpired && existing.confidence >= pair.confidence) {
+  // Preserve same-verdict or still-cooling entries, but let expired dormant
+  // verdicts refresh when the judge now finds an actionable conflict.
+  const existingDormantCooldownActive = Boolean(
+    existing
+    && isDormantReviewedPair(existing)
+    && options.cooldownDays !== undefined
+    && isCoolingDown(existing, options.cooldownDays),
+  );
+  const existingDormantExpired = Boolean(
+    existing
+    && isDormantReviewedPair(existing)
+    && options.cooldownDays !== undefined
+    && !existingDormantCooldownActive,
+  );
+  if (
+    existing
+    && !existingDeferralExpired
+    && (existingDormantCooldownActive || (!existingDormantExpired && existing.confidence >= pair.confidence))
+  ) {
     return existing;
   }
 
   const full: ContradictionPair = {
     ...pair,
     pairId,
-    lastReviewedAt: existingDeferralExpired ? pair.lastReviewedAt : (existing?.lastReviewedAt ?? pair.lastReviewedAt),
+    lastReviewedAt: (existingDeferralExpired || existingDormantExpired)
+      ? pair.lastReviewedAt
+      : (existing?.lastReviewedAt ?? pair.lastReviewedAt),
     resolution: undefined,
-    deferredUntil: existingDeferralExpired ? undefined : existing?.deferredUntil,
+    deferredUntil: (existingDeferralExpired || existingDormantExpired)
+      ? undefined
+      : existing?.deferredUntil,
   };
 
   const filePath = pairPath(memoryDir, pairId);
@@ -157,7 +193,11 @@ export function writePair(memoryDir: string, pair: Omit<ContradictionPair, "pair
 /**
  * Write multiple pairs, deduplicating inputs first (rule 49).
  */
-export function writePairs(memoryDir: string, pairs: Array<Omit<ContradictionPair, "pairId"> & { memoryIds: [string, string] }>): ContradictionPair[] {
+export function writePairs(
+  memoryDir: string,
+  pairs: Array<Omit<ContradictionPair, "pairId"> & { memoryIds: [string, string] }>,
+  options: WritePairOptions = {},
+): ContradictionPair[] {
   const seen = new Set<string>();
   const results: ContradictionPair[] = [];
 
@@ -165,7 +205,7 @@ export function writePairs(memoryDir: string, pairs: Array<Omit<ContradictionPai
     const key = computePairId(pair.memoryIds[0], pair.memoryIds[1]);
     if (seen.has(key)) continue;
     seen.add(key);
-    results.push(writePair(memoryDir, pair));
+    results.push(writePair(memoryDir, pair, options));
   }
 
   return results;
@@ -228,6 +268,7 @@ export function listPairs(
       if (filter === "unresolved") {
         if (isTerminalResolution(pair.resolution)) continue;
         if (isDeferralActive(pair)) continue;
+        if (pair.resolution === "both-valid") continue;
         if (pair.verdict === "independent") continue;
       } else if (filter !== "all" && pair.verdict !== filter) {
         continue;
