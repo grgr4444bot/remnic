@@ -1229,6 +1229,8 @@ test("public SOTA staging helpers start from base and prune stale evidence", asy
   assert.match(memoryArena, /cp "\$\{COMPARE_MODULE\}" "\$\{WORKTREE\}\/\$\{MEMORYARENA_MODULE_DIR_REL\}\/compare-memoryarena-sota\.mjs"/);
   assert.match(memoryArena, /cp "\$\{DERIVE_MODULE\}" "\$\{WORKTREE\}\/\$\{MEMORYARENA_MODULE_DIR_REL\}\/derive-memoryarena-official-metrics\.mjs"/);
   assert.match(memoryArena, /cp "\$\{COMPARISON_JSON_MODULE\}" "\$\{WORKTREE\}\/\$\{COMPARISON_JSON_MODULE_REL\}"/);
+  assert.match(memoryArena, /EVIDENCE_ROOT="\$\{EVIDENCE_ROOT:-\$\{TMP_ROOT\}\/remnic-memoryarena-evidence\}"/);
+  assert.match(memoryArena, /SOURCE_EVIDENCE_DIR="\$\{SOURCE_EVIDENCE_DIR:-\$\{EVIDENCE_ROOT\}\/\$\{RUN_ID\}\}"/);
 });
 
 test("published SOTA verifier templates delegate to copied core verifier modules", async () => {
