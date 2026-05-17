@@ -50,6 +50,7 @@ const OPENCLAW_PACKAGE_EXPECTATIONS = [
   {
     packageJsonPath: "packages/plugin-openclaw/package.json",
     name: "@remnic/plugin-openclaw",
+    buildVersion: "2026.5.16-beta.4",
     install: {
       clawhubSpec: "clawhub:@remnic/plugin-openclaw",
       npmSpec: "@remnic/plugin-openclaw",
@@ -58,6 +59,7 @@ const OPENCLAW_PACKAGE_EXPECTATIONS = [
   {
     packageJsonPath: "packages/shim-openclaw-engram/package.json",
     name: "@joshuaswarren/openclaw-engram",
+    buildVersion: "2026.5.16-beta.3",
     install: {
       clawhubSpec: "clawhub:@remnic/plugin-openclaw",
       npmSpec: "@joshuaswarren/openclaw-engram",
@@ -378,7 +380,7 @@ for (const manifestPath of OPENCLAW_MANIFEST_PATHS) {
 }
 
 for (const expectation of OPENCLAW_PACKAGE_EXPECTATIONS) {
-  test(`${expectation.name} declares OpenClaw 2026.5.16-beta.3 package install metadata`, () => {
+  test(`${expectation.name} declares expected OpenClaw package install metadata`, () => {
     const packageJson = readPackageJson(expectation.packageJsonPath);
     const openclaw = packageJson.openclaw ?? {};
 
@@ -393,8 +395,8 @@ for (const expectation of OPENCLAW_PACKAGE_EXPECTATIONS) {
       pluginApi: ">=2026.5.16-beta.1",
     });
     assert.deepEqual(openclaw.build, {
-      openclawVersion: "2026.5.16-beta.3",
-      pluginSdkVersion: "2026.5.16-beta.3",
+      openclawVersion: expectation.buildVersion,
+      pluginSdkVersion: expectation.buildVersion,
     });
     assert.deepEqual(openclaw.install, {
       ...expectation.install,

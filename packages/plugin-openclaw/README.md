@@ -168,7 +168,8 @@ Last compatibility sweep: May 16, 2026. The SDK surface check passed against
 `openclaw@2026.5.3`, `openclaw@2026.5.3-1`, `openclaw@2026.5.4-beta.1`,
 `openclaw@2026.5.4-beta.2`, `openclaw@2026.5.4-beta.3`,
 `openclaw@2026.5.4`, `openclaw@2026.5.5`, `openclaw@2026.5.6`,
-`openclaw@2026.5.16-beta.2`, and `openclaw@2026.5.16-beta.3`.
+`openclaw@2026.5.16-beta.2`, `openclaw@2026.5.16-beta.3`, and
+`openclaw@2026.5.16-beta.4`.
 Keep the peer range broad unless an upstream release removes a runtime surface
 Remnic actively uses.
 
@@ -192,6 +193,12 @@ restart/reload behavior after plugin install changes, uses `gateway_stop`
 instead of the deprecated `deactivate` cleanup alias, and should not claim
 OpenAI `setup.providers` ownership because gateway/provider configuration
 remains host-owned.
+
+OpenClaw 2026.5.16-beta.4 treats `setup.providers[].id` as provider ownership
+metadata with globally unique ids. Remnic does not own the `openai` provider,
+so the canonical manifest keeps OpenAI API-key metadata on `providerAuthChoices`
+and the compatibility `providerAuthEnvVars.openai` surface instead of declaring
+`setup.providers`.
 
 Native memory registrars are tracked separately in
 [`docs/plugins/openclaw-native-memory-registrars.md`](../../docs/plugins/openclaw-native-memory-registrars.md).

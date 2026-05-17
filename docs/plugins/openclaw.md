@@ -22,7 +22,7 @@ openclaw plugins install clawhub:@remnic/plugin-openclaw
 
 OpenClaw 2026.5.2+ resolves bare plugin package names through ClawHub first and
 then falls back to npm. Remnic is published on ClawHub as
-`@remnic/plugin-openclaw` under the `joshuaswarren` account, so the explicit
+`@remnic/plugin-openclaw` under the `remnic` publisher, so the explicit
 `clawhub:` prefix keeps fresh installs deterministic. For npm-only fallback or
 rollback versions, use the explicit `npm:` source prefix, such as
 `npm:@remnic/plugin-openclaw@<version>`.
@@ -49,8 +49,8 @@ Publish ClawHub releases from the built npm/ClawPack tarball, not from the raw
 GitHub source folder. Source-folder publishing does not run the package build,
 so ClawHub can scan an incomplete three-file artifact with no `dist/index.js`.
 The ClawHub listing is `@remnic/plugin-openclaw` and is owned by the
-`joshuaswarren` account. Publish it with the authenticated owner account and do
-not pass `--owner` unless deliberately transferring ownership.
+`remnic` publisher. Publish it with an authenticated account that can publish
+to the `remnic` publisher, and pass `--owner remnic` when publishing manually.
 
 ```bash
 pnpm --filter @remnic/plugin-openclaw build
@@ -59,6 +59,7 @@ clawhub package pack packages/plugin-openclaw --pack-destination /tmp/remnic-cla
 clawhub package publish /tmp/remnic-clawpack/remnic-plugin-openclaw-<version>.tgz \
   --family code-plugin \
   --name @remnic/plugin-openclaw \
+  --owner remnic \
   --display-name "Remnic OpenClaw Plugin" \
   --version <version> \
   --source-repo joshuaswarren/remnic \
@@ -160,6 +161,9 @@ The plugin manifest advertises compatibility on two surfaces:
 - `providerAuthEnvVars.openai` is retained only as compatibility metadata for
   OpenClaw's pre-runtime env-var auth probes; it does not reintroduce provider
   setup ownership.
+- `setup.providers` is intentionally omitted because OpenClaw treats setup
+  provider ids as globally unique provider ownership metadata, and Remnic does
+  not own the `openai` provider.
 
 Keep the supported blocks. `contracts.tools` is additive for older OpenClaw runtimes, but
 OpenClaw 2026.5 rejects plugin tool registration when a runtime tool is missing
