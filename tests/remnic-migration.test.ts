@@ -250,6 +250,51 @@ test("migrateFromEngram tightens rewritten existing token store permissions with
   await assertOwnerOnlyMode(remnicTokensPath);
 });
 
+test("migrateFromEngram tightens unchanged merged token store permissions", async () => {
+  const homeDir = await makeTempHome("remnic-migrate-token-unchanged-merge-mode-");
+  const legacyRoot = path.join(homeDir, ".engram");
+  const remnicRoot = path.join(homeDir, ".remnic");
+  const remnicTokensPath = path.join(remnicRoot, "tokens.json");
+
+  await mkdir(legacyRoot, { recursive: true });
+  await mkdir(remnicRoot, { recursive: true });
+  await writeFile(
+    path.join(legacyRoot, "tokens.json"),
+    JSON.stringify({
+      tokens: [
+        { connector: "claude-code", token: "remnic_cc_legacy", createdAt: "2026-04-08T00:00:00.000Z" },
+      ],
+    }),
+    "utf8",
+  );
+  await writeFile(
+    remnicTokensPath,
+    JSON.stringify({
+      tokens: [
+        { connector: "claude-code", token: "remnic_cc_current", createdAt: "2026-04-09T00:00:00.000Z" },
+      ],
+    }),
+    "utf8",
+  );
+  await setModeIfPosix(remnicTokensPath, 0o644);
+
+  const result = await migrateFromEngram({
+    homeDir,
+    cwd: homeDir,
+    quiet: true,
+  });
+
+  assert.equal(result.status, "migrated");
+  assert.equal(result.tokensRegenerated, 0);
+  const tokens = JSON.parse(await readFile(remnicTokensPath, "utf8")) as {
+    tokens: Array<{ connector: string; token: string }>;
+  };
+  assert.deepEqual(tokens.tokens.map(({ connector, token }) => ({ connector, token })), [
+    { connector: "claude-code", token: "remnic_cc_current" },
+  ]);
+  await assertOwnerOnlyMode(remnicTokensPath);
+});
+
 test("migrateFromEngram merges legacy tokens into an existing remnic token store", async () => {
   const homeDir = await makeTempHome("remnic-migrate-token-merge-");
   const legacyRoot = path.join(homeDir, ".engram");

@@ -267,6 +267,7 @@ async function mergeLegacyTokens(
   backupExisting: boolean,
 ): Promise<number> {
   if (!existsSync(remnicTokensPath)) return 0;
+  await secureTokenFilePermissions(remnicTokensPath);
   if (!existsSync(legacyTokensPath)) return rewriteTokensIfPresent(remnicTokensPath);
 
   let remnicRaw: unknown;
