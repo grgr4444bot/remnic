@@ -395,7 +395,13 @@ async function backupFile(
   const digest = createHash("sha256").update(targetPath).digest("hex").slice(0, 12);
   const backupPath = path.join(backupRoot(homeDir), "mcp", `${digest}.json`);
   await ensureParent(backupPath);
-  await writeOwnerOnlyFile(backupPath, originalContent);
+  if (isRemnicTokenStorePath(targetPath, homeDir)) {
+    await writeOwnerOnlyFile(backupPath, originalContent);
+  } else {
+    const originalMode = (await stat(targetPath)).mode & 0o777;
+    await writeFile(backupPath, originalContent, { encoding: "utf8", mode: originalMode });
+    await chmod(backupPath, originalMode);
+  }
   manifest.entries.push({ targetPath, backupPath });
 }
 

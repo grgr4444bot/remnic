@@ -20,9 +20,17 @@ async function setModeIfPosix(filePath: string, mode: number): Promise<void> {
 }
 
 async function assertOwnerOnlyMode(filePath: string): Promise<void> {
+  await assertFileMode(filePath, 0o600);
+}
+
+async function assertFileMode(filePath: string, expectedMode: number): Promise<void> {
   if (process.platform === "win32") return;
   const mode = (await stat(filePath)).mode & 0o777;
-  assert.equal(mode, 0o600, `${filePath} should be owner-only`);
+  assert.equal(
+    mode,
+    expectedMode,
+    `${filePath} should have mode ${expectedMode.toString(8)}`,
+  );
 }
 
 test("migrateFromEngram returns fresh-install when no legacy Engram state exists", async () => {
@@ -488,6 +496,7 @@ test("rollbackFromEngramMigration restores backed up connector configs and remov
     }),
     "utf8",
   );
+  await setModeIfPosix(claudeConfig, 0o644);
   await writeFile(legacyLaunchAgent, "<plist>ai.engram.daemon</plist>", "utf8");
 
   await migrateFromEngram({
@@ -498,6 +507,13 @@ test("rollbackFromEngramMigration restores backed up connector configs and remov
     connectorConfigPaths: [claudeConfig],
     execCommand: () => undefined,
   });
+
+  const manifest = JSON.parse(await readFile(path.join(homeDir, ".remnic", ".rollback.json"), "utf8")) as {
+    entries: Array<{ targetPath: string; backupPath?: string }>;
+  };
+  const configBackupPath = manifest.entries.find((entry) => entry.targetPath === claudeConfig)?.backupPath;
+  assert.ok(configBackupPath, "expected connector config backup in rollback manifest");
+  await assertFileMode(configBackupPath, 0o644);
 
   const rollback = await rollbackFromEngramMigration({
     homeDir,
@@ -516,6 +532,7 @@ test("rollbackFromEngramMigration restores backed up connector configs and remov
   };
   assert.ok(restoredClaudeConfig.mcpServers.engram);
   assert.equal(restoredClaudeConfig.mcpServers.remnic, undefined);
+  await assertFileMode(claudeConfig, 0o644);
 });
 
 test("rollbackFromEngramMigration reloads systemd after removing migrated unit files", async () => {
