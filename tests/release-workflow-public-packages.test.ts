@@ -102,6 +102,13 @@ test("@remnic/server build verifies declared bin artifacts", async () => {
     packageJson.files.includes("bin/*.js"),
     "@remnic/server package must include source-controlled bin wrappers",
   );
+  const remnicServerBin = await readFile("packages/remnic-server/bin/remnic-server.js", "utf8");
+  const engramServerBin = await readFile("packages/remnic-server/bin/engram-server.js", "utf8");
+  const sharedServerBin = await readFile("packages/remnic-server/bin/server-bin.js", "utf8");
+  assert.notEqual(remnicServerBin, engramServerBin, "bin wrappers must stay command-specific");
+  assert.match(remnicServerBin, /runServerBin\("remnic-server"\)/);
+  assert.match(engramServerBin, /runServerBin\("engram-server"\)/);
+  assert.match(sharedServerBin, /export async function runServerBin/);
   assert.match(
     packageJson.scripts.build,
     /node scripts\/verify-bin\.mjs/,
