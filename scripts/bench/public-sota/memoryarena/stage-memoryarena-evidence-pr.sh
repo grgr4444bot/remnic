@@ -18,8 +18,10 @@ WORKTREE="${WORKTREE:-${TMP_ROOT}/remnic-memoryarena-sota-pr}"
 RESULTS_REL="docs/benchmarks/results/${RUN_ID}"
 EVIDENCE_DOC_REL="${EVIDENCE_DOC_REL:-docs/benchmarks/evidence/memory-arena-gpt-5.5-sota-2026-05.md}"
 VERIFY_TEMPLATE="${SCRIPT_DIR}/verify-public-memoryarena-sota-evidence.template.mjs"
+INTEGRITY_MODULE="${PUBLIC_SOTA_DIR}/evidence-integrity.mjs"
 DOC_GENERATOR="${SCRIPT_DIR}/generate-memoryarena-evidence-doc.mjs"
 VERIFY_SCRIPT_REL="scripts/bench/verify-public-memoryarena-sota-evidence.mjs"
+INTEGRITY_MODULE_REL="scripts/bench/evidence-integrity.mjs"
 
 required=(
   "${SOURCE_EVIDENCE_DIR}/MANIFEST.memory-arena.json"
@@ -76,7 +78,7 @@ fi
 (
   cd "${WORKTREE}"
   find docs/benchmarks/results -mindepth 1 -maxdepth 1 -type d -name 'public-matrix-codex-*' ! -name "${RUN_ID}" -exec rm -rf {} + 2>/dev/null || true
-  rm -f "${EVIDENCE_DOC_REL}" "${VERIFY_SCRIPT_REL}"
+  rm -f "${EVIDENCE_DOC_REL}" "${VERIFY_SCRIPT_REL}" "${INTEGRITY_MODULE_REL}"
 )
 
 mkdir -p "${WORKTREE}/${RESULTS_REL}" "${WORKTREE}/$(dirname "${EVIDENCE_DOC_REL}")" "${WORKTREE}/scripts/bench"
@@ -87,6 +89,7 @@ cp "${SOURCE_EVIDENCE_DIR}/memory-arena-sota-comparison.json" "${WORKTREE}/${RES
 cp "${PACKAGED_TARGET_MAP}" "${WORKTREE}/${RESULTS_REL}/"
 cp "${artifact_path}" "${WORKTREE}/${RESULTS_REL}/"
 cp "${VERIFY_TEMPLATE}" "${WORKTREE}/${VERIFY_SCRIPT_REL}"
+cp "${INTEGRITY_MODULE}" "${WORKTREE}/${INTEGRITY_MODULE_REL}"
 node "${DOC_GENERATOR}" \
   --evidence-dir "${SOURCE_EVIDENCE_DIR}" \
   --out "${WORKTREE}/${EVIDENCE_DOC_REL}"

@@ -1,7 +1,13 @@
 #!/usr/bin/env node
-import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+
+import {
+  manifestArtifactHashIdentity,
+  sha256File,
+  sha256String,
+  stableStringify,
+} from './evidence-integrity.mjs';
 
 const [evidenceDir = '.', benchmarkArg] = process.argv.slice(2);
 const FLOAT_EPSILON = 1e-9;
@@ -14,27 +20,6 @@ function assert(condition, message) {
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
-}
-
-function sha256File(file) {
-  return createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-}
-
-function sha256String(value) {
-  return createHash('sha256').update(value).digest('hex');
-}
-
-function stableStringify(value) {
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableStringify(entry)).join(',')}]`;
-  }
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
-      .join(',')}}`;
-  }
-  return JSON.stringify(value) ?? 'undefined';
 }
 
 function assertClose(actual, expected, label) {
@@ -320,39 +305,6 @@ function comparePublicBenchmarkSota(result, targetMap) {
     checks,
     sotaAllCheckedMetrics: checks.filter((check) => check.publishAsSota !== false).every((check) => check.sota),
     atOrAboveAllCheckedMetrics: checks.filter((check) => check.publishAsSota !== false).every((check) => check.sota || check.tied),
-  };
-}
-
-function manifestArtifactHashIdentity(manifest) {
-  return {
-    schemaVersion: manifest.schemaVersion,
-    run: {
-      id: manifest.run?.id,
-      ...(manifest.run?.mode ? { mode: manifest.run.mode } : {}),
-      selectedBenchmarks: manifest.run?.selectedBenchmarks,
-      runtimeProfiles: manifest.run?.runtimeProfiles,
-      ...(Object.prototype.hasOwnProperty.call(manifest.run ?? {}, 'limit') ? { limit: manifest.run.limit } : {}),
-      ...(Object.prototype.hasOwnProperty.call(manifest.run ?? {}, 'seed') ? { seed: manifest.run.seed } : {}),
-    },
-    git: {
-      commit: manifest.git?.commit,
-      shortCommit: manifest.git?.shortCommit,
-    },
-    command: {
-      argv: manifest.command?.argv,
-      envKeys: manifest.command?.envKeys,
-    },
-    environment: {
-      platform: manifest.environment?.platform,
-      arch: manifest.environment?.arch,
-      nodeVersion: manifest.environment?.nodeVersion,
-      ...(manifest.environment?.packageManager ? { packageManager: manifest.environment.packageManager } : {}),
-    },
-    ...(manifest.qmd ? { qmd: manifest.qmd } : {}),
-    configFiles: manifest.configFiles,
-    datasets: manifest.datasets,
-    results: manifest.results,
-    ...(manifest.publicArtifacts ? { publicArtifacts: manifest.publicArtifacts } : {}),
   };
 }
 

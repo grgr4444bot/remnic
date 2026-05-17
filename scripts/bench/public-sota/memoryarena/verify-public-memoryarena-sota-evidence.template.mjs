@@ -1,7 +1,13 @@
 #!/usr/bin/env node
-import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+
+import {
+  manifestArtifactHashIdentity,
+  sha256File,
+  sha256String,
+  stableStringify,
+} from './evidence-integrity.mjs';
 
 const DEFAULT_EVIDENCE_DIR = 'docs/benchmarks/results/public-matrix-codex-bf9b2643-20260515T052919Z';
 const evidenceDir = process.argv[2] ?? DEFAULT_EVIDENCE_DIR;
@@ -16,31 +22,10 @@ function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
-function sha256File(file) {
-  return createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-}
-
-function sha256String(value) {
-  return createHash('sha256').update(value).digest('hex');
-}
-
 function assertClose(actual, expected, label) {
   assert(typeof actual === 'number' && Number.isFinite(actual), `${label} must be finite`);
   assert(typeof expected === 'number' && Number.isFinite(expected), `${label} expected must be finite`);
   assert(Math.abs(actual - expected) < 1e-12, `${label}: expected ${expected}, got ${actual}`);
-}
-
-function stableStringify(value) {
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableStringify(entry)).join(',')}]`;
-  }
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
-      .join(',')}}`;
-  }
-  return JSON.stringify(value) ?? 'undefined';
 }
 
 function compareJson(actual, expected, label) {
@@ -235,39 +220,6 @@ function compareMemoryArenaSota(result, targetMap) {
     checks,
     sotaAllCheckedMetrics: checks.every((check) => check.sota),
     atOrAboveAllCheckedMetrics: checks.every((check) => check.sota || check.tied),
-  };
-}
-
-function manifestArtifactHashIdentity(manifest) {
-  return {
-    schemaVersion: manifest.schemaVersion,
-    run: {
-      id: manifest.run?.id,
-      ...(manifest.run?.mode ? { mode: manifest.run.mode } : {}),
-      selectedBenchmarks: manifest.run?.selectedBenchmarks,
-      runtimeProfiles: manifest.run?.runtimeProfiles,
-      ...(Object.prototype.hasOwnProperty.call(manifest.run ?? {}, 'limit') ? { limit: manifest.run.limit } : {}),
-      ...(Object.prototype.hasOwnProperty.call(manifest.run ?? {}, 'seed') ? { seed: manifest.run.seed } : {}),
-    },
-    git: {
-      commit: manifest.git?.commit,
-      shortCommit: manifest.git?.shortCommit,
-    },
-    command: {
-      argv: manifest.command?.argv,
-      envKeys: manifest.command?.envKeys,
-    },
-    environment: {
-      platform: manifest.environment?.platform,
-      arch: manifest.environment?.arch,
-      nodeVersion: manifest.environment?.nodeVersion,
-      ...(manifest.environment?.packageManager ? { packageManager: manifest.environment.packageManager } : {}),
-    },
-    ...(manifest.qmd ? { qmd: manifest.qmd } : {}),
-    configFiles: manifest.configFiles,
-    datasets: manifest.datasets,
-    results: manifest.results,
-    ...(manifest.publicArtifacts ? { publicArtifacts: manifest.publicArtifacts } : {}),
   };
 }
 

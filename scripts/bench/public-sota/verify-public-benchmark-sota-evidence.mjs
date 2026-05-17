@@ -1,10 +1,15 @@
 #!/usr/bin/env node
-import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { comparePublicBenchmarkSota } from './compare-public-benchmark-sota.mjs';
+import {
+  manifestArtifactHashIdentity,
+  sha256File,
+  sha256String,
+  stableStringify,
+} from './evidence-integrity.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_TARGET_MAP = path.join(scriptDir, 'current-target-map.json');
@@ -21,27 +26,6 @@ function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
-function sha256File(file) {
-  return createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-}
-
-function sha256String(value) {
-  return createHash('sha256').update(value).digest('hex');
-}
-
-function stableStringify(value) {
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableStringify(entry)).join(',')}]`;
-  }
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
-      .join(',')}}`;
-  }
-  return JSON.stringify(value) ?? 'undefined';
-}
-
 function assertClose(actual, expected, label) {
   assert(typeof actual === 'number' && Number.isFinite(actual), `${label} must be finite`);
   assert(typeof expected === 'number' && Number.isFinite(expected), `${label} expected must be finite`);
@@ -50,39 +34,6 @@ function assertClose(actual, expected, label) {
 
 function compareJson(actual, expected, label) {
   assert(stableStringify(actual) === stableStringify(expected), `${label} mismatch`);
-}
-
-function manifestArtifactHashIdentity(manifest) {
-  return {
-    schemaVersion: manifest.schemaVersion,
-    run: {
-      id: manifest.run?.id,
-      ...(manifest.run?.mode ? { mode: manifest.run.mode } : {}),
-      selectedBenchmarks: manifest.run?.selectedBenchmarks,
-      runtimeProfiles: manifest.run?.runtimeProfiles,
-      ...(Object.prototype.hasOwnProperty.call(manifest.run ?? {}, 'limit') ? { limit: manifest.run.limit } : {}),
-      ...(Object.prototype.hasOwnProperty.call(manifest.run ?? {}, 'seed') ? { seed: manifest.run.seed } : {}),
-    },
-    git: {
-      commit: manifest.git?.commit,
-      shortCommit: manifest.git?.shortCommit,
-    },
-    command: {
-      argv: manifest.command?.argv,
-      envKeys: manifest.command?.envKeys,
-    },
-    environment: {
-      platform: manifest.environment?.platform,
-      arch: manifest.environment?.arch,
-      nodeVersion: manifest.environment?.nodeVersion,
-      ...(manifest.environment?.packageManager ? { packageManager: manifest.environment.packageManager } : {}),
-    },
-    ...(manifest.qmd ? { qmd: manifest.qmd } : {}),
-    configFiles: manifest.configFiles,
-    datasets: manifest.datasets,
-    results: manifest.results,
-    ...(manifest.publicArtifacts ? { publicArtifacts: manifest.publicArtifacts } : {}),
-  };
 }
 
 function findManifest(dir, requestedBenchmark) {

@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
@@ -9,6 +8,13 @@ import { fileURLToPath } from 'node:url';
 
 import { compareMemoryArenaSota } from './compare-memoryarena-sota.mjs';
 import { deriveMemoryArenaOfficialMetrics } from './derive-memoryarena-official-metrics.mjs';
+import {
+  canonicalJson,
+  manifestArtifactHashIdentity,
+  sha256File as sha256FileSync,
+  sha256String,
+  stableStringify,
+} from '../evidence-integrity.mjs';
 import { assertRealRuntime } from '../runtime-profile-proof.mjs';
 
 const publicSotaDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -54,45 +60,6 @@ function assert(condition, message) {
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
-}
-
-function sha256String(value) {
-  return createHash('sha256').update(value).digest('hex');
-}
-
-function sha256FileSync(file) {
-  return createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-}
-
-function stableStringify(value) {
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableStringify(entry)).join(',')}]`;
-  }
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
-      .join(',')}}`;
-  }
-  return JSON.stringify(value) ?? 'undefined';
-}
-
-function canonicalJson(value, indent = 2) {
-  return `${JSON.stringify(sortDeep(value), null, indent)}\n`;
-}
-
-function sortDeep(value) {
-  if (Array.isArray(value)) {
-    return value.map(sortDeep);
-  }
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.keys(value)
-        .sort()
-        .map((key) => [key, sortDeep(value[key])]),
-    );
-  }
-  return value;
 }
 
 function finiteScoreEntries(scores) {
@@ -353,39 +320,6 @@ function assertResultMatchesRunManifest(baseManifest, rawEntry) {
   }
 }
 
-function buildArtifactHashIdentity(manifest) {
-  return {
-    schemaVersion: manifest.schemaVersion,
-    run: {
-      id: manifest.run?.id,
-      ...(manifest.run?.mode ? { mode: manifest.run.mode } : {}),
-      selectedBenchmarks: manifest.run?.selectedBenchmarks,
-      runtimeProfiles: manifest.run?.runtimeProfiles,
-      ...(Object.prototype.hasOwnProperty.call(manifest.run ?? {}, 'limit') ? { limit: manifest.run.limit } : {}),
-      ...(Object.prototype.hasOwnProperty.call(manifest.run ?? {}, 'seed') ? { seed: manifest.run.seed } : {}),
-    },
-    git: {
-      commit: manifest.git?.commit,
-      shortCommit: manifest.git?.shortCommit,
-    },
-    command: {
-      argv: manifest.command?.argv,
-      envKeys: manifest.command?.envKeys,
-    },
-    environment: {
-      platform: manifest.environment?.platform,
-      arch: manifest.environment?.arch,
-      nodeVersion: manifest.environment?.nodeVersion,
-      ...(manifest.environment?.packageManager ? { packageManager: manifest.environment.packageManager } : {}),
-    },
-    ...(manifest.qmd ? { qmd: manifest.qmd } : {}),
-    configFiles: manifest.configFiles,
-    datasets: manifest.datasets,
-    results: manifest.results,
-    ...(manifest.publicArtifacts ? { publicArtifacts: manifest.publicArtifacts } : {}),
-  };
-}
-
 function providerDistributionSummary(records) {
   const out = {
     providers: {},
@@ -584,7 +518,7 @@ async function main() {
   };
   const manifest = {
     ...manifestWithoutHash,
-    artifactHash: sha256String(stableStringify(buildArtifactHashIdentity(manifestWithoutHash))),
+    artifactHash: sha256String(stableStringify(manifestArtifactHashIdentity(manifestWithoutHash))),
   };
   const manifestPath = path.join(outDir, 'MANIFEST.memory-arena.json');
   await fsp.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
