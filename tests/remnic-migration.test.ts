@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { chmod, mkdtemp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -11,6 +12,16 @@ import {
 
 async function makeTempHome(prefix: string): Promise<string> {
   return mkdtemp(path.join(os.tmpdir(), prefix));
+}
+
+async function makeExitedPid(): Promise<number> {
+  const child = spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
+  assert.ok(child.pid, "expected child process pid");
+  await new Promise<void>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", () => resolve());
+  });
+  return child.pid;
 }
 
 async function setModeIfPosix(filePath: string, mode: number): Promise<void> {
@@ -423,6 +434,79 @@ test("migrateFromEngram clears malformed migration locks before acquiring a fres
   assert.equal(result.status, "migrated");
   assert.equal(existsSync(path.join(remnicRoot, ".migration.lock")), false);
   assert.equal(existsSync(path.join(remnicRoot, ".migrated-from-engram")), true);
+});
+
+test("migrateFromEngram clears migration locks from dead processes immediately", async () => {
+  const homeDir = await makeTempHome("remnic-migrate-dead-lock-");
+  const legacyRoot = path.join(homeDir, ".engram");
+  const remnicRoot = path.join(homeDir, ".remnic");
+  const lockPath = path.join(remnicRoot, ".migration.lock");
+  const deadPid = await makeExitedPid();
+
+  await mkdir(legacyRoot, { recursive: true });
+  await mkdir(remnicRoot, { recursive: true });
+  await writeFile(path.join(legacyRoot, "tokens.json"), JSON.stringify({ tokens: [] }), "utf8");
+  await writeFile(lockPath, `${deadPid}\n${Date.now()}\n`, "utf8");
+
+  const result = await migrateFromEngram({
+    homeDir,
+    cwd: homeDir,
+    quiet: true,
+  });
+
+  assert.equal(result.status, "migrated");
+  assert.equal(existsSync(lockPath), false);
+  assert.equal(existsSync(path.join(remnicRoot, ".migrated-from-engram")), true);
+});
+
+test("migrateFromEngram clears unreadable migration locks before acquiring a fresh lock", {
+  skip: process.platform === "win32",
+}, async () => {
+  const homeDir = await makeTempHome("remnic-migrate-unreadable-lock-");
+  const legacyRoot = path.join(homeDir, ".engram");
+  const remnicRoot = path.join(homeDir, ".remnic");
+  const lockPath = path.join(remnicRoot, ".migration.lock");
+
+  await mkdir(legacyRoot, { recursive: true });
+  await mkdir(remnicRoot, { recursive: true });
+  await writeFile(path.join(legacyRoot, "tokens.json"), JSON.stringify({ tokens: [] }), "utf8");
+  await writeFile(lockPath, "unreadable\n", "utf8");
+  await chmod(lockPath, 0o000);
+
+  const result = await migrateFromEngram({
+    homeDir,
+    cwd: homeDir,
+    quiet: true,
+  });
+
+  assert.equal(result.status, "migrated");
+  assert.equal(existsSync(lockPath), false);
+  assert.equal(existsSync(path.join(remnicRoot, ".migrated-from-engram")), true);
+});
+
+test("migrateFromEngram does not steal a stale lock from a live process", async () => {
+  const homeDir = await makeTempHome("remnic-migrate-live-lock-");
+  const legacyRoot = path.join(homeDir, ".engram");
+  const remnicRoot = path.join(homeDir, ".remnic");
+  const lockPath = path.join(remnicRoot, ".migration.lock");
+  const lockContent = `${process.pid}\n${Date.now() - 31_000}\n`;
+
+  await mkdir(legacyRoot, { recursive: true });
+  await mkdir(remnicRoot, { recursive: true });
+  await writeFile(path.join(legacyRoot, "tokens.json"), JSON.stringify({ tokens: [] }), "utf8");
+  await writeFile(lockPath, lockContent, "utf8");
+
+  await assert.rejects(
+    migrateFromEngram({
+      homeDir,
+      cwd: homeDir,
+      quiet: true,
+    }),
+    /timed out waiting for migration lock/,
+  );
+
+  assert.equal(await readFile(lockPath, "utf8"), lockContent);
+  assert.equal(existsSync(path.join(remnicRoot, ".migrated-from-engram")), false);
 });
 
 test("migrateFromEngram stops a service command batch after the first command failure", {
