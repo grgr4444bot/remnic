@@ -77,7 +77,7 @@ for (const [name, loadRawConfig] of loaders) {
     });
   });
 
-  test(`${name} prefers OPENCLAW_CONFIG_PATH over legacy OPENCLAW_ENGRAM_CONFIG_PATH`, () => {
+  test(`${name} keeps OPENCLAW_ENGRAM_CONFIG_PATH ahead of OPENCLAW_CONFIG_PATH`, () => {
     withTempDir((dir) => {
       const primaryPath = path.join(dir, "primary.json");
       const legacyPath = path.join(dir, "legacy.json");
@@ -89,8 +89,8 @@ for (const [name, loadRawConfig] of loaders) {
         OPENCLAW_CONFIG_PATH: primaryPath,
         OPENCLAW_ENGRAM_CONFIG_PATH: legacyPath,
       });
-      assert.equal(raw.marker, "primary");
-      assert.equal(raw.memoryDir, "/tmp/primary");
+      assert.equal(raw.marker, "legacy");
+      assert.equal(raw.memoryDir, "/tmp/legacy");
     });
   });
 
@@ -129,7 +129,7 @@ for (const [name, loadRawConfig] of loaders) {
             HOME: dir,
             REMNIC_CONFIG: configPath,
           }),
-        /Invalid JSON in REMNIC_CONFIG/u,
+        /codex-materialize config error: invalid JSON in REMNIC_CONFIG/u,
       );
     });
   });

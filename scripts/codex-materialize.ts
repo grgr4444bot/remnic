@@ -77,9 +77,25 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+class MaterializeConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MaterializeConfigError";
+  }
+}
+
 function envValue(env: NodeJS.ProcessEnv, key: string): string | undefined {
   const value = env[key];
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function safeErrorDetail(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  const cleaned = raw
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/[^\w .,:;()[\]{}'"!?/@+-]/g, "?")
+    .trim();
+  return cleaned.length > 240 ? `${cleaned.slice(0, 237)}...` : cleaned;
 }
 
 export function configCandidates(
@@ -87,18 +103,18 @@ export function configCandidates(
 ): ConfigCandidate[] {
   const home = envValue(env, "HOME") ?? "";
   const openclawConfigPath =
-    envValue(env, "OPENCLAW_CONFIG_PATH") ??
     envValue(env, "OPENCLAW_ENGRAM_CONFIG_PATH") ??
+    envValue(env, "OPENCLAW_CONFIG_PATH") ??
     path.join(home, ".openclaw", "openclaw.json");
   return [
     { path: envValue(env, "REMNIC_CONFIG"), label: "REMNIC_CONFIG" },
     {
       path: openclawConfigPath,
       label:
-        envValue(env, "OPENCLAW_CONFIG_PATH") !== undefined
-          ? "OPENCLAW_CONFIG_PATH"
-          : envValue(env, "OPENCLAW_ENGRAM_CONFIG_PATH") !== undefined
-            ? "OPENCLAW_ENGRAM_CONFIG_PATH"
+        envValue(env, "OPENCLAW_ENGRAM_CONFIG_PATH") !== undefined
+          ? "OPENCLAW_ENGRAM_CONFIG_PATH"
+          : envValue(env, "OPENCLAW_CONFIG_PATH") !== undefined
+            ? "OPENCLAW_CONFIG_PATH"
             : "default OpenClaw config",
     },
     {
@@ -143,7 +159,7 @@ export function loadRawConfig(
   //
   // Order of precedence:
   //   1. `REMNIC_CONFIG` env var (developer escape hatch)
-  //   2. `OPENCLAW_CONFIG_PATH` / `OPENCLAW_ENGRAM_CONFIG_PATH` — the same
+  //   2. `OPENCLAW_ENGRAM_CONFIG_PATH` / `OPENCLAW_CONFIG_PATH` — the same
   //      env vars the Remnic plugin reads at runtime
   //   3. `~/.openclaw/openclaw.json` — standard OpenClaw install location
   //   4. Legacy `~/.config/remnic/config.json`, `~/.config/engram/config.json`,
@@ -156,14 +172,13 @@ export function loadRawConfig(
     try {
       raw = JSON.parse(fs.readFileSync(candidate.path, "utf-8"));
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      throw new Error(
-        `Invalid JSON in ${candidate.label} (${candidate.path}): ${message}`,
+      throw new MaterializeConfigError(
+        `codex-materialize config error: invalid JSON in ${candidate.label} (${candidate.path}): ${safeErrorDetail(err)}`,
       );
     }
     if (!isPlainRecord(raw)) {
-      throw new Error(
-        `Invalid config in ${candidate.label} (${candidate.path}): expected a JSON object`,
+      throw new MaterializeConfigError(
+        `codex-materialize config error: invalid config in ${candidate.label} (${candidate.path}): expected a JSON object`,
       );
     }
     const resolved = extractRemnicConfigFromRaw(raw);
@@ -197,7 +212,14 @@ async function main(): Promise<number> {
   }
 
   const rawConfig = loadRawConfig();
-  const config = parseConfig(rawConfig);
+  let config;
+  try {
+    config = parseConfig(rawConfig);
+  } catch (err) {
+    throw new MaterializeConfigError(
+      `codex-materialize config error: parseConfig rejected the resolved config: ${safeErrorDetail(err)}`,
+    );
+  }
   if (args.memoryDir) {
     // parseConfig already locked in a memoryDir, but the CLI override wins.
     (config as unknown as Record<string, unknown>).memoryDir = args.memoryDir;
@@ -243,14 +265,19 @@ function isCliEntrypoint(): boolean {
     : false;
 }
 
+function formatFatalError(error?: unknown): string {
+  if (error instanceof MaterializeConfigError) {
+    return error.message;
+  }
+  return "codex-materialize failed; see logs for details";
+}
+
 if (isCliEntrypoint()) {
   main().then(
     (code) => process.exit(code),
     (error) => {
       // eslint-disable-next-line no-console
-      console.error(
-        `codex-materialize failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      console.error(formatFatalError(error));
       process.exit(1);
     },
   );
