@@ -26,10 +26,7 @@ if [[ "${current_branch}" != "${BRANCH}" ]]; then
 fi
 
 publish_or_update_pr() {
-  (
-    cd "${WORKTREE}"
-    git push -u origin "${BRANCH}"
-  )
+  push_evidence_branch
 
   existing_pr="$(gh pr list --repo "${REPO}" --head "${BRANCH}" --base "${BASE_BRANCH}" --state open --json number --jq '.[0].number // empty')"
   if [[ -n "${existing_pr}" ]]; then
@@ -42,6 +39,33 @@ publish_or_update_pr() {
 
   gh pr view "${pr_number}" --repo "${REPO}" --json number,url,state,isDraft,headRefOid,baseRefName
   node "${SCRIPT_DIR}/../verify-pr-clean.mjs" --repo "${REPO}" --pr "${pr_number}" --wait-seconds 1800
+}
+
+push_evidence_branch() {
+  (
+    cd "${WORKTREE}"
+
+    local_head="$(git rev-parse HEAD)"
+    remote_head="$(git ls-remote --heads origin "${BRANCH}" | awk 'NR == 1 { print $1 }')"
+
+    if [[ -z "${remote_head}" ]]; then
+      git push -u origin "HEAD:refs/heads/${BRANCH}"
+      return
+    fi
+
+    if [[ "${remote_head}" == "${local_head}" ]]; then
+      git push -u origin "HEAD:refs/heads/${BRANCH}"
+      return
+    fi
+
+    git fetch origin "+refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}"
+    if git merge-base --is-ancestor "origin/${BRANCH}" HEAD; then
+      git push -u origin "HEAD:refs/heads/${BRANCH}"
+    else
+      echo "remote ${BRANCH} is not an ancestor of local evidence commit; updating with --force-with-lease" >&2
+      git push -u --force-with-lease="refs/heads/${BRANCH}:${remote_head}" origin "HEAD:refs/heads/${BRANCH}"
+    fi
+  )
 }
 
 pr_head_matches_worktree() {
