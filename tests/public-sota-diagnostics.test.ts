@@ -978,6 +978,19 @@ test("public SOTA completion audit aligns MemoryAgentBench target freshness with
   assert.match(source, /expectedComparisonTargets\(item\.benchmark, comparison\.checks \?\? \[\]\)/);
 });
 
+test("public SOTA completion audit skips closed publication PRs", async () => {
+  const source = await readFile(
+    path.join("scripts", "bench", "public-sota", "audit-public-sota-completion.mjs"),
+    "utf8",
+  );
+
+  assert.match(source, /--state', 'all'/);
+  assert.match(source, /rows\.filter\(\(row\) => row\.state === 'OPEN' \|\| row\.state === 'MERGED'\)/);
+  assert.match(source, /activeRows\.sort\(\(a, b\) => Number\(b\.number\) - Number\(a\.number\)\)/);
+  assert.match(source, /return activeRows\[0\]/);
+  assert.doesNotMatch(source, /rows\.sort\(\(a, b\) => Number\(b\.number\) - Number\(a\.number\)\);\n\s*return rows\[0\]/);
+});
+
 test("chained public benchmark watcher retries active-session launch collisions", async () => {
   const source = await readFile(
     path.join("scripts", "bench", "public-sota", "watch-next-after-benchmark.sh"),

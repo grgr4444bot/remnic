@@ -103,8 +103,9 @@ function latestPrFor(branch) {
     '--limit', '20',
     '--json', 'number,state,url,headRefName,baseRefName',
   ]) ?? [];
-  rows.sort((a, b) => Number(b.number) - Number(a.number));
-  return rows[0];
+  const activeRows = rows.filter((row) => row.state === 'OPEN' || row.state === 'MERGED');
+  activeRows.sort((a, b) => Number(b.number) - Number(a.number));
+  return activeRows[0];
 }
 
 function verifyPr(prNumber, requireMerged) {
