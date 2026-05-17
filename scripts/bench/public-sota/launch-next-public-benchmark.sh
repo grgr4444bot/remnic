@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT_DEFAULT="$(git -C "${SCRIPT_DIR}/../../.." rev-parse --show-toplevel 2>/dev/null || (cd "${SCRIPT_DIR}/../../.." && pwd))"
 
 REPO_ROOT="${REPO_ROOT:-${REPO_ROOT_DEFAULT}}"
+LAUNCH_REPO_ROOT="${LAUNCH_REPO_ROOT:-${REPO_ROOT}}"
 RESULTS_ROOT="${RESULTS_ROOT:-${HOME}/.remnic/bench/results}"
 OUT_ROOT="${OUT_ROOT:-${RESULTS_ROOT}}"
 
@@ -28,12 +29,18 @@ case "${benchmark}" in
     ;;
 esac
 
-if [[ ! -d "${REPO_ROOT}/evals/datasets/${benchmark}" ]]; then
-  echo "Dataset missing: ${REPO_ROOT}/evals/datasets/${benchmark}" >&2
+if ! git -C "${LAUNCH_REPO_ROOT}" rev-parse --show-toplevel >/dev/null 2>&1; then
+  echo "Launch repo is not a git checkout: ${LAUNCH_REPO_ROOT}" >&2
   exit 2
 fi
 
-short_sha="$(git -C "${REPO_ROOT}" rev-parse --short HEAD)"
+if [[ ! -d "${LAUNCH_REPO_ROOT}/evals/datasets/${benchmark}" ]]; then
+  echo "Dataset missing: ${LAUNCH_REPO_ROOT}/evals/datasets/${benchmark}" >&2
+  exit 2
+fi
+
+git_sha="$(git -C "${LAUNCH_REPO_ROOT}" rev-parse HEAD)"
+short_sha="${git_sha:0:8}"
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
 run_id="public-${benchmark}-codex-${short_sha}-${timestamp}"
 results_dir="${RESULTS_ROOT}/${run_id}"
@@ -68,18 +75,20 @@ cmd=(
 )
 
 printf -v cmd_quoted '%q ' "${cmd[@]}"
-printf -v repo_quoted '%q' "${REPO_ROOT}"
+printf -v repo_quoted '%q' "${LAUNCH_REPO_ROOT}"
 printf -v log_quoted '%q' "${log_file}"
 printf -v status_quoted '%q' "${status_file}"
 printf -v benchmark_quoted '%q' "${benchmark}"
 printf -v run_id_quoted '%q' "${run_id}"
 session="${run_id}"
-tmux new-session -d -s "${session}" -c "${REPO_ROOT}" \
+tmux new-session -d -s "${session}" -c "${LAUNCH_REPO_ROOT}" \
   "PATH=/opt/homebrew/bin:/opt/homebrew/sbin:\$PATH; export REMNIC_BENCH_RUN_ID=${run_id_quoted}; cd ${repo_quoted}; (${cmd_quoted}) >> ${log_quoted} 2>&1; rc=\$?; if [ \$rc -eq 0 ]; then printf '%s\tsuccess\t%s\n' ${benchmark_quoted} \"\$(date -u +%Y-%m-%dT%H:%M:%SZ)\" >> ${status_quoted}; else printf '%s\tfail:%s\t%s\n' ${benchmark_quoted} \"\$rc\" \"\$(date -u +%Y-%m-%dT%H:%M:%SZ)\" >> ${status_quoted}; fi; exit \$rc"
 
 cat <<EOF
 launched=${session}
 benchmark=${benchmark}
+launch_repo_root=${LAUNCH_REPO_ROOT}
+launch_git_sha=${git_sha}
 results_dir=${results_dir}
 out_dir=${out_dir}
 status_file=${status_file}
