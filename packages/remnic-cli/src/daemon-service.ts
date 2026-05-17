@@ -88,7 +88,9 @@ export function resolveServerBinDetails(options: ResolveServerBinOptions = {}): 
     source: "workspace-source",
   });
 
-  const selected = candidates.find((candidate) => existsSync(candidate.path)) ?? candidates[0] ?? {
+  const selected = candidates.find((candidate) => isCandidateReady(candidate, existsSync))
+    ?? candidates.find((candidate) => existsSync(candidate.path))
+    ?? candidates[0] ?? {
     path: path.resolve(moduleDir, "../../remnic-server/dist/index.js"),
     source: "workspace-dist" as const,
   };
@@ -101,6 +103,13 @@ export function resolveServerBinDetails(options: ResolveServerBinOptions = {}): 
     exists,
     loadableByNode: exists && requiredExists && !selected.path.endsWith(".ts"),
   };
+}
+
+function isCandidateReady(
+  candidate: ServerBinCandidate,
+  existsSync: (candidate: string) => boolean,
+): boolean {
+  return existsSync(candidate.path) && (candidate.requiredPath ? existsSync(candidate.requiredPath) : true);
 }
 
 export function resolveServerBin(options: ResolveServerBinOptions = {}): string {

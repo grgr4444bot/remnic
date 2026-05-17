@@ -67,19 +67,20 @@ test("resolveServerBinDetails falls back to workspace dist before source", () =>
   assert.equal(result.loadableByNode, true);
 });
 
-test("resolveServerBinDetails reports workspace bin as not loadable before dist build", () => {
+test("resolveServerBinDetails skips workspace bin before dist build when source fallback exists", () => {
   const moduleDir = "/repo/packages/remnic-cli/dist";
   const workspaceBin = path.resolve(moduleDir, "../../remnic-server/bin/remnic-server.js");
+  const workspaceSource = path.resolve(moduleDir, "../../remnic-server/src/index.ts");
   const result = resolveServerBinDetails({
     moduleDir,
     packageResolve: () => {
       throw new Error("not installed");
     },
-    existsSync: (candidate) => candidate === workspaceBin,
+    existsSync: (candidate) => candidate === workspaceBin || candidate === workspaceSource,
   });
 
-  assert.equal(result.path, workspaceBin);
-  assert.equal(result.source, "workspace-dist");
+  assert.equal(result.path, workspaceSource);
+  assert.equal(result.source, "workspace-source");
   assert.equal(result.exists, true);
   assert.equal(result.loadableByNode, false);
 });
