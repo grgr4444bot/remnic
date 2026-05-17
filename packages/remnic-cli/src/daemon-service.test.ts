@@ -11,14 +11,14 @@ import {
 
 test("resolveServerBinDetails prefers installed @remnic/server bin through ESM resolution", () => {
   const packageEntry = "/opt/homebrew/lib/node_modules/@remnic/server/dist/index.js";
-  const packageBin = "/opt/homebrew/lib/node_modules/@remnic/server/dist/bin/remnic-server.js";
+  const packageBin = "/opt/homebrew/lib/node_modules/@remnic/server/bin/remnic-server.js";
   const result = resolveServerBinDetails({
     moduleDir: "/repo/packages/remnic-cli/dist",
     packageResolve: (specifier) => {
       assert.equal(specifier, "@remnic/server");
       return pathToFileURL(packageEntry).href;
     },
-    existsSync: (candidate) => candidate === packageBin,
+    existsSync: (candidate) => candidate === packageBin || candidate === packageEntry,
   });
 
   assert.deepEqual(result, {
@@ -29,22 +29,60 @@ test("resolveServerBinDetails prefers installed @remnic/server bin through ESM r
   });
 });
 
+test("resolveServerBinDetails requires installed bin wrapper to have built dist", () => {
+  const packageEntry = "/opt/homebrew/lib/node_modules/@remnic/server/dist/index.js";
+  const packageBin = "/opt/homebrew/lib/node_modules/@remnic/server/bin/remnic-server.js";
+  const result = resolveServerBinDetails({
+    moduleDir: "/repo/packages/remnic-cli/dist",
+    packageResolve: () => pathToFileURL(packageEntry).href,
+    existsSync: (candidate) => candidate === packageBin,
+  });
+
+  assert.equal(result.path, packageBin);
+  assert.equal(result.source, "package");
+  assert.equal(result.exists, true);
+  assert.equal(result.loadableByNode, false);
+});
+
 test("resolveServerBinDetails falls back to workspace dist before source", () => {
   const moduleDir = "/repo/packages/remnic-cli/dist";
   const workspaceDist = path.resolve(moduleDir, "../../remnic-server/dist/index.js");
+  const workspaceBin = path.resolve(moduleDir, "../../remnic-server/bin/remnic-server.js");
   const workspaceSource = path.resolve(moduleDir, "../../remnic-server/src/index.ts");
   const result = resolveServerBinDetails({
     moduleDir,
     packageResolve: () => {
       throw new Error("not installed");
     },
-    existsSync: (candidate) => candidate === workspaceDist || candidate === workspaceSource,
+    existsSync: (candidate) => (
+      candidate === workspaceBin ||
+      candidate === workspaceDist ||
+      candidate === workspaceSource
+    ),
   });
 
-  assert.equal(result.path, workspaceDist);
+  assert.equal(result.path, workspaceBin);
   assert.equal(result.source, "workspace-dist");
   assert.equal(result.exists, true);
   assert.equal(result.loadableByNode, true);
+});
+
+test("resolveServerBinDetails skips workspace bin before dist build when source fallback exists", () => {
+  const moduleDir = "/repo/packages/remnic-cli/dist";
+  const workspaceBin = path.resolve(moduleDir, "../../remnic-server/bin/remnic-server.js");
+  const workspaceSource = path.resolve(moduleDir, "../../remnic-server/src/index.ts");
+  const result = resolveServerBinDetails({
+    moduleDir,
+    packageResolve: () => {
+      throw new Error("not installed");
+    },
+    existsSync: (candidate) => candidate === workspaceBin || candidate === workspaceSource,
+  });
+
+  assert.equal(result.path, workspaceSource);
+  assert.equal(result.source, "workspace-source");
+  assert.equal(result.exists, true);
+  assert.equal(result.loadableByNode, false);
 });
 
 test("resolveServerBinDetails reports TypeScript source as not launchd-loadable", () => {
@@ -80,6 +118,51 @@ test("resolveServerBinDetails falls back to PATH before TypeScript source", () =
       return pathServer;
     },
     existsSync: (candidate) => candidate === pathServer || candidate === workspaceSource,
+  });
+
+  assert.equal(result.path, pathServer);
+  assert.equal(result.source, "path");
+  assert.equal(result.exists, true);
+  assert.equal(result.loadableByNode, true);
+});
+
+test("resolveServerBinDetails skips PATH bin wrapper before dist build when source fallback exists", () => {
+  const moduleDir = "/repo/packages/remnic-cli/dist";
+  const pathServer = "/other/repo/packages/remnic-server/bin/remnic-server.js";
+  const workspaceSource = path.resolve(moduleDir, "../../remnic-server/src/index.ts");
+  const result = resolveServerBinDetails({
+    moduleDir,
+    pathEnv: "/other/repo/node_modules/.bin",
+    packageResolve: () => {
+      throw new Error("not installed");
+    },
+    findCommandOnPath: () => pathServer,
+    existsSync: (candidate) => candidate === pathServer || candidate === workspaceSource,
+  });
+
+  assert.equal(result.path, workspaceSource);
+  assert.equal(result.source, "workspace-source");
+  assert.equal(result.exists, true);
+  assert.equal(result.loadableByNode, false);
+});
+
+test("resolveServerBinDetails uses PATH bin wrapper when its dist entry exists", () => {
+  const moduleDir = "/repo/packages/remnic-cli/dist";
+  const pathServer = "/other/repo/packages/remnic-server/bin/remnic-server.js";
+  const pathServerDist = "/other/repo/packages/remnic-server/dist/index.js";
+  const workspaceSource = path.resolve(moduleDir, "../../remnic-server/src/index.ts");
+  const result = resolveServerBinDetails({
+    moduleDir,
+    pathEnv: "/other/repo/node_modules/.bin",
+    packageResolve: () => {
+      throw new Error("not installed");
+    },
+    findCommandOnPath: () => pathServer,
+    existsSync: (candidate) => (
+      candidate === pathServer ||
+      candidate === pathServerDist ||
+      candidate === workspaceSource
+    ),
   });
 
   assert.equal(result.path, pathServer);

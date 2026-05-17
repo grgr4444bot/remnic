@@ -1,7 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { findCommandOnPath as findCommandOnPathDefault } from "./daemon-service-candidates.js";
+import {
+  findCommandOnPath as findCommandOnPathDefault,
+  serverBinWrapperRequiredPath,
+} from "./daemon-service-candidates.js";
 import { expandTilde } from "./path-utils.js";
 
 export type ServerBinSource = "package" | "path" | "workspace-dist" | "workspace-source";
@@ -11,6 +14,12 @@ export interface ServerBinResolution {
   source: ServerBinSource;
   exists: boolean;
   loadableByNode: boolean;
+}
+
+interface ServerBinCandidate {
+  path: string;
+  source: ServerBinSource;
+  requiredPath?: string;
 }
 
 export interface ResolveServerBinOptions {
@@ -41,22 +50,30 @@ export function resolveServerBinDetails(options: ResolveServerBinOptions = {}): 
   const findCommandOnPath = options.findCommandOnPath ?? findCommandOnPathDefault;
   const moduleDir = options.moduleDir ?? thisModuleDir;
   const packageResolve = options.packageResolve ?? resolveImportSpecifier;
-  const candidates: Array<{ path: string; source: ServerBinSource }> = [];
+  const candidates: ServerBinCandidate[] = [];
 
   try {
     const packageEntry = normalizeResolvedPath(packageResolve("@remnic/server"));
     candidates.push({
       path: packageServerBinFromEntry(packageEntry),
       source: "package",
+      requiredPath: packageEntry,
     });
   } catch {
     // @remnic/server may not be installed beside @remnic/cli in older or
     // development setups. Fall through to workspace-relative candidates.
   }
 
+  const workspaceServerBin = path.resolve(moduleDir, "../../remnic-server/bin/remnic-server.js");
+  const workspaceDistIndex = path.resolve(moduleDir, "../../remnic-server/dist/index.js");
   candidates.push(
     {
-      path: path.resolve(moduleDir, "../../remnic-server/dist/index.js"),
+      path: workspaceServerBin,
+      source: "workspace-dist",
+      requiredPath: workspaceDistIndex,
+    },
+    {
+      path: workspaceDistIndex,
       source: "workspace-dist",
     },
   );
@@ -66,6 +83,7 @@ export function resolveServerBinDetails(options: ResolveServerBinOptions = {}): 
     candidates.push({
       path: pathBin,
       source: "path",
+      requiredPath: serverBinWrapperRequiredPath(pathBin),
     });
   }
 
@@ -74,17 +92,28 @@ export function resolveServerBinDetails(options: ResolveServerBinOptions = {}): 
     source: "workspace-source",
   });
 
-  const selected = candidates.find((candidate) => existsSync(candidate.path)) ?? candidates[0] ?? {
+  const selected = candidates.find((candidate) => isCandidateReady(candidate, existsSync))
+    ?? candidates.find((candidate) => existsSync(candidate.path))
+    ?? candidates[0] ?? {
     path: path.resolve(moduleDir, "../../remnic-server/dist/index.js"),
     source: "workspace-dist" as const,
   };
 
   const exists = existsSync(selected.path);
+  const requiredExists = selected.requiredPath ? existsSync(selected.requiredPath) : true;
+  const { requiredPath: _requiredPath, ...publicSelected } = selected;
   return {
-    ...selected,
+    ...publicSelected,
     exists,
-    loadableByNode: exists && !selected.path.endsWith(".ts"),
+    loadableByNode: exists && requiredExists && !selected.path.endsWith(".ts"),
   };
+}
+
+function isCandidateReady(
+  candidate: ServerBinCandidate,
+  existsSync: (candidate: string) => boolean,
+): boolean {
+  return existsSync(candidate.path) && (candidate.requiredPath ? existsSync(candidate.requiredPath) : true);
 }
 
 export function resolveServerBin(options: ResolveServerBinOptions = {}): string {
@@ -226,7 +255,7 @@ function normalizeResolvedPath(resolved: string): string {
 
 function packageServerBinFromEntry(packageEntry: string): string {
   if (path.basename(packageEntry) === "index.js" && path.basename(path.dirname(packageEntry)) === "dist") {
-    return path.join(path.dirname(packageEntry), "bin", "remnic-server.js");
+    return path.join(path.dirname(path.dirname(packageEntry)), "bin", "remnic-server.js");
   }
   return packageEntry;
 }

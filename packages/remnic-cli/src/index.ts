@@ -3777,7 +3777,7 @@ function cmdInit(): void {
   console.log("  export REMNIC_AUTH_TOKEN=$(openssl rand -hex 32)");
   console.log("  # ENGRAM_AUTH_TOKEN is still accepted during v1.x");
   console.log("\nThen start the server:");
-  console.log("  npx remnic-server");
+  console.log("  npx --package @remnic/server remnic-server");
 }
 
 async function cmdStatus(json: boolean): Promise<void> {
@@ -6644,7 +6644,7 @@ function daemonInstall(): void {
   }
   if (!serverBinDetails.loadableByNode) {
     console.error("Error: @remnic/server has not been built. Run 'pnpm run build --filter=@remnic/server' first.");
-    console.error(`  Found:    ${serverBin} (TypeScript source — not loadable by launchd/systemd node)`);
+    console.error(`  Found:    ${serverBin} (not loadable by launchd/systemd node)`);
     process.exit(1);
   }
 

@@ -111,11 +111,24 @@ export function findCommandOnPath(command: string, pathEnv = process.env.PATH ??
 }
 
 export function resolveServerBinPath(importMetaDir: string, pathEnv = process.env.PATH ?? ""): string {
+  const binPath = path.resolve(importMetaDir, "../../remnic-server/bin/remnic-server.js");
   const distPath = path.resolve(importMetaDir, "../../remnic-server/dist/index.js");
+  if (fs.existsSync(binPath) && fs.existsSync(distPath)) return binPath;
   if (fs.existsSync(distPath)) return distPath;
 
   const pathBin = findCommandOnPath("remnic-server", pathEnv);
-  if (pathBin) return pathBin;
+  if (pathBin) {
+    const requiredPath = serverBinWrapperRequiredPath(pathBin);
+    if (!requiredPath || fs.existsSync(requiredPath)) return pathBin;
+  }
 
   return path.resolve(importMetaDir, "../../remnic-server/src/index.ts");
+}
+
+export function serverBinWrapperRequiredPath(candidate: string): string | undefined {
+  const filename = path.basename(candidate);
+  if (filename !== "remnic-server.js" && filename !== "engram-server.js") return undefined;
+  const binDir = path.dirname(candidate);
+  if (path.basename(binDir) !== "bin") return undefined;
+  return path.join(path.dirname(binDir), "dist", "index.js");
 }
