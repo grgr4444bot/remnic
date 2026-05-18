@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { before } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { access, mkdir, mkdtemp, rm } from "node:fs/promises";
@@ -29,6 +29,20 @@ function toTextResult(result: ReturnType<typeof spawnSync>): SpawnTextResult {
     stderr: typeof result.stderr === "string" ? result.stderr : result.stderr?.toString("utf8") ?? "",
   };
 }
+
+before(() => {
+  const result = toTextResult(
+    spawnSync(process.execPath, [path.join(repoRoot, "scripts", "ensure-cli-bench-build-deps.mjs")], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    }),
+  );
+  assert.equal(
+    result.status,
+    0,
+    `failed to prepare CLI build dependencies\n${result.stdout}\n${result.stderr}`,
+  );
+});
 
 async function pathExists(candidate: string): Promise<boolean> {
   try {
