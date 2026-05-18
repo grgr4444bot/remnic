@@ -3435,10 +3435,26 @@ function resolveMemoryDir(): string {
  * config path. Use this variant only for flags that require a value argument.
  */
 function resolveFlagStrict(args: string[], flag: string): string | undefined {
-  const idx = args.indexOf(flag);
-  if (idx === -1 || idx + 1 >= args.length) return undefined;
-  const next = args[idx + 1];
-  return next.startsWith("-") ? undefined : next;
+  let value: string | undefined;
+  for (let idx = 0; idx < args.length; idx++) {
+    if (args[idx] !== flag) continue;
+
+    if (idx + 1 >= args.length) {
+      throw new Error(
+        `${flag} requires a value. Provide it as \`${flag} <value>\`, not as a bare flag.`,
+      );
+    }
+    const next = args[idx + 1];
+    if (next.startsWith("-")) {
+      throw new Error(
+        `${flag} requires a value. Provide it as \`${flag} <value>\`, not as a bare flag.`,
+      );
+    }
+
+    value ??= next;
+    idx++;
+  }
+  return value;
 }
 // ── OpenClaw config helpers ───────────────────────────────────────────────────
 
@@ -5637,7 +5653,16 @@ async function cmdConnectors(action: string, rest: string[], json: boolean): Pro
       renderConnectorsList: renderLiveList,
     } = await import("@remnic/core" as string);
 
-    const formatFlag = resolveFlagStrict(rest, "--format");
+    let formatFlag: string | undefined;
+    try {
+      formatFlag = resolveFlagStrict(rest, "--format");
+    } catch (err) {
+      process.stderr.write(
+        `connectors status: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      process.exitCode = 2;
+      return;
+    }
     let parsed: { format: string };
     try {
       parsed = parseStatusOpts({ format: formatFlag });
@@ -5699,7 +5724,16 @@ async function cmdConnectors(action: string, rest: string[], json: boolean): Pro
       process.exitCode = 2;
       return;
     }
-    const formatFlag = resolveFlagStrict(rest, "--format");
+    let formatFlag: string | undefined;
+    try {
+      formatFlag = resolveFlagStrict(rest, "--format");
+    } catch (err) {
+      process.stderr.write(
+        `connectors run: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      process.exitCode = 2;
+      return;
+    }
     let format: string;
     try {
       format = parseListOpts({ format: formatFlag }).format;
@@ -5846,7 +5880,13 @@ async function cmdConnectorsMarketplace(
   rest: string[],
   json: boolean,
 ): Promise<void> {
-  const configPath = resolveConfigPath(resolveFlagStrict(rest, "--config"));
+  let configPath: string;
+  try {
+    configPath = resolveConfigPath(resolveFlagStrict(rest, "--config"));
+  } catch (err) {
+    console.error(`connectors marketplace: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
   const rawConfig = fs.existsSync(configPath)
     ? JSON.parse(fs.readFileSync(configPath, "utf8"))
     : {};
@@ -5857,7 +5897,13 @@ async function cmdConnectorsMarketplace(
   const config = parseConfig(pluginConfig);
 
   if (subAction === "generate") {
-    const outputDir = resolveFlagStrict(rest, "--output") ?? process.cwd();
+    let outputDir: string;
+    try {
+      outputDir = resolveFlagStrict(rest, "--output") ?? process.cwd();
+    } catch (err) {
+      console.error(`connectors marketplace generate: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
     const manifest = generateMarketplaceManifest();
     await writeMarketplaceManifest(outputDir, manifest);
     const outPath = path.join(outputDir, "marketplace.json");
@@ -5910,9 +5956,10 @@ async function cmdConnectorsMarketplace(
     // CLAUDE.md gotcha #14 & #51: reject --type without a value instead of
     // silently defaulting to "github".
     const validTypes = new Set(["github", "git", "local", "url"]);
-    const hasTypeFlag = rest.includes("--type");
-    const typeFlag = resolveFlagStrict(rest, "--type") ?? (hasTypeFlag ? undefined : "github");
-    if (typeFlag === undefined) {
+    let typeFlag: string;
+    try {
+      typeFlag = resolveFlagStrict(rest, "--type") ?? "github";
+    } catch {
       console.error(`--type requires a value. Must be one of: ${[...validTypes].join(", ")}`);
       process.exit(1);
     }
