@@ -93,11 +93,7 @@ describe("root CLI package boundaries", () => {
     };
     const tsupConfig = readFileSync(resolve("packages/remnic-core/tsup.config.ts"), "utf8");
 
-    for (const [rootFilePath, publicSpecifier] of ROOT_CONNECTOR_SHIMS) {
-      const coreFilePath = rootFilePath.replace(
-        /^src\/connectors\//,
-        "src/connectors/",
-      );
+    for (const [coreFilePath, publicSpecifier] of ROOT_CONNECTOR_SHIMS) {
       const subpath = publicSpecifier.replace(/^@remnic\/core/, ".");
       const distPath = `./dist/${coreFilePath
         .replace(/^src\//, "")
