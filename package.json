@@ -52,6 +52,21 @@
     },
     "./cli": {
       "import": "./dist/cli.js"
+    },
+    "./connectors": {
+      "import": "./dist/connectors/index.js"
+    },
+    "./connectors/codex-materialize": {
+      "import": "./dist/connectors/codex-materialize.js"
+    },
+    "./connectors/codex-materialize.js": {
+      "import": "./dist/connectors/codex-materialize.js"
+    },
+    "./connectors/codex-materialize-runner": {
+      "import": "./dist/connectors/codex-materialize-runner.js"
+    },
+    "./connectors/codex-materialize-runner.js": {
+      "import": "./dist/connectors/codex-materialize-runner.js"
     }
   },
   "files": [

@@ -8,8 +8,14 @@ const srcFiles = readdirSync(join(__dirname, "src"))
   .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.endsWith(".d.ts"))
   .map((f) => `src/${f}`);
 
+const connectorEntryFiles = [
+  "src/connectors/index.ts",
+  "src/connectors/codex-materialize.ts",
+  "src/connectors/codex-materialize-runner.ts",
+];
+
 export default defineConfig({
-  entry: srcFiles,
+  entry: [...srcFiles, ...connectorEntryFiles],
   format: ["esm"],
   target: "es2022",
   platform: "node",

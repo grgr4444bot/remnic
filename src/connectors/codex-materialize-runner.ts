@@ -1,1 +1,1 @@
-export * from "../../packages/remnic-core/src/connectors/codex-materialize-runner.js";
+export * from "@remnic/core/connectors/codex-materialize-runner";

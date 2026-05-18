@@ -8,8 +8,22 @@ const ROOT_CLI_SHIMS = [
   ["src/cli.ts", "@remnic/core/cli"],
 ] as const;
 
+const ROOT_CONNECTOR_SHIMS = [
+  ["src/connectors/index.ts", "@remnic/core/connectors"],
+  [
+    "src/connectors/codex-materialize.ts",
+    "@remnic/core/connectors/codex-materialize",
+  ],
+  [
+    "src/connectors/codex-materialize-runner.ts",
+    "@remnic/core/connectors/codex-materialize-runner",
+  ],
+] as const;
+
+const ROOT_PACKAGE_ENTRIES = [...ROOT_CLI_SHIMS, ...ROOT_CONNECTOR_SHIMS] as const;
+
 describe("root CLI package boundaries", () => {
-  for (const [filePath, publicSpecifier] of ROOT_CLI_SHIMS) {
+  for (const [filePath, publicSpecifier] of ROOT_PACKAGE_ENTRIES) {
     it(`${filePath} uses the public @remnic/core package export`, () => {
       const source = readFileSync(resolve(filePath), "utf8");
 
@@ -49,9 +63,10 @@ describe("root CLI package boundaries", () => {
     };
     const tsupConfig = readFileSync(resolve("tsup.config.ts"), "utf8");
 
-    for (const [filePath] of ROOT_CLI_SHIMS) {
+    for (const [filePath] of ROOT_PACKAGE_ENTRIES) {
       const subpath = `./${filePath
         .replace(/^src\//, "")
+        .replace(/\/index\.ts$/, "")
         .replace(/\.ts$/, "")}`;
       const distPath = `./dist/${filePath
         .replace(/^src\//, "")
@@ -66,6 +81,43 @@ describe("root CLI package boundaries", () => {
         tsupConfig.includes(`"${filePath}"`) ||
           tsupConfig.includes(`'${filePath}'`),
         `${filePath} must be a root tsup entry so ${distPath} exists after build`,
+      );
+    }
+  });
+
+  it("core package exposes connector shims through public exports and build entries", () => {
+    const manifest = JSON.parse(
+      readFileSync(resolve("packages/remnic-core/package.json"), "utf8"),
+    ) as {
+      exports?: Record<string, { import?: string; types?: string }>;
+    };
+    const tsupConfig = readFileSync(resolve("packages/remnic-core/tsup.config.ts"), "utf8");
+
+    for (const [rootFilePath, publicSpecifier] of ROOT_CONNECTOR_SHIMS) {
+      const coreFilePath = rootFilePath.replace(
+        /^src\/connectors\//,
+        "src/connectors/",
+      );
+      const subpath = publicSpecifier.replace(/^@remnic\/core/, ".");
+      const distPath = `./dist/${coreFilePath
+        .replace(/^src\//, "")
+        .replace(/\.ts$/, ".js")}`;
+      const typesPath = distPath.replace(/\.js$/, ".d.ts");
+
+      assert.equal(
+        manifest.exports?.[subpath]?.import,
+        distPath,
+        `${subpath} must resolve to ${distPath} through @remnic/core exports`,
+      );
+      assert.equal(
+        manifest.exports?.[subpath]?.types,
+        typesPath,
+        `${subpath} must publish declarations at ${typesPath}`,
+      );
+      assert.ok(
+        tsupConfig.includes(`"${coreFilePath}"`) ||
+          tsupConfig.includes(`'${coreFilePath}'`),
+        `${coreFilePath} must be a core tsup entry so ${distPath} exists after build`,
       );
     }
   });
