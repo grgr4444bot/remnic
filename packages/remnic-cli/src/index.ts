@@ -3264,10 +3264,10 @@ async function writeBenchReproManifestForPackageRun(args: {
 
 // ── Config helpers ───────────────────────────────────────────────────────────
 
-function resolveConfigPath(cliPath?: string): string {
-  if (cliPath) return path.resolve(cliPath);
+export function resolveConfigPath(cliPath?: string): string {
+  if (cliPath) return path.resolve(expandTilde(cliPath));
   const envPath = readCompatEnv("REMNIC_CONFIG_PATH", "ENGRAM_CONFIG_PATH");
-  if (envPath) return path.resolve(envPath);
+  if (envPath) return path.resolve(expandTilde(envPath));
 
   const candidates = [
     path.join(process.cwd(), "remnic.config.json"),
