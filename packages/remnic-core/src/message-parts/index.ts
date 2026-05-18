@@ -196,7 +196,7 @@ export function parseAnthropicMessageParts(
   );
   const parts: LcmMessagePartInput[] = [];
   for (const block of blocks) {
-    const type = asNonEmptyString(block.type);
+    const type = asNonEmptyString(block.type ?? block.kind);
     if (type === "text") {
       const text = asNonEmptyString(block.text);
       if (text) parts.push(makePart("text", { type, text }, { filePath: firstFilePath(text) }));

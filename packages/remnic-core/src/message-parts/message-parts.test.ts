@@ -183,6 +183,26 @@ describe("message-parts parsers", () => {
     assert.equal(parts[1]!.filePath, "packages/core/src/config.ts");
   });
 
+  it("extracts Anthropic kind aliases as structured parts", () => {
+    const parts = parseAnthropicMessageParts({
+      content: [
+        { kind: "text", text: "I will edit packages/core/src/aliases.ts" },
+        {
+          kind: "tool_use",
+          id: "toolu_kind",
+          name: "Edit",
+          input: { path: "packages/core/src/aliases.ts", old_string: "a", new_string: "b" },
+        },
+      ],
+    });
+
+    assert.equal(parts.length, 2);
+    assert.equal(parts[0]!.kind, "text");
+    assert.equal(parts[0]!.filePath, "packages/core/src/aliases.ts");
+    assert.equal(parts[1]!.kind, "file_write");
+    assert.equal(parts[1]!.filePath, "packages/core/src/aliases.ts");
+  });
+
   it("preserves Anthropic tool_result error flags", () => {
     const parts = parseAnthropicMessageParts({
       content: [
@@ -216,6 +236,24 @@ describe("message-parts parsers", () => {
     assert.equal(parts.length, 1);
     assert.equal(parts[0]!.kind, "tool_result");
     assert.equal(parts[0]!.payload.id, "toolu_inferred");
+  });
+
+  it("infers Anthropic kind alias blocks before Pi source format", () => {
+    const parts = parseMessageParts({
+      role: "user",
+      content: [
+        {
+          kind: "tool_result",
+          tool_use_id: "toolu_kind_inferred",
+          content: [{ kind: "text", text: "Updated src/aliases.ts" }],
+        },
+      ],
+    });
+
+    assert.equal(parts.length, 1);
+    assert.equal(parts[0]!.kind, "tool_result");
+    assert.equal(parts[0]!.payload.id, "toolu_kind_inferred");
+    assert.equal(parts[0]!.filePath, "src/aliases.ts");
   });
 
   it("normalizes explicit Remnic parts and redacts secrets", () => {
