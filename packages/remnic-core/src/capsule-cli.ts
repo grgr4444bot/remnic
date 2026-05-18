@@ -201,29 +201,32 @@ export function parseCapsuleIncludeKinds(raw: unknown): string[] | undefined {
 }
 
 /**
- * Parse a comma-separated `--peers` value into an array of peer ids.
+ * Parse a comma-separated peer id value into an array of peer ids.
  */
-export function parseCapsulePeers(raw: unknown): string[] | undefined {
+export function parseCapsulePeers(
+  raw: unknown,
+  optionName = "--peers",
+): string[] | undefined {
   if (raw === undefined || raw === null) return undefined;
   if (typeof raw !== "string") {
     throw new Error(
-      `--peers expects a comma-separated list of peer ids; got ${JSON.stringify(raw)}`,
+      `${optionName} expects a comma-separated list of peer ids; got ${JSON.stringify(raw)}`,
     );
   }
   if (raw.trim() === "") {
-    throw new Error(`--peers expects at least one non-empty peer id`);
+    throw new Error(`${optionName} expects at least one non-empty peer id`);
   }
   const parts = raw
     .split(",")
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
   if (parts.length === 0) {
-    throw new Error(`--peers expects at least one non-empty peer id`);
+    throw new Error(`${optionName} expects at least one non-empty peer id`);
   }
   for (const p of parts) {
     if (p.includes("/") || p.includes("\\") || p === "." || p === "..") {
       throw new Error(
-        `--peers entries must be plain id tokens (no path separators): ${p}`,
+        `${optionName} entries must be plain id tokens (no path separators): ${p}`,
       );
     }
   }
@@ -237,10 +240,10 @@ export function parseCapsulePeers(raw: unknown): string[] | undefined {
 
 export interface CapsuleExportOptions {
   name: string;
-  out: string | undefined;
+  outDir: string | undefined;
   since: string | undefined;
   includeKinds: string[] | undefined;
-  peers: string[] | undefined;
+  peerIds: string[] | undefined;
 }
 
 export interface CapsuleImportOptions {
@@ -274,21 +277,21 @@ export function parseCapsuleExportOptions(
 ): CapsuleExportOptions {
   if (typeof nameArg !== "string" || nameArg.trim() === "") {
     throw new Error(
-      `capsule export: <name> is required (e.g. "remnic capsule export my-capsule")`,
+      `capsule export: --name is required (e.g. "remnic capsule export --name my-capsule")`,
     );
   }
   const name = nameArg.trim();
 
-  const out =
-    typeof opts.out === "string" && opts.out.trim() !== ""
-      ? opts.out.trim()
+  const outDir =
+    typeof opts.outDir === "string" && opts.outDir.trim() !== ""
+      ? opts.outDir.trim()
       : undefined;
 
   const since = parseCapsuleSince(opts.since);
   const includeKinds = parseCapsuleIncludeKinds(opts.includeKinds);
-  const peers = parseCapsulePeers(opts.peers);
+  const peerIds = parseCapsulePeers(opts.peerIds, "--peer-ids");
 
-  return { name, out, since, includeKinds, peers };
+  return { name, outDir, since, includeKinds, peerIds };
 }
 
 export function parseCapsuleImportOptions(

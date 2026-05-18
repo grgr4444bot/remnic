@@ -4265,28 +4265,17 @@ export function registerCli(
         .option("--namespace <ns>", "Namespace (v3.0+, default: config defaultNamespace)", "")
         .action(async (...args: unknown[]) => {
           const options = (args[0] ?? {}) as Record<string, unknown>;
-          const name = options.name ? String(options.name) : "";
-          if (!name) {
-            console.error("--name is required. Example: remnic capsule export --name my-capsule");
+          const { parseCapsuleExportOptions } = await import("./capsule-cli.js");
+          let parsed: ReturnType<typeof parseCapsuleExportOptions>;
+          try {
+            parsed = parseCapsuleExportOptions(options.name, options);
+          } catch (err) {
+            console.error(err instanceof Error ? err.message : String(err));
             process.exitCode = 1;
             return;
           }
           const namespace = options.namespace ? String(options.namespace) : "";
           const doEncrypt = options.encrypt === true;
-          const outDir = options.outDir ? String(options.outDir) : undefined;
-          const since = options.since ? String(options.since) : undefined;
-          const includeKinds = options.includeKinds
-            ? String(options.includeKinds)
-                .split(",")
-                .map((s) => s.trim())
-                .filter(Boolean)
-            : undefined;
-          const peerIds = options.peerIds
-            ? String(options.peerIds)
-                .split(",")
-                .map((s) => s.trim())
-                .filter(Boolean)
-            : undefined;
           const includeTranscripts = options.includeTranscripts === true;
 
           const pluginVersion = await getPluginVersion();
@@ -4296,19 +4285,19 @@ export function registerCli(
 
           const { exportCapsule } = await import("./transfer/capsule-export.js");
           const result = await exportCapsule({
-            name,
+            name: parsed.name,
             root: memoryDir,
-            since,
+            since: parsed.since,
             // Pass `includeKinds` only when the user explicitly provided it.
             // Do NOT merge transcripts into an explicit list here: doing so would
             // produce a hard-coded allow-list that silently drops other valid
             // memory dirs (peers/, forks/, etc.). Instead, use `includeTranscripts`
             // so the exporter adds transcripts while keeping the default "all dirs"
             // walk. (Cursor / #747)
-            includeKinds,
+            includeKinds: parsed.includeKinds,
             includeTranscripts,
-            peerIds,
-            outDir,
+            peerIds: parsed.peerIds,
+            outDir: parsed.outDir,
             pluginVersion,
             encrypt: doEncrypt,
             memoryDir: doEncrypt ? memoryDir : undefined,
