@@ -44,6 +44,90 @@ import {
   type CapsuleInspectData,
   type CapsuleListEntry,
 } from "../../packages/remnic-core/src/capsule-cli.js";
+import { registerCli } from "../../packages/remnic-core/src/cli.js";
+
+class MockCommand {
+  children = new Map<string, MockCommand>();
+  actionHandler?: (...args: unknown[]) => Promise<void> | void;
+
+  constructor(readonly name: string) {}
+
+  command(name: string): MockCommand {
+    const child = new MockCommand(name);
+    this.children.set(name, child);
+    return child;
+  }
+
+  description(): MockCommand {
+    return this;
+  }
+
+  option(): MockCommand {
+    return this;
+  }
+
+  requiredOption(): MockCommand {
+    return this;
+  }
+
+  argument(): MockCommand {
+    return this;
+  }
+
+  action(handler: (...args: unknown[]) => Promise<void> | void): MockCommand {
+    this.actionHandler = handler;
+    return this;
+  }
+}
+
+function getCapsuleExportAction(): (...args: unknown[]) => Promise<void> | void {
+  const root = new MockCommand("root");
+  registerCli(
+    {
+      registerCli(handler: (opts: { program: MockCommand }) => void): void {
+        handler({ program: root });
+      },
+    },
+    {
+      config: {
+        memoryDir: "/tmp/remnic-capsule-cli-test",
+      },
+    } as never,
+  );
+
+  const action = root.children
+    .get("engram")
+    ?.children.get("capsule")
+    ?.children.get("export")
+    ?.actionHandler;
+  assert.equal(typeof action, "function");
+  return action;
+}
+
+async function captureCapsuleExportError(options: Record<string, unknown>): Promise<{
+  exitCode: string | number | undefined;
+  stderr: string;
+}> {
+  const action = getCapsuleExportAction();
+  const originalError = console.error;
+  const originalExitCode = process.exitCode;
+  const messages: string[] = [];
+  process.exitCode = undefined;
+  console.error = (...args: unknown[]) => {
+    messages.push(args.map(String).join(" "));
+  };
+
+  try {
+    await action(options);
+    return {
+      exitCode: process.exitCode,
+      stderr: messages.join("\n"),
+    };
+  } finally {
+    console.error = originalError;
+    process.exitCode = originalExitCode;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Suite 1 — parseCapsuleOutputFormat
@@ -248,41 +332,71 @@ test("parseCapsulePeers rejects . and ..", () => {
 
 test("parseCapsuleExportOptions assembles option bag from valid inputs", () => {
   const result = parseCapsuleExportOptions("my-capsule", {
-    out: "/tmp/caps",
+    outDir: "/tmp/caps",
     since: "2026-04-01T00:00:00Z",
     includeKinds: "facts,entities",
-    peers: "peer-a",
+    peerIds: "peer-a",
   });
   assert.equal(result.name, "my-capsule");
-  assert.equal(result.out, "/tmp/caps");
+  assert.equal(result.outDir, "/tmp/caps");
   assert.ok(typeof result.since === "string");
   assert.deepEqual(result.includeKinds, ["facts", "entities"]);
-  assert.deepEqual(result.peers, ["peer-a"]);
+  assert.deepEqual(result.peerIds, ["peer-a"]);
 });
 
 test("parseCapsuleExportOptions uses defaults when optional flags absent", () => {
   const result = parseCapsuleExportOptions("my-capsule", {});
   assert.equal(result.name, "my-capsule");
-  assert.equal(result.out, undefined);
+  assert.equal(result.outDir, undefined);
   assert.equal(result.since, undefined);
   assert.equal(result.includeKinds, undefined);
-  assert.equal(result.peers, undefined);
+  assert.equal(result.peerIds, undefined);
 });
 
 test("parseCapsuleExportOptions rejects missing name", () => {
   assert.throws(
     () => parseCapsuleExportOptions("", {}),
-    /capsule export: <name> is required/,
+    /capsule export: --name is required/,
   );
   assert.throws(
     () => parseCapsuleExportOptions(undefined, {}),
-    /capsule export: <name> is required/,
+    /capsule export: --name is required/,
   );
 });
 
 test("parseCapsuleExportOptions trims whitespace from name", () => {
   const result = parseCapsuleExportOptions("  my-capsule  ", {});
   assert.equal(result.name, "my-capsule");
+});
+
+test("parseCapsuleExportOptions rejects empty include kind and peer id lists", () => {
+  assert.throws(
+    () => parseCapsuleExportOptions("my-capsule", { includeKinds: "," }),
+    /--include-kinds expects at least one non-empty kind name/,
+  );
+  assert.throws(
+    () => parseCapsuleExportOptions("my-capsule", { peerIds: "," }),
+    /--peer-ids expects at least one non-empty peer id/,
+  );
+});
+
+test("capsule export CLI wiring rejects empty include kind and peer id lists before export", async () => {
+  const includeKindsResult = await captureCapsuleExportError({
+    name: "backup",
+    includeKinds: ",",
+  });
+  const peerIdsResult = await captureCapsuleExportError({
+    name: "backup",
+    peerIds: ",",
+  });
+
+  assert.equal(includeKindsResult.exitCode, 1);
+  assert.match(
+    includeKindsResult.stderr,
+    /--include-kinds expects at least one non-empty kind name/,
+  );
+  assert.equal(peerIdsResult.exitCode, 1);
+  assert.match(peerIdsResult.stderr, /--peer-ids expects at least one non-empty peer id/);
 });
 
 // ---------------------------------------------------------------------------
