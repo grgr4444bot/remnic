@@ -24,8 +24,11 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import os from "node:os";
 import path from "node:path";
 
+import { registerCli } from "../../packages/remnic-core/src/cli.js";
+import { parseConfig } from "../../packages/remnic-core/src/config.js";
 import {
   defaultCapsulesDir,
   parseCapsuleConflictMode,
@@ -44,6 +47,105 @@ import {
   type CapsuleInspectData,
   type CapsuleListEntry,
 } from "../../packages/remnic-core/src/capsule-cli.js";
+
+class MockCommand {
+  readonly children = new Map<string, MockCommand>();
+  actionHandler?: (...args: unknown[]) => Promise<void> | void;
+
+  constructor(readonly name: string) {}
+
+  command(name: string): MockCommand {
+    const child = new MockCommand(name);
+    this.children.set(name, child);
+    return child;
+  }
+
+  description(): MockCommand {
+    return this;
+  }
+
+  option(): MockCommand {
+    return this;
+  }
+
+  requiredOption(): MockCommand {
+    return this;
+  }
+
+  argument(): MockCommand {
+    return this;
+  }
+
+  action(handler: (...args: unknown[]) => Promise<void> | void): MockCommand {
+    this.actionHandler = handler;
+    return this;
+  }
+}
+
+function registerCapsuleCliFixture(): MockCommand {
+  const root = new MockCommand("root");
+  const config = parseConfig({
+    openaiApiKey: "sk-test",
+    memoryDir: path.join(os.tmpdir(), "remnic-capsule-cli-test", "memory"),
+    workspaceDir: path.join(os.tmpdir(), "remnic-capsule-cli-test", "workspace"),
+    qmdEnabled: false,
+    transcriptEnabled: false,
+    hourlySummariesEnabled: false,
+    identityEnabled: false,
+    identityContinuityEnabled: false,
+    sharedContextEnabled: false,
+    captureMode: "implicit",
+  });
+
+  registerCli(
+    {
+      registerCli(handler: (opts: { program: MockCommand }) => void): void {
+        handler({ program: root });
+      },
+    },
+    { config } as never,
+  );
+  return root;
+}
+
+function getAction(root: MockCommand, segments: string[]): (...args: unknown[]) => Promise<void> | void {
+  let current: MockCommand | undefined = root;
+  for (const segment of segments) {
+    current = current?.children.get(segment);
+  }
+  assert.equal(typeof current?.actionHandler, "function");
+  return current!.actionHandler!;
+}
+
+async function captureAction(
+  action: (...args: unknown[]) => Promise<void> | void,
+  options: Record<string, unknown>,
+): Promise<{ exitCode: number | string | undefined; stderr: string; stdout: string }> {
+  const errors: string[] = [];
+  const logs: string[] = [];
+  const originalError = console.error;
+  const originalLog = console.log;
+  const originalExitCode = process.exitCode;
+  process.exitCode = undefined;
+  console.error = (...args: unknown[]) => {
+    errors.push(args.map((value) => String(value)).join(" "));
+  };
+  console.log = (...args: unknown[]) => {
+    logs.push(args.map((value) => String(value)).join(" "));
+  };
+  try {
+    await action(options);
+    return {
+      exitCode: process.exitCode,
+      stderr: errors.join("\n"),
+      stdout: logs.join("\n"),
+    };
+  } finally {
+    console.error = originalError;
+    console.log = originalLog;
+    process.exitCode = originalExitCode;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Suite 1 — parseCapsuleOutputFormat
@@ -230,7 +332,7 @@ test("parseCapsulePeers deduplicates", () => {
 });
 
 test("parseCapsulePeers rejects empty string", () => {
-  assert.throws(() => parseCapsulePeers(""), /--peers/);
+  assert.throws(() => parseCapsulePeers(""), /--peer-ids/);
 });
 
 test("parseCapsulePeers rejects entries with path separators", () => {
@@ -248,25 +350,25 @@ test("parseCapsulePeers rejects . and ..", () => {
 
 test("parseCapsuleExportOptions assembles option bag from valid inputs", () => {
   const result = parseCapsuleExportOptions("my-capsule", {
-    out: "/tmp/caps",
+    outDir: "/tmp/caps",
     since: "2026-04-01T00:00:00Z",
     includeKinds: "facts,entities",
-    peers: "peer-a",
+    peerIds: "peer-a",
   });
   assert.equal(result.name, "my-capsule");
-  assert.equal(result.out, "/tmp/caps");
+  assert.equal(result.outDir, "/tmp/caps");
   assert.ok(typeof result.since === "string");
   assert.deepEqual(result.includeKinds, ["facts", "entities"]);
-  assert.deepEqual(result.peers, ["peer-a"]);
+  assert.deepEqual(result.peerIds, ["peer-a"]);
 });
 
 test("parseCapsuleExportOptions uses defaults when optional flags absent", () => {
   const result = parseCapsuleExportOptions("my-capsule", {});
   assert.equal(result.name, "my-capsule");
-  assert.equal(result.out, undefined);
+  assert.equal(result.outDir, undefined);
   assert.equal(result.since, undefined);
   assert.equal(result.includeKinds, undefined);
-  assert.equal(result.peers, undefined);
+  assert.equal(result.peerIds, undefined);
 });
 
 test("parseCapsuleExportOptions rejects missing name", () => {
@@ -283,6 +385,32 @@ test("parseCapsuleExportOptions rejects missing name", () => {
 test("parseCapsuleExportOptions trims whitespace from name", () => {
   const result = parseCapsuleExportOptions("  my-capsule  ", {});
   assert.equal(result.name, "my-capsule");
+});
+
+test("capsule export action rejects empty include-kinds before export runs", async () => {
+  const root = registerCapsuleCliFixture();
+  const action = getAction(root, ["engram", "capsule", "export"]);
+  const result = await captureAction(action, {
+    name: "backup",
+    includeKinds: ",",
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.stderr, /--include-kinds expects at least one non-empty kind name/);
+  assert.equal(result.stdout, "");
+});
+
+test("capsule export action rejects empty peer-ids before export runs", async () => {
+  const root = registerCapsuleCliFixture();
+  const action = getAction(root, ["engram", "capsule", "export"]);
+  const result = await captureAction(action, {
+    name: "backup",
+    peerIds: ",",
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.stderr, /--peer-ids expects at least one non-empty peer id/);
+  assert.equal(result.stdout, "");
 });
 
 // ---------------------------------------------------------------------------

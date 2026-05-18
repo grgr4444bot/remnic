@@ -201,34 +201,36 @@ export function parseCapsuleIncludeKinds(raw: unknown): string[] | undefined {
 }
 
 /**
- * Parse a comma-separated `--peers` value into an array of peer ids.
+ * Parse a comma-separated `--peer-ids` value into an array of peer ids.
  */
-export function parseCapsulePeers(raw: unknown): string[] | undefined {
+export function parseCapsulePeerIds(raw: unknown): string[] | undefined {
   if (raw === undefined || raw === null) return undefined;
   if (typeof raw !== "string") {
     throw new Error(
-      `--peers expects a comma-separated list of peer ids; got ${JSON.stringify(raw)}`,
+      `--peer-ids expects a comma-separated list of peer ids; got ${JSON.stringify(raw)}`,
     );
   }
   if (raw.trim() === "") {
-    throw new Error(`--peers expects at least one non-empty peer id`);
+    throw new Error(`--peer-ids expects at least one non-empty peer id`);
   }
   const parts = raw
     .split(",")
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
   if (parts.length === 0) {
-    throw new Error(`--peers expects at least one non-empty peer id`);
+    throw new Error(`--peer-ids expects at least one non-empty peer id`);
   }
   for (const p of parts) {
     if (p.includes("/") || p.includes("\\") || p === "." || p === "..") {
       throw new Error(
-        `--peers entries must be plain id tokens (no path separators): ${p}`,
+        `--peer-ids entries must be plain id tokens (no path separators): ${p}`,
       );
     }
   }
   return [...new Set(parts)];
 }
+
+export const parseCapsulePeers = parseCapsulePeerIds;
 
 // ---------------------------------------------------------------------------
 // Parsed option bags (returned by the parse helpers below and consumed by
@@ -237,10 +239,10 @@ export function parseCapsulePeers(raw: unknown): string[] | undefined {
 
 export interface CapsuleExportOptions {
   name: string;
-  out: string | undefined;
+  outDir: string | undefined;
   since: string | undefined;
   includeKinds: string[] | undefined;
-  peers: string[] | undefined;
+  peerIds: string[] | undefined;
 }
 
 export interface CapsuleImportOptions {
@@ -279,16 +281,16 @@ export function parseCapsuleExportOptions(
   }
   const name = nameArg.trim();
 
-  const out =
-    typeof opts.out === "string" && opts.out.trim() !== ""
-      ? opts.out.trim()
+  const outDir =
+    typeof opts.outDir === "string" && opts.outDir.trim() !== ""
+      ? opts.outDir.trim()
       : undefined;
 
   const since = parseCapsuleSince(opts.since);
   const includeKinds = parseCapsuleIncludeKinds(opts.includeKinds);
-  const peers = parseCapsulePeers(opts.peers);
+  const peerIds = parseCapsulePeerIds(opts.peerIds);
 
-  return { name, out, since, includeKinds, peers };
+  return { name, outDir, since, includeKinds, peerIds };
 }
 
 export function parseCapsuleImportOptions(
