@@ -3845,6 +3845,30 @@ async function cmdStatus(json: boolean): Promise<void> {
   }
 }
 
+interface QueryRenderableResult {
+  content?: string;
+  preview?: string;
+  context?: string;
+}
+
+export function renderQueryTextLines(result: {
+  results?: QueryRenderableResult[];
+  context?: string;
+}): string[] {
+  const results = Array.isArray(result.results) ? result.results : [];
+  if (results.length === 0) return ["No results."];
+
+  return results.map((memory) => {
+    const text =
+      memory.content?.trim()
+      || memory.preview?.trim()
+      || memory.context?.trim()
+      || result.context?.trim()
+      || "(no preview available)";
+    return `- ${text}`;
+  });
+}
+
 async function cmdQuery(queryText: string, json: boolean, explain: boolean): Promise<void> {
   if (!queryText) {
     console.error("Usage: remnic query <text>");
@@ -3921,13 +3945,8 @@ async function cmdQuery(queryText: string, json: boolean, explain: boolean): Pro
     if (json) {
       console.log(JSON.stringify(result, null, 2));
     } else {
-      const memories = (result as { memories?: Array<{ content: string }> }).memories ?? [];
-      if (memories.length === 0) {
-        console.log("No results.");
-        return;
-      }
-      for (const m of memories) {
-        console.log(`- ${m.content}`);
+      for (const line of renderQueryTextLines(result)) {
+        console.log(line);
       }
     }
   } finally {
