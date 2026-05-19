@@ -157,6 +157,60 @@ test("work storage generates collision-resistant ids for same timestamp/title", 
   assert.equal(tasks.length, 2);
 });
 
+test("work storage rejects duplicate task IDs without overwriting records or project links", async () => {
+  const memoryDir = await mkdtemp(path.join(os.tmpdir(), "engram-work-storage-duplicate-task-"));
+  const storage = new WorkStorage(memoryDir);
+
+  const projectA = await storage.createProject({ id: "project-a", name: "Project A" });
+  const projectB = await storage.createProject({ id: "project-b", name: "Project B" });
+  const original = await storage.createTask(
+    { id: "task-duplicate", title: "Original task", projectId: projectA.id },
+    new Date("2026-02-26T00:00:00.000Z"),
+  );
+
+  await assert.rejects(
+    () => storage.createTask(
+      { id: original.id, title: "Replacement task", projectId: projectB.id },
+      new Date("2026-02-26T00:01:00.000Z"),
+    ),
+    /task already exists: task-duplicate/,
+  );
+
+  const fetched = await storage.getTask(original.id);
+  assert.ok(fetched);
+  assert.equal(fetched?.title, "Original task");
+  assert.equal(fetched?.projectId, projectA.id);
+
+  const fetchedProjectA = await storage.getProject(projectA.id);
+  const fetchedProjectB = await storage.getProject(projectB.id);
+  assert.deepEqual(fetchedProjectA?.taskIds, [original.id]);
+  assert.deepEqual(fetchedProjectB?.taskIds, []);
+});
+
+test("work storage rejects duplicate project IDs without overwriting records", async () => {
+  const memoryDir = await mkdtemp(path.join(os.tmpdir(), "engram-work-storage-duplicate-project-"));
+  const storage = new WorkStorage(memoryDir);
+
+  const original = await storage.createProject(
+    { id: "project-duplicate", name: "Original project", owner: "platform" },
+    new Date("2026-02-26T00:00:00.000Z"),
+  );
+
+  await assert.rejects(
+    () => storage.createProject(
+      { id: original.id, name: "Replacement project", owner: "ops" },
+      new Date("2026-02-26T00:01:00.000Z"),
+    ),
+    /project already exists: project-duplicate/,
+  );
+
+  const fetched = await storage.getProject(original.id);
+  assert.ok(fetched);
+  assert.equal(fetched?.name, "Original project");
+  assert.equal(fetched?.owner, "platform");
+  assert.equal(fetched?.createdAt, "2026-02-26T00:00:00.000Z");
+});
+
 test("work storage rejects unsafe task and project IDs", async () => {
   const memoryDir = await mkdtemp(path.join(os.tmpdir(), "engram-work-storage-safe-id-"));
   const storage = new WorkStorage(memoryDir);

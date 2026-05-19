@@ -12,6 +12,7 @@ import type {
   WorkTaskListFilter,
   WorkTaskStatus,
 } from "./types.js";
+import { isErrnoCode } from "../utils/errno.js";
 
 const TASK_TRANSITIONS: Record<WorkTaskStatus, Set<WorkTaskStatus>> = {
   todo: new Set(["in_progress", "blocked", "cancelled"]),
@@ -133,6 +134,28 @@ export class WorkStorage {
     return `${serializeFrontmatter(project)}\n\n${project.description}\n`;
   }
 
+  private async writeNewTask(task: WorkTask): Promise<void> {
+    try {
+      await writeFile(this.taskPath(task.id), this.serializeTask(task), { encoding: "utf-8", flag: "wx" });
+    } catch (error) {
+      if (isErrnoCode(error, "EEXIST")) {
+        throw new Error(`task already exists: ${task.id}`);
+      }
+      throw error;
+    }
+  }
+
+  private async writeNewProject(project: WorkProject): Promise<void> {
+    try {
+      await writeFile(this.projectPath(project.id), this.serializeProject(project), { encoding: "utf-8", flag: "wx" });
+    } catch (error) {
+      if (isErrnoCode(error, "EEXIST")) {
+        throw new Error(`project already exists: ${project.id}`);
+      }
+      throw error;
+    }
+  }
+
   private parseTask(raw: string): WorkTask | null {
     const parsed = parseFrontmatter(raw);
     if (!parsed) return null;
@@ -195,7 +218,7 @@ export class WorkStorage {
       }
     }
 
-    await writeFile(this.taskPath(task.id), this.serializeTask(task), "utf-8");
+    await this.writeNewTask(task);
 
     if (task.projectId) {
       await this.addTaskIdToProject(task.projectId, task.id, now);
@@ -321,7 +344,7 @@ export class WorkStorage {
       createdAt: timestamp,
       updatedAt: timestamp,
     };
-    await writeFile(this.projectPath(project.id), this.serializeProject(project), "utf-8");
+    await this.writeNewProject(project);
     return project;
   }
 
