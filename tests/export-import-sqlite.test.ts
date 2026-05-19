@@ -1,12 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { writeFixtureMemoryDir, writeSensitiveTransferFixtureEntries } from "./transfer-fixtures.js";
 import { exportSqlite } from "../src/transfer/export-sqlite.js";
 import { importSqlite } from "../src/transfer/import-sqlite.js";
 import { openBetterSqlite3 } from "../src/runtime/better-sqlite.js";
+import { sha256String } from "../src/transfer/fs-utils.js";
 import { SQLITE_SCHEMA_VERSION, SQLITE_TABLES_SQL } from "../src/transfer/sqlite-schema.js";
 
 async function assertPathMissing(filePath: string): Promise<void> {
@@ -28,10 +29,11 @@ function writeSqliteExport(
       "INSERT INTO files(path_rel,bytes,sha256,content) VALUES (?,?,?,?)",
     );
     for (const row of rows) {
+      const hash = sha256String(row.content);
       insert.run(
         row.path,
-        Buffer.byteLength(row.content),
-        "test",
+        hash.bytes,
+        hash.sha256,
         row.content,
       );
     }
@@ -55,6 +57,48 @@ test("v2.3 sqlite export/import round-trips basic files", async () => {
 
   const importedProfile = await readFile(path.join(targetDir, "profile.md"), "utf-8");
   assert.match(importedProfile, /Profile/);
+});
+
+test("sqlite export rejects non-UTF8 files instead of emitting unverifiable v1 checksums", async () => {
+  const memDir = await mkdtemp(path.join(os.tmpdir(), "engram-mem-"));
+  await mkdir(path.join(memDir, "binary-lifecycle"), { recursive: true });
+  await writeFile(path.join(memDir, "binary-lifecycle", "payload.bin"), Buffer.from([0xff, 0xfe, 0xfd]));
+
+  const outDir = await mkdtemp(path.join(os.tmpdir(), "engram-sqlite-"));
+  const sqliteFile = path.join(outDir, "export.sqlite");
+  await assert.rejects(
+    exportSqlite({ memoryDir: memDir, outFile: sqliteFile, pluginVersion: "2.2.3" }),
+    /requires UTF-8 text files/,
+  );
+});
+
+test("sqlite import rejects tampered content before writing files", async () => {
+  const outDir = await mkdtemp(path.join(os.tmpdir(), "engram-sqlite-"));
+  const sqliteFile = path.join(outDir, "export.sqlite");
+  const targetDir = await mkdtemp(path.join(os.tmpdir(), "engram-import-"));
+  const targetPath = path.join(targetDir, "profile.md");
+
+  writeSqliteExport(sqliteFile, [
+    {
+      path: "profile.md",
+      content: "trusted profile\n",
+    },
+  ]);
+  const db = openBetterSqlite3(sqliteFile);
+  try {
+    db.prepare("UPDATE files SET content = ? WHERE path_rel = ?").run(
+      "tampered profile\n",
+      "profile.md",
+    );
+  } finally {
+    db.close();
+  }
+
+  await assert.rejects(
+    importSqlite({ targetMemoryDir: targetDir, fromFile: sqliteFile }),
+    /checksum mismatch|byte count mismatch/,
+  );
+  await assertPathMissing(targetPath);
 });
 
 test("sqlite export excludes secure store, capsules, VCS, and dependencies", async () => {

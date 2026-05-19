@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { access, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { exportJsonBundle } from "../src/transfer/export-json.js";
 import { importJsonBundle } from "../src/transfer/import-json.js";
+import { sha256String } from "../src/transfer/fs-utils.js";
 import { writeFixtureMemoryDir, writeSensitiveTransferFixtureEntries } from "./transfer-fixtures.js";
 
 async function assertPathMissing(filePath: string): Promise<void> {
@@ -23,8 +24,7 @@ async function writeJsonBundle(
     includesTranscripts: false,
     files: records.map((record) => ({
       path: record.path,
-      sha256: "test",
-      bytes: Buffer.byteLength(record.content),
+      ...sha256String(record.content),
     })),
   };
 
@@ -65,6 +65,85 @@ test("v2.3 json export/import round-trips (without transcripts by default)", asy
 
   const fact = await readFile(path.join(targetDir, "facts", "2026-02-11", "fact-1.md"), "utf-8");
   assert.match(fact, /The user likes pianos/);
+});
+
+test("json export rejects non-UTF8 files instead of emitting unverifiable v1 checksums", async () => {
+  const memDir = await mkdtemp(path.join(os.tmpdir(), "engram-mem-"));
+  await mkdir(path.join(memDir, "binary-lifecycle"), { recursive: true });
+  await writeFile(path.join(memDir, "binary-lifecycle", "payload.bin"), Buffer.from([0xff, 0xfe, 0xfd]));
+
+  const outDir = await mkdtemp(path.join(os.tmpdir(), "engram-export-"));
+  await assert.rejects(
+    exportJsonBundle({ memoryDir: memDir, outDir, pluginVersion: "2.2.3" }),
+    /requires UTF-8 text files/,
+  );
+});
+
+test("json export preserves UTF-8 BOM bytes in manifest-validated records", async () => {
+  const memDir = await mkdtemp(path.join(os.tmpdir(), "engram-mem-"));
+  const profileBytes = Buffer.from([0xef, 0xbb, 0xbf, 0x70, 0x72, 0x6f, 0x66, 0x69, 0x6c, 0x65, 0x0a]);
+  await writeFile(path.join(memDir, "profile.md"), profileBytes);
+
+  const outDir = await mkdtemp(path.join(os.tmpdir(), "engram-export-"));
+  await exportJsonBundle({ memoryDir: memDir, outDir, pluginVersion: "2.2.3" });
+
+  const targetDir = await mkdtemp(path.join(os.tmpdir(), "engram-import-"));
+  const res = await importJsonBundle({ targetMemoryDir: targetDir, fromDir: outDir });
+
+  assert.equal(res.written, 1);
+  assert.deepEqual(await readFile(path.join(targetDir, "profile.md")), profileBytes);
+});
+
+test("json import rejects tampered records before writing files", async () => {
+  const outDir = await mkdtemp(path.join(os.tmpdir(), "engram-export-"));
+  const targetDir = await mkdtemp(path.join(os.tmpdir(), "engram-import-"));
+  const targetPath = path.join(targetDir, "profile.md");
+
+  await writeJsonBundle(outDir, [
+    {
+      path: "profile.md",
+      content: "trusted profile\n",
+    },
+  ]);
+
+  const bundlePath = path.join(outDir, "bundle.json");
+  const bundle = JSON.parse(await readFile(bundlePath, "utf-8")) as {
+    records: Array<{ path: string; content: string }>;
+  };
+  bundle.records[0].content = "tampered profile\n";
+  await writeFile(bundlePath, JSON.stringify(bundle), "utf-8");
+
+  await assert.rejects(
+    importJsonBundle({ targetMemoryDir: targetDir, fromDir: outDir }),
+    /checksum mismatch|byte count mismatch/,
+  );
+  await assertPathMissing(targetPath);
+});
+
+test("json import rejects duplicate record paths before writing files", async () => {
+  const outDir = await mkdtemp(path.join(os.tmpdir(), "engram-export-"));
+  const targetDir = await mkdtemp(path.join(os.tmpdir(), "engram-import-"));
+  const targetPath = path.join(targetDir, "profile.md");
+
+  await writeJsonBundle(outDir, [
+    {
+      path: "profile.md",
+      content: "profile\n",
+    },
+  ]);
+
+  const bundlePath = path.join(outDir, "bundle.json");
+  const bundle = JSON.parse(await readFile(bundlePath, "utf-8")) as {
+    records: Array<{ path: string; content: string }>;
+  };
+  bundle.records.push({ path: "profile.md", content: "profile\n" });
+  await writeFile(bundlePath, JSON.stringify(bundle), "utf-8");
+
+  await assert.rejects(
+    importJsonBundle({ targetMemoryDir: targetDir, fromDir: outDir }),
+    /duplicate record path/,
+  );
+  await assertPathMissing(targetPath);
 });
 
 test("json export excludes secure store, capsules, VCS, and dependencies", async () => {

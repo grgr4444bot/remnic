@@ -9,6 +9,7 @@ import {
   type SafeArchiveRoot,
 } from "./fs-utils.js";
 import { parseConflictPolicy, type ConflictPolicy } from "./conflict-policy.js";
+import { validateExportBundleRecords } from "./integrity.js";
 
 export type { ConflictPolicy };
 
@@ -29,6 +30,7 @@ export async function importJsonBundle(opts: ImportJsonOptions): Promise<{ writt
   const fromDirAbs = path.resolve(opts.fromDir);
   const bundlePath = path.join(fromDirAbs, "bundle.json");
   const bundle = ExportBundleV1Schema.parse(await readJsonFile(bundlePath));
+  validateExportBundleRecords(bundle.manifest, bundle.records, "importJsonBundle");
 
   const memDirAbs = path.resolve(opts.targetMemoryDir);
   const memoryRoot = await prepareSafeArchiveRoot(

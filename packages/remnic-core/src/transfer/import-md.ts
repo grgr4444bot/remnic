@@ -4,10 +4,13 @@ import {
   fileExists,
   listFilesRecursive,
   prepareSafeArchiveRoot,
+  readJsonFile,
   resolveSafeArchiveTarget,
   toPosixRelPath,
 } from "./fs-utils.js";
 import { parseConflictPolicy, type ConflictPolicy } from "./conflict-policy.js";
+import { validateManifestRecords } from "./integrity.js";
+import { ExportManifestV1Schema } from "./types.js";
 
 export type { ConflictPolicy };
 
@@ -16,10 +19,6 @@ export interface ImportMdOptions {
   fromDir: string;
   conflict?: ConflictPolicy;
   dryRun?: boolean;
-}
-
-function normalizeForDedupe(s: string): string {
-  return s.replace(/\s+/g, " ").trim();
 }
 
 export async function importMarkdownBundle(opts: ImportMdOptions): Promise<{ written: number; skipped: number }> {
@@ -31,16 +30,26 @@ export async function importMarkdownBundle(opts: ImportMdOptions): Promise<{ wri
     "importMarkdownBundle",
     "targetMemoryDir",
   );
+  const manifest = ExportManifestV1Schema.parse(
+    await readJsonFile(path.join(fromAbs, "manifest.json")),
+  );
 
   const filesAbs = await listFilesRecursive(fromAbs);
-  const writes: Array<{ abs: string; content: string }> = [];
-  let skipped = 0;
-
+  const records: Array<{ path: string; content: Uint8Array }> = [];
   for (const abs of filesAbs) {
     const relPosix = toPosixRelPath(abs, fromAbs);
     if (relPosix === "manifest.json") continue;
+    records.push({ path: relPosix, content: await readFile(abs) });
+  }
+  validateManifestRecords(manifest, records, "importMarkdownBundle");
+
+  const writes: Array<{ abs: string; content: Uint8Array }> = [];
+  let skipped = 0;
+
+  for (const record of records) {
+    const relPosix = record.path;
     const dstAbs = await resolveSafeArchiveTarget(targetRoot, relPosix);
-    const content = await readFile(abs, "utf-8");
+    const content = record.content;
 
     const exists = await fileExists(dstAbs);
     if (exists) {
@@ -50,8 +59,8 @@ export async function importMarkdownBundle(opts: ImportMdOptions): Promise<{ wri
       }
       if (conflict === "dedupe") {
         try {
-          const existing = await (await import("node:fs/promises")).readFile(dstAbs, "utf-8");
-          if (normalizeForDedupe(existing) === normalizeForDedupe(content)) {
+          const existing = await readFile(dstAbs);
+          if (Buffer.compare(existing, Buffer.from(content)) === 0) {
             skipped += 1;
             continue;
           }
@@ -68,7 +77,7 @@ export async function importMarkdownBundle(opts: ImportMdOptions): Promise<{ wri
 
   for (const w of writes) {
     await mkdir(path.dirname(w.abs), { recursive: true });
-    await writeFile(w.abs, w.content, "utf-8");
+    await writeFile(w.abs, w.content);
   }
 
   return { written: writes.length, skipped };
