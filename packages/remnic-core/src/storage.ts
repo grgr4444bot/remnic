@@ -3,6 +3,7 @@ import { appendFileSync, mkdirSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { log } from "./logger.js";
+import { isErrnoCode } from "./utils/errno.js";
 import { getCachedEntities, invalidateCachedEntities, setCachedEntities } from "./memory-cache.js";
 import { rotateMarkdownFileToArchive } from "./hygiene.js";
 import { sanitizeMemoryContent } from "./sanitize.js";
@@ -189,15 +190,6 @@ function normalizeMemoryWriteTimestamp(
     throw new Error(`${field} must be a valid ISO timestamp, got ${JSON.stringify(value)}`);
   }
   return new Date(parsed).toISOString();
-}
-
-function isErrnoCode(error: unknown, code: string): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code?: unknown }).code === code
-  );
 }
 
 function trimTrailingSpacesAndTabs(value: string): string {
