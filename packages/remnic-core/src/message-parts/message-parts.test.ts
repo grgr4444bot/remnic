@@ -199,6 +199,19 @@ describe("message-parts parsers", () => {
     assert.equal(parts[1]!.filePath, "packages/plugin-pi/src/index.ts");
   });
 
+  it("does not infer text-only content arrays as Pi", () => {
+    const parts = parseMessageParts({
+      role: "assistant",
+      content: [
+        { type: "text", text: "Updated packages/plugin-anthropic/src/index.ts" },
+      ],
+    });
+
+    assert.equal(parts.length, 1);
+    assert.equal(parts[0]!.kind, "text");
+    assert.equal(parts[0]!.filePath, "packages/plugin-anthropic/src/index.ts");
+  });
+
   it("infers mixed OpenClaw content without dropping tool-call blocks", () => {
     const parts = parseMessageParts({
       content: [
