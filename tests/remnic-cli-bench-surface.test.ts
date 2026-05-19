@@ -37,7 +37,7 @@ test("bench surface publishes the phase-1 benchmark catalog and quick-run fallba
   ]) {
     assert.match(source, new RegExp(`"${datasetBenchmarkId}"`));
   }
-  assert.match(fallbackSource, /args\.push\("--lightweight", "--limit", "1"\)/);
+  assert.match(fallbackSource, /args\.push\("--lightweight"\)[\s\S]*parsed\.publishedLimit !== undefined[\s\S]*args\.push\("--limit", String\(parsed\.publishedLimit\)\)[\s\S]*args\.push\("--limit", "1"\)/);
   assert.match(fallbackSource, /args\.push\("--dataset-dir", parsed\.datasetDir\)/);
   assert.match(source, /Use 'remnic bench list' to see available\./);
 });
