@@ -442,6 +442,42 @@ test("codex-cli provider retries transient subprocess signals", async () => {
   assert.deepEqual(result.tokens, { input: 4, output: 4 });
 });
 
+test("codex-cli provider stops retry backoff when the completion is aborted", async () => {
+  const controller = new AbortController();
+  let attempts = 0;
+  const provider = createCodexCliProvider(
+    {
+      provider: "codex-cli",
+      model: "gpt-5.5",
+      retryOptions: { maxAttempts: 2, baseBackoffMs: 10_000 },
+    },
+    {
+      async runCodexCli() {
+        attempts += 1;
+        setTimeout(() => {
+          controller.abort(new Error("benchmark cancelled"));
+        }, 10);
+        return {
+          status: null,
+          signal: "SIGTERM",
+          stdout: "",
+          stderr: "parent process interrupted child",
+          outputText: "",
+        };
+      },
+    },
+  );
+
+  const startedAt = performance.now();
+  await assert.rejects(
+    provider.complete("hello", { signal: controller.signal }),
+    /benchmark cancelled/,
+  );
+
+  assert.equal(attempts, 1);
+  assert.ok(performance.now() - startedAt < 1_000);
+});
+
 test("codex-cli provider marks transient retry diagnostics without counting final success as failure", async () => {
   const diagnosticsDir = await mkdtemp(
     path.join(os.tmpdir(), "remnic-codex-cli-diag-"),

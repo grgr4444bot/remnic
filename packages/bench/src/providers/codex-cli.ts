@@ -224,7 +224,11 @@ class CodexCliProvider implements LlmProvider {
               error,
               transientFailure: true,
             });
-            await sleepBeforeCodexCliRetry(attempt, this.config.retryOptions?.baseBackoffMs);
+            await sleepBeforeCodexCliRetry(
+              attempt,
+              this.config.retryOptions?.baseBackoffMs,
+              opts.signal,
+            );
             continue;
           }
           await finishDiagnostics({ result, error });
@@ -1117,6 +1121,7 @@ function isRetryableCodexCliResult(result: CodexCliRunResult): boolean {
 async function sleepBeforeCodexCliRetry(
   attempt: number,
   configuredBaseBackoffMs: number | undefined,
+  signal: AbortSignal | undefined,
 ): Promise<void> {
   const baseBackoffMs =
     configuredBaseBackoffMs !== undefined &&
@@ -1125,9 +1130,40 @@ async function sleepBeforeCodexCliRetry(
       ? configuredBaseBackoffMs
       : 1000;
   const delayMs = Math.min(baseBackoffMs * Math.pow(2, attempt - 1), 30_000);
-  await new Promise<void>((resolve) => {
-    setTimeout(resolve, delayMs);
+  if (!signal) {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, delayMs);
+    });
+    return;
+  }
+  if (signal.aborted) {
+    throw codexCliAbortError(signal);
+  }
+  await new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      signal.removeEventListener("abort", onAbort);
+    };
+    const onAbort = () => {
+      clearTimeout(timeout);
+      cleanup();
+      reject(codexCliAbortError(signal));
+    };
+    const timeout = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, delayMs);
+    signal.addEventListener("abort", onAbort, { once: true });
   });
+}
+
+function codexCliAbortError(signal: AbortSignal): Error {
+  if (signal.reason instanceof Error) {
+    return signal.reason;
+  }
+  if (signal.reason !== undefined) {
+    return new Error(String(signal.reason));
+  }
+  return new DOMException("The operation was aborted.", "AbortError");
 }
 
 function summarizeProcessOutput(stderr: string, stdout: string): string {
