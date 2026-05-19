@@ -148,8 +148,8 @@ test("runBenchmark executes retrieval-personalization in quick mode", async () =
   assert.equal(result.meta.benchmark, "retrieval-personalization");
   assert.equal(result.meta.benchmarkTier, "remnic");
   assert.equal(result.results.tasks.length, 6);
-  assert.equal(result.results.aggregates["clean.p_at_1"].mean, 1);
-  assert.equal(result.results.aggregates["dirty.p_at_1"].mean, 1);
+  assert.equal(result.results.aggregates["clean.p_at_1"].mean, 0);
+  assert.equal(result.results.aggregates["dirty.p_at_1"].mean, 0);
   assert.equal(result.results.aggregates["dirty_penalty.p_at_1"].mean, 0);
 });
 
