@@ -145,10 +145,11 @@ function newestDiagnostics(diagDir, count, lifecycleStart) {
         beforeLifecycleStart += 1;
         return [];
       }
-      if (record.error || record.parseError) {
+      const transientRetryFailure = record.retry?.transientFailure === true;
+      if (!transientRetryFailure && (record.error || record.parseError)) {
         errors += 1;
       }
-      if (record.result && record.result.status !== 0) {
+      if (!transientRetryFailure && record.result && record.result.status !== 0) {
         nonzero += 1;
       }
       if (!record.finishedAt) {
@@ -181,8 +182,8 @@ function newestDiagnostics(diagDir, count, lifecycleStart) {
     errors,
     nonzero,
     inFlight,
-    sampleErrors: sample.filter((record) => record.error || record.parseError).length,
-    sampleNonzero: sample.filter((record) => record.result && record.result.status !== 0).length,
+    sampleErrors: sample.filter((record) => record.retry?.transientFailure !== true && (record.error || record.parseError)).length,
+    sampleNonzero: sample.filter((record) => record.retry?.transientFailure !== true && record.result && record.result.status !== 0).length,
     inFlightRecords: sample
       .filter((record) => !record.finishedAt)
       .map((record) => ({

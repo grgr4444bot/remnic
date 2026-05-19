@@ -634,6 +634,53 @@ test("diagnostics summary excludes records that started before benchmark start",
   }
 });
 
+test("diagnostics summary excludes transient retry failure records", async () => {
+  const dirs = await createRunDirs("remnic-public-sota-diagnostics-retry-");
+  try {
+    await writeJson(path.join(dirs.diagnosticsDir, "retry-sigterm.json"), {
+      runId: RUN_ID,
+      startedAt: "2026-05-16T00:00:10.000Z",
+      finishedAt: "2026-05-16T00:00:20.000Z",
+      provider: "codex-cli",
+      model: "gpt-5.5",
+      reasoningEffort: "xhigh",
+      serviceTier: "fast",
+      retry: { attempt: 1, maxAttempts: 3, transientFailure: true },
+      result: { status: null, signal: "SIGTERM" },
+      error: "Codex CLI completion failed (signal SIGTERM)",
+    });
+    await writeJson(path.join(dirs.diagnosticsDir, "retry-success.json"), {
+      runId: RUN_ID,
+      startedAt: "2026-05-16T00:00:21.000Z",
+      finishedAt: "2026-05-16T00:00:30.000Z",
+      provider: "codex-cli",
+      model: "gpt-5.5",
+      reasoningEffort: "xhigh",
+      serviceTier: "fast",
+      retry: { attempt: 2, maxAttempts: 3 },
+      result: { status: 0 },
+    });
+
+    const summary = buildDiagnosticsSummary(
+      dirs.resultsDir,
+      RUN_ID,
+      "amemgym",
+      STARTED_AT,
+      FINISHED_AT,
+      "2026-05-16T00:02:00.000Z",
+    );
+
+    assert.equal(summary?.totalFiles, 2);
+    assert.equal(summary?.checked, 1);
+    assert.equal(summary?.complete, 1);
+    assert.equal(summary?.errored, 0);
+    assert.equal(summary?.nonzero, 0);
+    assert.equal(summary?.providers["codex-cli"], 1);
+  } finally {
+    await rm(dirs.root, { recursive: true, force: true });
+  }
+});
+
 test("public evidence diagnostics use the latest restart lifecycle start", async () => {
   const dirs = await createRunDirs("remnic-public-sota-diagnostics-restart-window-");
   try {
@@ -1997,6 +2044,62 @@ test("active public run diagnostics ignore records before latest lifecycle start
     assert.equal(status.diagnostics.errors, 0);
     assert.equal(status.diagnostics.nonzero, 0);
     assert.equal(status.diagnostics.latestFinished[0].name, "post-restart-ok.json");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("active public run diagnostics ignore transient retry failures", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "remnic-public-sota-active-run-retry-"));
+  try {
+    const runDir = path.join(root, "public-memory-arena-codex-20260517T000000Z");
+    const diagnosticsDir = path.join(runDir, "codex-cli-diagnostics");
+    await mkdir(diagnosticsDir, { recursive: true });
+    await writeFile(
+      path.join(runDir, "status.tsv"),
+      [
+        "benchmark\tstatus\ttimestamp",
+        "memory-arena\tstart\t2026-05-17T00:00:00Z",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    await writeJson(path.join(diagnosticsDir, "retry-sigterm.json"), {
+      runId: path.basename(runDir),
+      startedAt: "2026-05-17T00:00:10.000Z",
+      finishedAt: "2026-05-17T00:00:20.000Z",
+      provider: "codex-cli",
+      model: "gpt-5.5",
+      reasoningEffort: "xhigh",
+      serviceTier: "fast",
+      retry: { attempt: 1, maxAttempts: 3, transientFailure: true },
+      result: { status: null, signal: "SIGTERM" },
+      error: "Codex CLI completion failed (signal SIGTERM)",
+    });
+    await writeJson(path.join(diagnosticsDir, "retry-success.json"), {
+      runId: path.basename(runDir),
+      startedAt: "2026-05-17T00:00:21.000Z",
+      finishedAt: "2026-05-17T00:00:30.000Z",
+      durationMs: 9_000,
+      provider: "codex-cli",
+      model: "gpt-5.5",
+      reasoningEffort: "xhigh",
+      serviceTier: "fast",
+      retry: { attempt: 2, maxAttempts: 3 },
+      result: { status: 0 },
+    });
+
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      [path.join("scripts", "bench", "public-sota", "check-active-public-run.mjs"), runDir],
+      { cwd: process.cwd(), maxBuffer: 1024 * 1024 },
+    );
+    const status = JSON.parse(stdout);
+    assert.equal(status.diagnostics.total, 2);
+    assert.equal(status.diagnostics.errors, 0);
+    assert.equal(status.diagnostics.nonzero, 0);
+    assert.equal(status.diagnostics.sampleErrors, 0);
+    assert.equal(status.diagnostics.sampleNonzero, 0);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -263,6 +263,10 @@ function providerDistributionSummary(records) {
   return out;
 }
 
+function isTransientRetryFailure(record) {
+  return record?.retry?.transientFailure === true;
+}
+
 function increment(record, key) {
   const safeKey = typeof key === 'string' && key.length > 0 ? key : '<missing>';
   record[safeKey] = (record[safeKey] ?? 0) + 1;
@@ -306,7 +310,9 @@ export function buildDiagnosticsSummary(resultsDir, runId, benchmark, startedAt,
       afterCutoff += 1;
       continue;
     }
-    checked.push(record);
+    if (!isTransientRetryFailure(record)) {
+      checked.push(record);
+    }
   }
   const startedValues = checked.map((record) => record.startedAt).filter(Boolean).sort();
   const finishedValues = checked.map((record) => record.finishedAt).filter(Boolean).sort();
