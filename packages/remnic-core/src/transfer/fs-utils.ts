@@ -10,16 +10,33 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 
+const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+
 export async function sha256File(filePath: string): Promise<{ sha256: string; bytes: number }> {
   const buf = await readFile(filePath);
   const sha256 = createHash("sha256").update(buf).digest("hex");
   return { sha256, bytes: buf.byteLength };
 }
 
-export function sha256String(content: string): { sha256: string; bytes: number } {
-  const buf = Buffer.from(content, "utf-8");
+export function sha256Bytes(content: Uint8Array): { sha256: string; bytes: number } {
+  const buf = Buffer.from(content);
   const sha256 = createHash("sha256").update(buf).digest("hex");
   return { sha256, bytes: buf.byteLength };
+}
+
+export function sha256String(content: string): { sha256: string; bytes: number } {
+  return sha256Bytes(Buffer.from(content, "utf-8"));
+}
+
+export async function readUtf8FileStrict(filePath: string): Promise<{ content: string; sha256: string; bytes: number }> {
+  const buf = await readFile(filePath);
+  let content: string;
+  try {
+    content = fatalUtf8Decoder.decode(buf);
+  } catch {
+    throw new Error(`transfer export requires UTF-8 text files: ${filePath}`);
+  }
+  return { content, ...sha256Bytes(buf) };
 }
 
 export async function writeJsonFile(filePath: string, value: unknown): Promise<void> {

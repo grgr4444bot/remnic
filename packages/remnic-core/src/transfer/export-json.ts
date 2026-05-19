@@ -1,7 +1,7 @@
 import path from "node:path";
 import { mkdir, readFile } from "node:fs/promises";
 import { EXPORT_FORMAT, EXPORT_SCHEMA_VERSION } from "./constants.js";
-import { listFilesRecursive, sha256File, sha256String, toPosixRelPath, writeJsonFile } from "./fs-utils.js";
+import { listFilesRecursive, readUtf8FileStrict, sha256String, toPosixRelPath, writeJsonFile } from "./fs-utils.js";
 import type { ExportBundleV1, ExportManifestV1, ExportMemoryRecordV1 } from "./types.js";
 import { computeTransferOutputRel, isTransferPathExcluded } from "./exclusions.js";
 
@@ -30,9 +30,8 @@ export async function exportJsonBundle(opts: ExportCommonOptions): Promise<void>
     const relPosix = toPosixRelPath(abs, memoryDirAbs);
     if (isTransferPathExcluded(relPosix, { includeTranscripts, outputRelPosix })) continue;
 
-    const content = await readFile(abs, "utf-8");
+    const { content, sha256, bytes } = await readUtf8FileStrict(abs);
     records.push({ path: relPosix, content });
-    const { sha256, bytes } = await sha256File(abs);
     manifestFiles.push({ path: relPosix, sha256, bytes });
   }
 

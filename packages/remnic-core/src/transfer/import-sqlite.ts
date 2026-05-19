@@ -8,6 +8,7 @@ import {
 } from "./fs-utils.js";
 import { parseConflictPolicy, type ConflictPolicy } from "./conflict-policy.js";
 import { openBetterSqlite3 } from "../runtime/better-sqlite.js";
+import { validateManifestRecords } from "./integrity.js";
 
 export type { ConflictPolicy };
 
@@ -43,7 +44,24 @@ export async function importSqlite(opts: ImportSqliteOptions): Promise<{ written
       throw new Error(`unsupported sqlite schemaVersion: ${meta.schemaVersion}`);
     }
 
-    const rows = db.prepare("SELECT path_rel, content FROM files").all() as Array<{ path_rel: string; content: string }>;
+    const rows = db.prepare("SELECT path_rel, bytes, sha256, content FROM files").all() as Array<{
+      path_rel: string;
+      bytes: number;
+      sha256: string;
+      content: string;
+    }>;
+    validateManifestRecords(
+      {
+        files: rows.map((row) => ({
+          path: row.path_rel,
+          bytes: row.bytes,
+          sha256: row.sha256,
+        })),
+      },
+      rows.map((row) => ({ path: row.path_rel, content: row.content })),
+      "importSqlite",
+    );
+
     for (const r of rows) {
       const absTarget = await resolveSafeArchiveTarget(memoryRoot, r.path_rel);
 

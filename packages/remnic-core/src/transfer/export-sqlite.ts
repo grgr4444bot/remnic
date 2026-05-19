@@ -1,7 +1,6 @@
 import path from "node:path";
-import { readFile } from "node:fs/promises";
 import { SQLITE_SCHEMA_VERSION, SQLITE_TABLES_SQL } from "./sqlite-schema.js";
-import { listFilesRecursive, sha256File, toPosixRelPath } from "./fs-utils.js";
+import { listFilesRecursive, readUtf8FileStrict, toPosixRelPath } from "./fs-utils.js";
 import { openBetterSqlite3 } from "../runtime/better-sqlite.js";
 import { computeTransferOutputRel, isTransferPathExcluded } from "./exclusions.js";
 
@@ -42,8 +41,7 @@ export async function exportSqlite(opts: ExportSqliteOptions): Promise<void> {
     for (const abs of filesAbs) {
       const relPosix = toPosixRelPath(abs, memDirAbs);
       if (isTransferPathExcluded(relPosix, { includeTranscripts, outputRelPosix })) continue;
-      const content = await readFile(abs, "utf-8");
-      const { sha256, bytes } = await sha256File(abs);
+      const { content, sha256, bytes } = await readUtf8FileStrict(abs);
       rows.push({ rel: relPosix, bytes, sha256, content });
     }
 
