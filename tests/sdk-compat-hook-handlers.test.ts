@@ -513,9 +513,10 @@ test("before_prompt_build still prepends Remnic active recall when chaining is d
   assert.match(String(result?.prependSystemContext ?? ""), /remembered context from Remnic/);
 });
 
-test("before_prompt_build falls back to file-backed active-memory config when api.config is partial", async () => {
+test("before_prompt_build prefers active OpenClaw config path for file-backed active-memory config", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "remnic-active-recall-file-collision-"));
   const configPath = path.join(root, "openclaw.json");
+  const legacyConfigPath = path.join(root, "legacy-openclaw.json");
   await writeFile(
     configPath,
     JSON.stringify(
@@ -539,9 +540,11 @@ test("before_prompt_build falls back to file-backed active-memory config when ap
     ),
     "utf8",
   );
+  await writeFile(legacyConfigPath, "{not valid json", "utf8");
 
-  const previousConfigPath = process.env.OPENCLAW_ENGRAM_CONFIG_PATH;
-  process.env.OPENCLAW_ENGRAM_CONFIG_PATH = configPath;
+  const previousConfigPaths = [process.env.OPENCLAW_CONFIG_PATH, process.env.OPENCLAW_ENGRAM_CONFIG_PATH] as const;
+  process.env.OPENCLAW_CONFIG_PATH = configPath;
+  process.env.OPENCLAW_ENGRAM_CONFIG_PATH = legacyConfigPath;
 
   try {
     const { default: plugin } = await import("../src/index.js");
@@ -590,11 +593,8 @@ test("before_prompt_build falls back to file-backed active-memory config when ap
       "expected the file-backed active-memory config to suppress Remnic active recall",
     );
   } finally {
-    if (previousConfigPath === undefined) {
-      delete process.env.OPENCLAW_ENGRAM_CONFIG_PATH;
-    } else {
-      process.env.OPENCLAW_ENGRAM_CONFIG_PATH = previousConfigPath;
-    }
+    if (previousConfigPaths[0] === undefined) delete process.env.OPENCLAW_CONFIG_PATH; else process.env.OPENCLAW_CONFIG_PATH = previousConfigPaths[0];
+    if (previousConfigPaths[1] === undefined) delete process.env.OPENCLAW_ENGRAM_CONFIG_PATH; else process.env.OPENCLAW_ENGRAM_CONFIG_PATH = previousConfigPaths[1];
   }
 });
 

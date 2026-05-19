@@ -300,8 +300,8 @@ function parseFloatOption(
 
 function loadPluginConfig(preferredId?: string): Record<string, unknown> {
   const configPath =
-    readEnvVar("OPENCLAW_ENGRAM_CONFIG_PATH") ||
     readEnvVar("OPENCLAW_CONFIG_PATH") ||
+    readEnvVar("OPENCLAW_ENGRAM_CONFIG_PATH") ||
     path.join(resolveHomeDir(), ".openclaw", "openclaw.json");
   const raw = JSON.parse(fs.readFileSync(configPath, "utf8"));
   // Delegate slot → preferredId → PLUGIN_ID → LEGACY_PLUGIN_ID resolution to

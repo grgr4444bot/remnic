@@ -288,8 +288,8 @@ function buildServiceKeys(serviceId: string): ServiceKeys {
 function loadPluginEntryFromFile(pluginId?: string): Record<string, unknown> | undefined {
   try {
     const explicitConfigPath =
-      readEnvVar("OPENCLAW_ENGRAM_CONFIG_PATH") ||
-      readEnvVar("OPENCLAW_CONFIG_PATH");
+      readEnvVar("OPENCLAW_CONFIG_PATH") ||
+      readEnvVar("OPENCLAW_ENGRAM_CONFIG_PATH");
     const homeDir = resolveHomeDir();
     const configPath =
       explicitConfigPath && explicitConfigPath.length > 0
@@ -317,8 +317,8 @@ function loadPluginConfigFromFile(pluginId?: string): Record<string, unknown> | 
 function loadRawConfigFromFile(): Record<string, unknown> | undefined {
   try {
     const explicitConfigPath =
-      readEnvVar("OPENCLAW_ENGRAM_CONFIG_PATH") ||
-      readEnvVar("OPENCLAW_CONFIG_PATH");
+      readEnvVar("OPENCLAW_CONFIG_PATH") ||
+      readEnvVar("OPENCLAW_ENGRAM_CONFIG_PATH");
     const homeDir = resolveHomeDir();
     const configPath =
       explicitConfigPath && explicitConfigPath.length > 0

@@ -85,8 +85,8 @@ export interface OpikExporterConfig {
 function readOpikOpenclawConfig(log?: LoggerBackend): Partial<OpikExporterConfig> {
   try {
     const configPath =
-      readEnvVar("OPENCLAW_ENGRAM_CONFIG_PATH") ||
       readEnvVar("OPENCLAW_CONFIG_PATH") ||
+      readEnvVar("OPENCLAW_ENGRAM_CONFIG_PATH") ||
       path.join(resolveHomeDir(), ".openclaw", "openclaw.json");
     const raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
     const entry = raw?.plugins?.entries?.["opik-openclaw"];

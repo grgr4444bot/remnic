@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import test from "node:test";
 
 import { main, runCli } from "./access-cli.js";
@@ -125,4 +128,66 @@ test("access-cli rejects confidence outside the documented range", async () => {
     "--confidence",
     "1.1",
   ]);
+});
+
+test("access-cli prefers active OpenClaw config path over legacy config path", async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), "access-cli-config-"));
+  const activeConfigPath = join(tempRoot, "active-openclaw.json");
+  const legacyConfigPath = join(tempRoot, "legacy-openclaw.json");
+  const memoryDir = join(tempRoot, "memory");
+  const previousOpenClawConfigPath = process.env.OPENCLAW_CONFIG_PATH;
+  const previousOpenClawEngramConfigPath = process.env.OPENCLAW_ENGRAM_CONFIG_PATH;
+  let output = "";
+  const originalStdoutWrite = process.stdout.write;
+
+  process.stdout.write = ((chunk: string | Uint8Array) => {
+    output += String(chunk);
+    return true;
+  }) as typeof process.stdout.write;
+
+  try {
+    await writeFile(
+      activeConfigPath,
+      JSON.stringify({
+        plugins: {
+          entries: {
+            "openclaw-remnic": {
+              config: {
+                memoryDir,
+              },
+            },
+          },
+        },
+      }),
+    );
+    await writeFile(legacyConfigPath, "{not valid json");
+
+    process.env.OPENCLAW_CONFIG_PATH = activeConfigPath;
+    process.env.OPENCLAW_ENGRAM_CONFIG_PATH = legacyConfigPath;
+
+    await main([
+      "store",
+      "--content",
+      "hello",
+      "--category",
+      "fact",
+      "--dry-run",
+    ]);
+
+    assert.match(output, /"operation": "memory_store"/);
+    assert.match(output, /"dryRun": true/);
+  } finally {
+    process.stdout.write = originalStdoutWrite;
+    if (previousOpenClawConfigPath === undefined) {
+      delete process.env.OPENCLAW_CONFIG_PATH;
+    } else {
+      process.env.OPENCLAW_CONFIG_PATH = previousOpenClawConfigPath;
+    }
+    if (previousOpenClawEngramConfigPath === undefined) {
+      delete process.env.OPENCLAW_ENGRAM_CONFIG_PATH;
+    } else {
+      process.env.OPENCLAW_ENGRAM_CONFIG_PATH = previousOpenClawEngramConfigPath;
+    }
+    await rm(tempRoot, { recursive: true, force: true });
+  }
 });
