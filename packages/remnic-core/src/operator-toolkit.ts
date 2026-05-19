@@ -384,8 +384,8 @@ export interface OperatorRepairOptions {
 function resolveConfigPath(explicitPath?: string): string {
   if (explicitPath && explicitPath.trim().length > 0) return explicitPath.trim();
   const configured =
-    readEnvVar("OPENCLAW_ENGRAM_CONFIG_PATH") ||
-    readEnvVar("OPENCLAW_CONFIG_PATH");
+    readEnvVar("OPENCLAW_CONFIG_PATH") ||
+    readEnvVar("OPENCLAW_ENGRAM_CONFIG_PATH");
   if (configured && configured.trim().length > 0) return configured.trim();
   return path.join(resolveHomeDir(), ".openclaw", "openclaw.json");
 }

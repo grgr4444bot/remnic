@@ -77,7 +77,7 @@ for (const [name, loadRawConfig] of loaders) {
     });
   });
 
-  test(`${name} keeps OPENCLAW_ENGRAM_CONFIG_PATH ahead of OPENCLAW_CONFIG_PATH`, () => {
+  test(`${name} keeps OPENCLAW_CONFIG_PATH ahead of OPENCLAW_ENGRAM_CONFIG_PATH`, () => {
     withTempDir((dir) => {
       const primaryPath = path.join(dir, "primary.json");
       const legacyPath = path.join(dir, "legacy.json");
@@ -89,8 +89,8 @@ for (const [name, loadRawConfig] of loaders) {
         OPENCLAW_CONFIG_PATH: primaryPath,
         OPENCLAW_ENGRAM_CONFIG_PATH: legacyPath,
       });
-      assert.equal(raw.marker, "legacy");
-      assert.equal(raw.memoryDir, "/tmp/legacy");
+      assert.equal(raw.marker, "primary");
+      assert.equal(raw.memoryDir, "/tmp/primary");
     });
   });
 

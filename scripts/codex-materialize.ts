@@ -103,18 +103,18 @@ export function configCandidates(
 ): ConfigCandidate[] {
   const home = envValue(env, "HOME") ?? "";
   const openclawConfigPath =
-    envValue(env, "OPENCLAW_ENGRAM_CONFIG_PATH") ??
     envValue(env, "OPENCLAW_CONFIG_PATH") ??
+    envValue(env, "OPENCLAW_ENGRAM_CONFIG_PATH") ??
     path.join(home, ".openclaw", "openclaw.json");
   return [
     { path: envValue(env, "REMNIC_CONFIG"), label: "REMNIC_CONFIG" },
     {
       path: openclawConfigPath,
       label:
-        envValue(env, "OPENCLAW_ENGRAM_CONFIG_PATH") !== undefined
-          ? "OPENCLAW_ENGRAM_CONFIG_PATH"
-          : envValue(env, "OPENCLAW_CONFIG_PATH") !== undefined
-            ? "OPENCLAW_CONFIG_PATH"
+        envValue(env, "OPENCLAW_CONFIG_PATH") !== undefined
+          ? "OPENCLAW_CONFIG_PATH"
+          : envValue(env, "OPENCLAW_ENGRAM_CONFIG_PATH") !== undefined
+            ? "OPENCLAW_ENGRAM_CONFIG_PATH"
             : "default OpenClaw config",
     },
     {
@@ -159,7 +159,7 @@ export function loadRawConfig(
   //
   // Order of precedence:
   //   1. `REMNIC_CONFIG` env var (developer escape hatch)
-  //   2. `OPENCLAW_ENGRAM_CONFIG_PATH` / `OPENCLAW_CONFIG_PATH` — the same
+  //   2. `OPENCLAW_CONFIG_PATH` / `OPENCLAW_ENGRAM_CONFIG_PATH` — the same
   //      env vars the Remnic plugin reads at runtime
   //   3. `~/.openclaw/openclaw.json` — standard OpenClaw install location
   //   4. Legacy `~/.config/remnic/config.json`, `~/.config/engram/config.json`,

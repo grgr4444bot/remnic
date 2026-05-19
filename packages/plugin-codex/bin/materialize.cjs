@@ -100,18 +100,18 @@ function safeErrorDetail(error) {
 function configCandidates(env = process.env) {
   const home = envValue(env, "HOME") || "";
   const openclawConfigPath =
-    envValue(env, "OPENCLAW_ENGRAM_CONFIG_PATH") ||
     envValue(env, "OPENCLAW_CONFIG_PATH") ||
+    envValue(env, "OPENCLAW_ENGRAM_CONFIG_PATH") ||
     path.join(home, ".openclaw", "openclaw.json");
   return [
     { path: envValue(env, "REMNIC_CONFIG"), label: "REMNIC_CONFIG" },
     {
       path: openclawConfigPath,
       label:
-        envValue(env, "OPENCLAW_ENGRAM_CONFIG_PATH") !== undefined
-          ? "OPENCLAW_ENGRAM_CONFIG_PATH"
-          : envValue(env, "OPENCLAW_CONFIG_PATH") !== undefined
-            ? "OPENCLAW_CONFIG_PATH"
+        envValue(env, "OPENCLAW_CONFIG_PATH") !== undefined
+          ? "OPENCLAW_CONFIG_PATH"
+          : envValue(env, "OPENCLAW_ENGRAM_CONFIG_PATH") !== undefined
+            ? "OPENCLAW_ENGRAM_CONFIG_PATH"
             : "default OpenClaw config",
     },
     path.join(home, ".config", "remnic", "config.json"),
