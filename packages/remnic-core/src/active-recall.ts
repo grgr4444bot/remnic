@@ -407,14 +407,14 @@ export function createActiveRecallEngine(
             prompt,
             sessionKey: input.sessionKey,
             agentId: input.agentId,
-            model: config.modelOverride ?? "gpt-5.2",
+            model: config.modelOverride ?? "gpt-5.5",
             timeoutMs: config.timeoutMs,
             thinking: config.thinking,
             fallbackPolicy: config.modelFallbackPolicy,
           })
         : {
             text: recallContext,
-            modelUsed: config.modelOverride ?? "gpt-5.2",
+            modelUsed: config.modelOverride ?? "gpt-5.5",
             cacheHit: false,
           };
       const summary = normalizeActiveRecallSummary(
@@ -431,7 +431,7 @@ export function createActiveRecallEngine(
         citations,
         latencyMs: Math.max(0, now() - start),
         cacheHit: generated.cacheHit === true,
-        modelUsed: generated.modelUsed ?? config.modelOverride ?? "gpt-5.2",
+        modelUsed: generated.modelUsed ?? config.modelOverride ?? "gpt-5.5",
         transcriptPath: null,
       };
       if (config.persistTranscripts) {

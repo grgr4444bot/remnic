@@ -8,9 +8,9 @@ Use `openclaw engram config-review` for opinionated tuning recommendations and `
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `openaiApiKey` | `(env fallback in plugin mode)` | Optional OpenAI API key or `${ENV_VAR}` reference. When `modelSource` is `gateway`, Remnic does not inherit `OPENAI_API_KEY`; gateway provider auth is used instead. |
+| `openaiApiKey` | `(env fallback in plugin mode)` | Optional OpenAI API key, `${ENV_VAR}` reference, or `false` to disable direct OpenAI entirely. When `modelSource` is `gateway`, Remnic does not inherit `OPENAI_API_KEY`; gateway provider auth is used instead. |
 | `openaiBaseUrl` | `(env fallback)` | Override OpenAI API base URL (e.g. for proxies or compatible endpoints); falls back to `OPENAI_BASE_URL` env var |
-| `model` | `gpt-5.2` | OpenAI model for extraction and consolidation |
+| `model` | `gpt-5.5` | OpenAI model for extraction and consolidation |
 | `reasoningEffort` | `low` | `none`, `low`, `medium`, `high` |
 | `memoryDir` | `~/.openclaw/workspace/memory/local` | Memory storage root |
 | `workspaceDir` | `~/.openclaw/workspace` | Workspace root (IDENTITY.md location) |
@@ -1080,9 +1080,9 @@ This appendix is flattened from the runtime config schema and the live `parseCon
 
 | Setting | Default | Recommended |
 |---------|---------|-------------|
-| `openaiApiKey` | `(env fallback in plugin mode)` | unset when `modelSource` is `gateway`; otherwise explicit key or `OPENAI_API_KEY` env fallback |
+| `openaiApiKey` | `(env fallback in plugin mode)` | unset when `modelSource` is `gateway`; set `false` for local-only plugin mode; otherwise explicit key or `OPENAI_API_KEY` env fallback |
 | `openaiBaseUrl` | (unset) | (unset) |
-| `model` | `gpt-5.2` | `gpt-5.2` |
+| `model` | `gpt-5.5` | `gpt-5.5` |
 | `reasoningEffort` | `low` | `low` |
 | `triggerMode` | `smart` | `smart` |
 | `bufferMaxTurns` | `5` | `5` |
@@ -1181,7 +1181,7 @@ This appendix is flattened from the runtime config schema and the live `parseCon
 | `boostAccessCount` | `true` | `true` |
 | `recordEmptyRecallImpressions` | `false` | `false` |
 | `recallPlannerEnabled` | `true` | `true` |
-| `recallPlannerModel` | `gpt-5.2-mini` | `gpt-5.2-mini` |
+| `recallPlannerModel` | `gpt-5.5` | `gpt-5.5` |
 | `recallPlannerTimeoutMs` | `1500` | `1500` |
 | `recallPlannerUseResponsesApi` | `true` | `true` |
 | `recallPlannerMaxPromptChars` | `4000` | `4000` |
@@ -1320,7 +1320,7 @@ This appendix is flattened from the runtime config schema and the live `parseCon
 | `hourlySummariesEnabled` | `true` | `true` |
 | `summaryRecallHours` | `24` | `24` |
 | `maxSummaryCount` | `6` | `6` |
-| `summaryModel` | `gpt-5.2` | `gpt-5.2` |
+| `summaryModel` | `gpt-5.5` | `gpt-5.5` |
 | `localLlmEnabled` | `false` | `false` unless you have a healthy compatible endpoint |
 | `localLlmUrl` | `http://localhost:1234/v1` | `http://localhost:1234/v1` |
 | `localLlmModel` | `local-model` | `local-model` |

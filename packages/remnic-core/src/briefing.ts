@@ -47,7 +47,7 @@ export const BRIEFING_FORMAT_ALLOWED = ["markdown", "json"] as const;
  * Default model used for the Responses API follow-up generation call.
  * Mirrors the extraction engine default in config.ts — keep in sync.
  */
-export const BRIEFING_FOLLOWUP_DEFAULT_MODEL = "gpt-5.2";
+export const BRIEFING_FOLLOWUP_DEFAULT_MODEL = "gpt-5.5";
 export type BriefingFormatValue = typeof BRIEFING_FORMAT_ALLOWED[number];
 
 /**

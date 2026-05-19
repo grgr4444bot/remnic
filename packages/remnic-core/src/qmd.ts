@@ -524,6 +524,34 @@ class QmdDaemonSession {
     this.cleanup({ killChild: true });
   }
 
+  /** Kill stdio process and wait briefly for the child handle to close. */
+  async close(timeoutMs = 1_000): Promise<void> {
+    const target = this.child;
+    if (!target) {
+      this.cleanup({ killChild: true });
+      return;
+    }
+
+    let closed = false;
+    const closedPromise = new Promise<void>((resolve) => {
+      target.once("close", () => {
+        closed = true;
+        resolve();
+      });
+    });
+
+    this.cleanup({ killChild: true });
+    await Promise.race([closedPromise, sleep(timeoutMs)]);
+    if (!closed) {
+      try {
+        target.kill("SIGKILL");
+      } catch {
+        // Ignore process-kill races during shutdown.
+      }
+      await Promise.race([closedPromise, sleep(250)]);
+    }
+  }
+
   isActive(): boolean {
     return this.child !== null && !this.child.killed && this.initialized;
   }
@@ -782,15 +810,15 @@ function retainSharedDaemonSession(qmdPath: string): QmdDaemonSession {
   return session;
 }
 
-function releaseSharedDaemonSession(session: QmdDaemonSession | null): void {
+async function releaseSharedDaemonSession(session: QmdDaemonSession | null): Promise<void> {
   if (!session) return;
 
   for (const [qmdPath, entry] of SHARED_DAEMON_SESSIONS.entries()) {
     if (entry.session !== session) continue;
     entry.refs = Math.max(0, entry.refs - 1);
     if (entry.refs === 0) {
-      entry.session.invalidate();
       SHARED_DAEMON_SESSIONS.delete(qmdPath);
+      await entry.session.close();
     }
     return;
   }
@@ -872,7 +900,7 @@ export class QmdClient implements SearchBackend {
     this.lastDaemonCheckAtMs = Date.now();
     const normalizedPath = this.qmdPath.trim() || "qmd";
     if (!this.daemonSession || this.daemonSessionPath !== normalizedPath) {
-      releaseSharedDaemonSession(this.daemonSession);
+      await releaseSharedDaemonSession(this.daemonSession);
       this.daemonSession = retainSharedDaemonSession(normalizedPath);
       this.daemonSessionPath = normalizedPath;
     }
@@ -1019,8 +1047,8 @@ export class QmdClient implements SearchBackend {
     return this.daemonAvailable;
   }
 
-  dispose(): void {
-    releaseSharedDaemonSession(this.daemonSession);
+  async dispose(): Promise<void> {
+    await releaseSharedDaemonSession(this.daemonSession);
     this.daemonSession = null;
     this.daemonSessionPath = null;
     this.daemonAvailable = false;

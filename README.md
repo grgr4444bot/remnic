@@ -239,6 +239,7 @@ After installation, add the Remnic bridge plugin to your `openclaw.json`:
           "fastGatewayAgentId": "remnic-llm-fast",
 
           // Optional: Use Remnic's local LLM path (plugin mode only; no API key needed):
+          // "openaiApiKey": false,
           // "localLlmEnabled": true,
           // "localLlmUrl": "http://localhost:1234/v1",
           // "localLlmModel": "qwen2.5-32b-instruct"
@@ -1009,7 +1010,7 @@ OpenClaw plugin settings live in `openclaw.json` under `plugins.entries.openclaw
 | `localLlmEnabled` | `false` | Enable Remnic's local LLM path when `modelSource` is `plugin` |
 | `localLlmUrl` | unset | Local LLM endpoint (e.g., `http://localhost:1234/v1`) |
 | `localLlmModel` | unset | Local model name (e.g., `qwen2.5-32b-instruct`) |
-| `model` | `gpt-5.2` | OpenAI model for extraction when `modelSource` is `plugin` and local LLM is disabled |
+| `model` | `gpt-5.5` | OpenAI model for extraction when `modelSource` is `plugin` and local LLM is disabled |
 | `searchBackend` | `"qmd"` | Search engine: `qmd`, `orama`, `lancedb`, `meilisearch`, `remote`, `noop` |
 | `captureMode` | `implicit` | Memory write policy: `implicit`, `explicit`, `hybrid` |
 | `recallBudgetChars` | `maxMemoryTokens * 4` | Recall budget (default ~8K chars; set 64K+ for large-context models) |

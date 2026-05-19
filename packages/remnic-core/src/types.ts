@@ -1029,7 +1029,7 @@ export interface PluginConfig {
   /**
    * Model identifier used by the peer profile reasoner. Logged for
    * telemetry only — actual dispatch is via the same FallbackLlmClient
-   * the orchestrator uses for semantic consolidation. Default `gpt-5.2`.
+   * the orchestrator uses for semantic consolidation. Default `gpt-5.5`.
    */
   peerProfileReasonerModel: string;
   /**

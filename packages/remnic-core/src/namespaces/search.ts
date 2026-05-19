@@ -153,6 +153,20 @@ export class NamespaceSearchRouter {
     this.cache.clear();
   }
 
+  /** Release any per-namespace backend handles held by cached records. */
+  async dispose(): Promise<void> {
+    const pendingRecords = Array.from(this.cache.values());
+    this.cache.clear();
+    const settled = await Promise.allSettled(pendingRecords);
+    await Promise.allSettled(
+      settled.flatMap((entry) => {
+        if (entry.status !== "fulfilled") return [];
+        const dispose = (entry.value.backend as { dispose?: () => void | Promise<void> }).dispose;
+        return dispose ? [dispose.call(entry.value.backend)] : [];
+      }),
+    );
+  }
+
   private async backendRecordFor(namespace: string): Promise<NamespaceBackendRecord> {
     const key = namespace.trim() || this.config.defaultNamespace;
     const existing = this.cache.get(key);

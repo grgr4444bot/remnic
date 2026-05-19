@@ -138,6 +138,23 @@ test("parseConfig modelSource=gateway still honors an explicit openaiApiKey over
   }
 });
 
+test("parseConfig openaiApiKey=false disables implicit OPENAI_API_KEY inheritance", () => {
+  const original = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "sk-env-should-not-be-used";
+  try {
+    const cfg = parseConfig({
+      openaiApiKey: false,
+      localLlmEnabled: true,
+    });
+    assert.equal(cfg.modelSource, "plugin");
+    assert.equal(cfg.localLlmEnabled, true);
+    assert.equal(cfg.openaiApiKey, undefined);
+  } finally {
+    if (original === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = original;
+  }
+});
+
 test("parseConfig localLlmTimeoutMs accepts CLI-style numeric strings for gateway fallback", () => {
   const cfg = parseConfig({ localLlmTimeoutMs: "600000" });
   assert.equal(cfg.localLlmTimeoutMs, 600_000);

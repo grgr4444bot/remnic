@@ -262,13 +262,13 @@ function parseSemanticChunkingConfig(
 
 // Cursor review on PR #736: the default reasoning model used by the
 // extraction pipeline (`config.model`) and the new peer profile
-// reasoner (`peerProfileReasonerModel`) was hardcoded as `"gpt-5.2"`
+// reasoner (`peerProfileReasonerModel`) was hardcoded as `"gpt-5.5"`
 // in two places. Centralize the default so both surfaces — and any
 // future LLM-backed surface — always agree on the same model id.
 // Sibling packages (briefing, active-recall) keep their own constants
 // because they're scoped to those subsystems; this one lives in the
 // config module because it spans extraction + peer-profile.
-export const DEFAULT_REASONING_MODEL = "gpt-5.2";
+export const DEFAULT_REASONING_MODEL = "gpt-5.5";
 
 const VALID_EFFORTS: ReasoningEffort[] = ["none", "low", "medium", "high"];
 const VALID_TRIGGERS: TriggerMode[] = ["smart", "every_n", "time_based"];
@@ -465,8 +465,15 @@ export function parseConfig(raw: unknown): PluginConfig {
   const modelSource =
     cfg.modelSource === "gateway" ? "gateway" : "plugin";
 
+  const openaiApiKeyDisabled = cfg.openaiApiKey === false;
+
   let apiKey: string | undefined;
-  if (typeof cfg.openaiApiKey === "string" && cfg.openaiApiKey.length > 0) {
+  if (openaiApiKeyDisabled) {
+    // Explicit opt-out for local/gateway-only deployments. Without this,
+    // a stale process-level OPENAI_API_KEY can be captured even when the
+    // operator wants Remnic to use local LLMs and never try direct OpenAI.
+    apiKey = undefined;
+  } else if (typeof cfg.openaiApiKey === "string" && cfg.openaiApiKey.length > 0) {
     apiKey = resolveEnvVars(cfg.openaiApiKey);
   } else if (modelSource === "gateway") {
     // Gateway mode deliberately delegates LLM calls to OpenClaw's model chain.
@@ -2544,7 +2551,7 @@ export function parseConfig(raw: unknown): PluginConfig {
     recallPlannerModel:
       typeof cfg.recallPlannerModel === "string" && cfg.recallPlannerModel.trim().length > 0
         ? cfg.recallPlannerModel.trim()
-        : "gpt-5.2-mini",
+        : "gpt-5.5",
     recallPlannerTimeoutMs:
       typeof cfg.recallPlannerTimeoutMs === "number" ? cfg.recallPlannerTimeoutMs : 1500,
     recallPlannerUseResponsesApi: cfg.recallPlannerUseResponsesApi !== false,

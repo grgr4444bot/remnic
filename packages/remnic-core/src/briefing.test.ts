@@ -745,10 +745,10 @@ test("BRIEFING_FOLLOWUP_DEFAULT_MODEL is exported and matches canonical extracti
     typeof BRIEFING_FOLLOWUP_DEFAULT_MODEL === "string" && BRIEFING_FOLLOWUP_DEFAULT_MODEL.length > 0,
     "BRIEFING_FOLLOWUP_DEFAULT_MODEL must be a non-empty string",
   );
-  // Must match the same model family the extraction engine defaults to ("gpt-5.2").
+  // Must match the same model family the extraction engine defaults to ("gpt-5.5").
   assert.equal(
     BRIEFING_FOLLOWUP_DEFAULT_MODEL,
-    "gpt-5.2",
+    "gpt-5.5",
     "default model must align with the extraction engine default in config.ts",
   );
 });
@@ -921,7 +921,7 @@ test("buildBriefing: model-not-found 400 error produces user-friendly followupsU
     allowLlm: true,
     openaiApiKey: "sk-synthetic-key",
     followupGenerator: async () => {
-      throw new Error("The model 'gpt-5.2' does not exist");
+      throw new Error("The model 'gpt-5.5' does not exist");
     },
     now: new Date("2026-04-11T10:00:00.000Z"),
   });
@@ -946,7 +946,7 @@ test("buildBriefing: model 'not found' phrasing also produces user-friendly mess
     allowLlm: true,
     openaiApiKey: "sk-synthetic-key",
     followupGenerator: async () => {
-      throw new Error("model not found: gpt-5.2");
+      throw new Error("model not found: gpt-5.5");
     },
     now: new Date("2026-04-11T10:00:00.000Z"),
   });

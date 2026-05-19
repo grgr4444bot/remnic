@@ -400,7 +400,7 @@ test("active recall engine normalizes timeout to NONE and persists transcripts w
         return "Primary recall";
       },
       async generateSummary() {
-        return { text: "timeout", modelUsed: "gpt-5.2-mini" };
+        return { text: "timeout", modelUsed: "gpt-5.5" };
       },
     },
     baseConfig({
@@ -425,7 +425,7 @@ test("active recall transcript persistence sanitizes agent and session path segm
         return "Primary recall";
       },
       async generateSummary() {
-        return { text: "useful summary", modelUsed: "gpt-5.2-mini" };
+        return { text: "useful summary", modelUsed: "gpt-5.5" };
       },
     },
     baseConfig({
@@ -460,7 +460,7 @@ test("active recall transcript persistence encodes bare dot path segments", asyn
         return "Primary recall";
       },
       async generateSummary() {
-        return { text: "useful summary", modelUsed: "gpt-5.2-mini" };
+        return { text: "useful summary", modelUsed: "gpt-5.5" };
       },
     },
     baseConfig({
