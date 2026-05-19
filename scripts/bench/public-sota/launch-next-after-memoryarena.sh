@@ -10,7 +10,12 @@ REPO_ROOT="${REPO_ROOT:-${REPO_ROOT_DEFAULT}}"
 ACTIVE_SESSION="${ACTIVE_SESSION:-public-matrix-codex-bf9b2643-20260515T052919Z}"
 WATCHER_SESSION="${WATCHER_SESSION:-remnic-memoryarena-publish-watcher-bf9b2643}"
 REPO="${REPO:-$(git -C "${REPO_ROOT}" remote get-url origin | sed -E 's#.*github.com[:/]([^/]+/[^/.]+)(\.git)?$#\1#')}"
-MEMORYARENA_BRANCH="${MEMORYARENA_BRANCH:-codex/publish-memoryarena-sota-bf9b264}"
+RUN_ID="${RUN_ID:-${ACTIVE_SESSION}}"
+RUN_BRANCH_SUFFIX="$(printf '%s' "${RUN_ID}" | sed -E 's/^public-.*-codex-([[:alnum:]]+)-[0-9]{8}T[0-9]{6}Z$/\1/')"
+if [[ "${RUN_BRANCH_SUFFIX}" == "${RUN_ID}" ]]; then
+  RUN_BRANCH_SUFFIX="bf9b264"
+fi
+MEMORYARENA_BRANCH="${MEMORYARENA_BRANCH:-codex/publish-memoryarena-sota-${RUN_BRANCH_SUFFIX}}"
 BASE_BRANCH="${BASE_BRANCH:-bench/public-matrix-codex}"
 BENCHMARK="${1:-amemgym}"
 

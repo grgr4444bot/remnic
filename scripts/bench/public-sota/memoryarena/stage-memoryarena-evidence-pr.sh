@@ -14,7 +14,11 @@ RUN_ID="${RUN_ID:-public-matrix-codex-bf9b2643-20260515T052919Z}"
 EVIDENCE_ROOT="${EVIDENCE_ROOT:-${TMP_ROOT}/remnic-memoryarena-evidence}"
 SOURCE_EVIDENCE_DIR="${SOURCE_EVIDENCE_DIR:-${EVIDENCE_ROOT}/${RUN_ID}}"
 BASE_BRANCH="${BASE_BRANCH:-bench/public-matrix-codex}"
-BRANCH="${BRANCH:-codex/publish-memoryarena-sota-bf9b264}"
+RUN_BRANCH_SUFFIX="$(printf '%s' "${RUN_ID}" | sed -E 's/^public-.*-codex-([[:alnum:]]+)-[0-9]{8}T[0-9]{6}Z$/\1/')"
+if [[ "${RUN_BRANCH_SUFFIX}" == "${RUN_ID}" ]]; then
+  RUN_BRANCH_SUFFIX="bf9b264"
+fi
+BRANCH="${BRANCH:-codex/publish-memoryarena-sota-${RUN_BRANCH_SUFFIX}}"
 WORKTREE="${WORKTREE:-${TMP_ROOT}/remnic-memoryarena-sota-pr}"
 RESULTS_REL="docs/benchmarks/results/${RUN_ID}"
 EVIDENCE_DOC_REL="${EVIDENCE_DOC_REL:-docs/benchmarks/evidence/memory-arena-gpt-5.5-sota-2026-05.md}"

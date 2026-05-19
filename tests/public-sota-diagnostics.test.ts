@@ -1755,8 +1755,13 @@ test("public SOTA completion audit skips closed publication PRs", async () => {
     "utf8",
   );
 
+  assert.match(source, /branchPrefix: 'codex\/publish-memoryarena-sota-'/);
+  assert.match(source, /branchPrefix: `codex\/publish-\$\{benchmark\}-sota-`/);
+  assert.match(source, /--limit', '100'/);
+  assert.match(source, /row\.headRefName\.startsWith\(item\.branchPrefix\)/);
+  assert.match(source, /return row\.headRefName === item\.branch/);
   assert.match(source, /--state', 'all'/);
-  assert.match(source, /rows\.filter\(\(row\) => row\.state === 'OPEN' \|\| row\.state === 'MERGED'\)/);
+  assert.match(source, /if \(row\.state !== 'OPEN' && row\.state !== 'MERGED'\)/);
   assert.match(source, /activeRows\.sort\(\(a, b\) => Number\(b\.number\) - Number\(a\.number\)\)/);
   assert.match(source, /return activeRows\[0\]/);
   assert.doesNotMatch(source, /rows\.sort\(\(a, b\) => Number\(b\.number\) - Number\(a\.number\)\);\n\s*return rows\[0\]/);
@@ -1768,6 +1773,11 @@ test("chained public benchmark watcher retries active-session launch collisions"
     "utf8",
   );
 
+  assert.match(source, /PREVIOUS_BRANCH="\$\{PREVIOUS_BRANCH:-\}"/);
+  assert.match(source, /PREVIOUS_BRANCH_PREFIX="\$\{PREVIOUS_BRANCH_PREFIX:-codex\/publish-\$\{PREVIOUS\}-sota-\}"/);
+  assert.match(source, /--limit 100/);
+  assert.match(source, /headRefName \| startswith/);
+  assert.match(source, /branch_label="\$\{PREVIOUS_BRANCH_PREFIX\}\*"/);
   assert.match(source, /--state all/);
   assert.match(source, /select\(\.state == "OPEN" or \.state == "MERGED"\)/);
   assert.match(source, /if \[\[ "\$\{launch_status\}" -eq 3 \]\]; then/);
@@ -1781,6 +1791,10 @@ test("MemoryArena transition helper retries active-session launch collisions", a
     "utf8",
   );
 
+  assert.match(source, /RUN_ID="\$\{RUN_ID:-\$\{ACTIVE_SESSION\}\}"/);
+  assert.match(source, /RUN_BRANCH_SUFFIX="\$\(printf '%s' "\$\{RUN_ID\}" \| sed -E/);
+  assert.match(source, /MEMORYARENA_BRANCH="\$\{MEMORYARENA_BRANCH:-codex\/publish-memoryarena-sota-\$\{RUN_BRANCH_SUFFIX\}\}"/);
+  assert.doesNotMatch(source, /MEMORYARENA_BRANCH="\$\{MEMORYARENA_BRANCH:-codex\/publish-memoryarena-sota-bf9b264\}"/);
   assert.match(source, /--state all/);
   assert.match(source, /select\(\.state == "OPEN" or \.state == "MERGED"\)/);
   assert.match(source, /launch_status=\$\?/);
@@ -1812,6 +1826,10 @@ test("MemoryArena publish watcher ignores derived evidence JSON files", async ()
     path.join("scripts", "bench", "public-sota", "memoryarena", "watch-and-publish-memoryarena.sh"),
     "utf8",
   );
+  const publish = await readFile(
+    path.join("scripts", "bench", "public-sota", "memoryarena", "publish-memoryarena-evidence-pr.sh"),
+    "utf8",
+  );
 
   assert.match(source, /-name 'memory-arena-\*\.json'/);
   assert.match(source, /! -name 'memory-arena-sota-comparison\.json'/);
@@ -1820,6 +1838,10 @@ test("MemoryArena publish watcher ignores derived evidence JSON files", async ()
   assert.match(source, /RUN_ID="\$\{RUN_ID\}" RESULTS_DIR="\$\{RESULTS_DIR\}" SESSION="\$\{SESSION\}" OUT_ROOT="\$\{EVIDENCE_ROOT\}" bash "\$\{SCRIPT_DIR\}\/complete-memoryarena-if-ready\.sh"/);
   assert.match(source, /stage_output="\$\(RUN_ID="\$\{RUN_ID\}" EVIDENCE_ROOT="\$\{EVIDENCE_ROOT\}" bash "\$\{SCRIPT_DIR\}\/stage-memoryarena-evidence-pr\.sh" 2>&1\)"/);
   assert.match(source, /publish_output="\$\(RUN_ID="\$\{RUN_ID\}" bash "\$\{SCRIPT_DIR\}\/publish-memoryarena-evidence-pr\.sh" 2>&1\)"/);
+  assert.match(publish, /RUN_ID="\$\{RUN_ID:-public-matrix-codex-bf9b2643-20260515T052919Z\}"/);
+  assert.match(publish, /RUN_BRANCH_SUFFIX="\$\(printf '%s' "\$\{RUN_ID\}" \| sed -E/);
+  assert.match(publish, /BRANCH="\$\{BRANCH:-codex\/publish-memoryarena-sota-\$\{RUN_BRANCH_SUFFIX\}\}"/);
+  assert.doesNotMatch(publish, /BRANCH="\$\{BRANCH:-codex\/publish-memoryarena-sota-bf9b264\}"/);
   assert.match(source, /if ! grep -q '\^ready: MemoryArena evidence PR worktree staged ' <<< "\$\{stage_output\}"; then[\s\S]*sleep "\$\{INTERVAL_SECONDS\}"[\s\S]*continue/);
   assert.match(source, /if ! grep -q '\^ready: verified ' <<< "\$\{complete_output\}"; then[\s\S]*sleep "\$\{INTERVAL_SECONDS\}"[\s\S]*continue/);
   assert.match(source, /if grep -q '\^done:' <<< "\$\{stage_output\}"; then[\s\S]*exit 0[\s\S]*fi/);
@@ -1862,14 +1884,37 @@ test("public SOTA status exposes active run and MemoryArena session states", asy
   assert.match(source, /monitorSessionName: memoryArenaStatus\.monitorSessionName/);
 });
 
+test("public SOTA health check accepts run-suffixed MemoryArena watcher sessions", async () => {
+  const source = await readFile(
+    path.join("scripts", "bench", "public-sota", "assert-public-sota-pipeline-healthy.mjs"),
+    "utf8",
+  );
+
+  assert.match(source, /publishPrefix: 'remnic-memoryarena-publish-watcher-'/);
+  assert.match(source, /transitionPrefix: 'remnic-next-after-memoryarena-watcher-'/);
+  assert.match(source, /entry\.publishPrefix, entry\.transitionPrefix/);
+  assert.match(source, /session\.endsWith\('-'\)/);
+  assert.match(source, /watcherSession\.startsWith\(session\)/);
+  assert.doesNotMatch(source, /publish: 'remnic-memoryarena-publish-watcher-bf9b2643'/);
+});
+
 test("generic public benchmark publish watcher keeps completion and staging evidence roots aligned", async () => {
   const source = await readFile(
     path.join("scripts", "bench", "public-sota", "watch-public-benchmark-publish.sh"),
     "utf8",
   );
+  const publish = await readFile(
+    path.join("scripts", "bench", "public-sota", "publish-public-benchmark-evidence-pr.sh"),
+    "utf8",
+  );
 
   assert.match(source, /OUT_ROOT="\$\{EVIDENCE_ROOT\}" bash "\$\{SCRIPT_DIR\}\/complete-public-benchmark-if-ready\.sh"/);
   assert.match(source, /EVIDENCE_ROOT="\$\{EVIDENCE_ROOT\}" bash "\$\{SCRIPT_DIR\}\/stage-public-benchmark-evidence-pr\.sh"/);
+  assert.match(source, /publish-public-benchmark-evidence-pr\.sh" "\$\{BENCHMARK\}" "\$\{run_id\}"/);
+  assert.match(publish, /run_id="\$\{2:-\}"/);
+  assert.match(publish, /RUN_BRANCH_SUFFIX="\$\(printf '%s' "\$\{run_id\}" \| sed -E/);
+  assert.match(publish, /BRANCH="\$\{BRANCH:-codex\/publish-\$\{benchmark\}-sota-\$\{RUN_BRANCH_SUFFIX\}\}"/);
+  assert.doesNotMatch(publish, /BRANCH="\$\{BRANCH:-codex\/publish-\$\{benchmark\}-sota-bf9b264\}"/);
   assert.match(source, /if \[\[ "\$\{complete_status\}" -eq 4 \]\]; then[\s\S]*stopping: \$\{BENCHMARK\} completion helper exited \$\{complete_status\}[\s\S]*exit "\$\{complete_status\}"/);
   assert.match(source, /waiting: \$\{BENCHMARK\} completion helper exited \$\{complete_status\}; will retry[\s\S]*sleep "\$\{INTERVAL_SECONDS\}"[\s\S]*continue/);
   assert.match(source, /if grep -q '\^done:' <<< "\$\{stage_output\}"; then[\s\S]*exit 0[\s\S]*fi/);
@@ -1904,6 +1949,9 @@ test("public SOTA staging helpers start from base and prune stale evidence", asy
   assert.match(generic, /cp "\$\{MEMORYARENA_COMPARE_MODULE\}" "\$\{WORKTREE\}\/\$\{MEMORYARENA_MODULE_DIR_REL\}\/compare-memoryarena-sota\.mjs"/);
   assert.match(generic, /cp "\$\{MEMORYARENA_DERIVE_MODULE\}" "\$\{WORKTREE\}\/\$\{MEMORYARENA_MODULE_DIR_REL\}\/derive-memoryarena-official-metrics\.mjs"/);
   assert.match(generic, /cp "\$\{MEMORYARENA_VERIFY_MODULE\}" "\$\{WORKTREE\}\/\$\{MEMORYARENA_MODULE_DIR_REL\}\/verify-memoryarena-sota-evidence\.mjs"/);
+  assert.match(generic, /RUN_BRANCH_SUFFIX="\$\(printf '%s' "\$\{run_id\}" \| sed -E/);
+  assert.match(generic, /BRANCH="\$\{BRANCH:-codex\/publish-\$\{benchmark\}-sota-\$\{RUN_BRANCH_SUFFIX\}\}"/);
+  assert.doesNotMatch(generic, /BRANCH="\$\{BRANCH:-codex\/publish-\$\{benchmark\}-sota-bf9b264\}"/);
   assert.match(memoryArena, /rm -rf "\$\{MEMORYARENA_MODULE_DIR_REL\}"/);
   assert.match(memoryArena, /cp "\$\{VERIFY_CORE_SCRIPT\}" "\$\{WORKTREE\}\/\$\{MEMORYARENA_MODULE_DIR_REL\}\/verify-memoryarena-sota-evidence\.mjs"/);
   assert.match(memoryArena, /cp "\$\{COMPARE_MODULE\}" "\$\{WORKTREE\}\/\$\{MEMORYARENA_MODULE_DIR_REL\}\/compare-memoryarena-sota\.mjs"/);
@@ -1911,6 +1959,9 @@ test("public SOTA staging helpers start from base and prune stale evidence", asy
   assert.match(memoryArena, /cp "\$\{COMPARISON_JSON_MODULE\}" "\$\{WORKTREE\}\/\$\{COMPARISON_JSON_MODULE_REL\}"/);
   assert.match(memoryArena, /EVIDENCE_ROOT="\$\{EVIDENCE_ROOT:-\$\{TMP_ROOT\}\/remnic-memoryarena-evidence\}"/);
   assert.match(memoryArena, /SOURCE_EVIDENCE_DIR="\$\{SOURCE_EVIDENCE_DIR:-\$\{EVIDENCE_ROOT\}\/\$\{RUN_ID\}\}"/);
+  assert.match(memoryArena, /RUN_BRANCH_SUFFIX="\$\(printf '%s' "\$\{RUN_ID\}" \| sed -E/);
+  assert.match(memoryArena, /BRANCH="\$\{BRANCH:-codex\/publish-memoryarena-sota-\$\{RUN_BRANCH_SUFFIX\}\}"/);
+  assert.doesNotMatch(memoryArena, /BRANCH="\$\{BRANCH:-codex\/publish-memoryarena-sota-bf9b264\}"/);
 });
 
 test("published SOTA verifier templates delegate to copied core verifier modules", async () => {

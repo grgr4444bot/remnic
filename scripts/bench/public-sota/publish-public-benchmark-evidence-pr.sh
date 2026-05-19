@@ -8,6 +8,7 @@ TMP_ROOT="${TMPDIR:-/tmp}"
 TMP_ROOT="${TMP_ROOT%/}"
 
 benchmark="${1:-}"
+run_id="${2:-}"
 if [[ -z "${benchmark}" ]]; then
   echo "Usage: $0 <amemgym|longmemeval|locomo|beam|memoryagentbench|membench|personamem>" >&2
   exit 2
@@ -22,7 +23,17 @@ case "${benchmark}" in
 esac
 
 WORKTREE="${WORKTREE:-${TMP_ROOT}/remnic-${benchmark}-sota-pr}"
-BRANCH="${BRANCH:-codex/publish-${benchmark}-sota-bf9b264}"
+if [[ -z "${run_id}" && ( -d "${WORKTREE}/.git" || -f "${WORKTREE}/.git" ) ]]; then
+  current_branch_for_run="$(git -C "${WORKTREE}" branch --show-current)"
+  if [[ "${current_branch_for_run}" == codex/publish-"${benchmark}"-sota-* ]]; then
+    run_id="${current_branch_for_run##codex/publish-${benchmark}-sota-}"
+  fi
+fi
+RUN_BRANCH_SUFFIX="$(printf '%s' "${run_id}" | sed -E 's/^public-.*-codex-([[:alnum:]]+)-[0-9]{8}T[0-9]{6}Z$/\1/')"
+if [[ -z "${RUN_BRANCH_SUFFIX}" || "${RUN_BRANCH_SUFFIX}" == "${run_id}" ]]; then
+  RUN_BRANCH_SUFFIX="${run_id:-bf9b264}"
+fi
+BRANCH="${BRANCH:-codex/publish-${benchmark}-sota-${RUN_BRANCH_SUFFIX}}"
 BASE_BRANCH="${BASE_BRANCH:-bench/public-matrix-codex}"
 TITLE="${TITLE:-Publish ${benchmark} SOTA evidence}"
 BODY_FILE="${BODY_FILE:-${TMP_ROOT}/remnic-${benchmark}-pr-body.md}"

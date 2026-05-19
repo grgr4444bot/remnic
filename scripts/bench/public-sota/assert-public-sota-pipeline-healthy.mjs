@@ -18,8 +18,8 @@ const status = JSON.parse(statusRaw);
 const watcherPlan = [
   {
     benchmark: 'memory-arena',
-    publish: 'remnic-memoryarena-publish-watcher-bf9b2643',
-    transition: 'remnic-next-after-memoryarena-watcher-bf9b2643',
+    publishPrefix: 'remnic-memoryarena-publish-watcher-',
+    transitionPrefix: 'remnic-next-after-memoryarena-watcher-',
   },
   {
     benchmark: 'amemgym',
@@ -72,12 +72,17 @@ function requiredWatchersFor(activeBenchmark) {
   const startIndex = watcherPlan.findIndex((entry) => entry.benchmark === activeBenchmark);
   const remainingPlan = startIndex >= 0 ? watcherPlan.slice(startIndex) : watcherPlan;
   return remainingPlan
-    .flatMap((entry) => [entry.publish, entry.transition])
+    .flatMap((entry) => [entry.publish, entry.transition, entry.publishPrefix, entry.transitionPrefix])
     .filter((session) => typeof session === 'string');
 }
 
 const requiredWatchers = requiredWatchersFor(activeRun?.benchmark);
-const missingWatchers = requiredWatchers.filter((session) => !status.watcherSessions?.includes(session));
+const missingWatchers = requiredWatchers.filter((session) => {
+  if (session.endsWith('-')) {
+    return !status.watcherSessions?.some((watcherSession) => watcherSession.startsWith(session));
+  }
+  return !status.watcherSessions?.includes(session);
+});
 if (missingWatchers.length > 0) {
   failures.push(`missing watcher sessions: ${missingWatchers.join(', ')}`);
 }

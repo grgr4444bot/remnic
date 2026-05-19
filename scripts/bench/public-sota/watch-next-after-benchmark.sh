@@ -22,7 +22,8 @@ esac
 
 REPO="${REPO:-$(git -C "${SCRIPT_DIR}/../../.." remote get-url origin | sed -E 's#.*github.com[:/]([^/]+/[^/.]+)(\.git)?$#\1#')}"
 BASE_BRANCH="${BASE_BRANCH:-bench/public-matrix-codex}"
-PREVIOUS_BRANCH="${PREVIOUS_BRANCH:-codex/publish-${PREVIOUS}-sota-bf9b264}"
+PREVIOUS_BRANCH="${PREVIOUS_BRANCH:-}"
+PREVIOUS_BRANCH_PREFIX="${PREVIOUS_BRANCH_PREFIX:-codex/publish-${PREVIOUS}-sota-}"
 PREVIOUS_WATCHER="${PREVIOUS_WATCHER:-remnic-${PREVIOUS}-publish-watcher}"
 INTERVAL_SECONDS="${INTERVAL_SECONDS:-1800}"
 LOG_ROOT="${LOG_ROOT:-${HOME}/.remnic/bench/results}"
@@ -48,16 +49,28 @@ while :; do
     continue
   fi
 
-  pr_number="$(gh pr list \
-    --repo "${REPO}" \
-    --head "${PREVIOUS_BRANCH}" \
-    --base "${BASE_BRANCH}" \
-    --state all \
-    --json number,state \
-    --jq 'map(select(.state == "OPEN" or .state == "MERGED")) | sort_by(.number) | reverse | .[0].number // empty')"
+  if [[ -n "${PREVIOUS_BRANCH}" ]]; then
+    pr_number="$(gh pr list \
+      --repo "${REPO}" \
+      --head "${PREVIOUS_BRANCH}" \
+      --base "${BASE_BRANCH}" \
+      --state all \
+      --json number,state \
+      --jq 'map(select(.state == "OPEN" or .state == "MERGED")) | sort_by(.number) | reverse | .[0].number // empty')"
+    branch_label="${PREVIOUS_BRANCH}"
+  else
+    pr_number="$(gh pr list \
+      --repo "${REPO}" \
+      --base "${BASE_BRANCH}" \
+      --state all \
+      --limit 100 \
+      --json number,state,headRefName \
+      --jq "map(select((.state == \"OPEN\" or .state == \"MERGED\") and (.headRefName | startswith(\"${PREVIOUS_BRANCH_PREFIX}\")))) | sort_by(.number) | reverse | .[0].number // empty")"
+    branch_label="${PREVIOUS_BRANCH_PREFIX}*"
+  fi
 
   if [[ -z "${pr_number}" ]]; then
-    log "waiting: no ${PREVIOUS} evidence PR found for ${PREVIOUS_BRANCH} -> ${BASE_BRANCH}"
+    log "waiting: no ${PREVIOUS} evidence PR found for ${branch_label} -> ${BASE_BRANCH}"
     sleep "${INTERVAL_SECONDS}"
     continue
   fi

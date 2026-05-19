@@ -7,8 +7,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TMP_ROOT="${TMPDIR:-/tmp}"
 TMP_ROOT="${TMP_ROOT%/}"
 
+RUN_ID="${RUN_ID:-public-matrix-codex-bf9b2643-20260515T052919Z}"
+RUN_BRANCH_SUFFIX="$(printf '%s' "${RUN_ID}" | sed -E 's/^public-.*-codex-([[:alnum:]]+)-[0-9]{8}T[0-9]{6}Z$/\1/')"
+if [[ "${RUN_BRANCH_SUFFIX}" == "${RUN_ID}" ]]; then
+  RUN_BRANCH_SUFFIX="bf9b264"
+fi
 WORKTREE="${WORKTREE:-${TMP_ROOT}/remnic-memoryarena-sota-pr}"
-BRANCH="${BRANCH:-codex/publish-memoryarena-sota-bf9b264}"
+BRANCH="${BRANCH:-codex/publish-memoryarena-sota-${RUN_BRANCH_SUFFIX}}"
 BASE_BRANCH="${BASE_BRANCH:-bench/public-matrix-codex}"
 TITLE="${TITLE:-Publish MemoryArena SOTA evidence}"
 BODY_FILE="${BODY_FILE:-${TMP_ROOT}/remnic-memoryarena-pr-body.md}"

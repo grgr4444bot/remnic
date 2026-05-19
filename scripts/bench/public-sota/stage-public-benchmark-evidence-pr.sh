@@ -27,7 +27,6 @@ run_id="${2:-}"
 EVIDENCE_ROOT="${EVIDENCE_ROOT:-${TMP_ROOT}/remnic-public-benchmark-evidence}"
 RESULTS_ROOT="${RESULTS_ROOT:-${HOME}/.remnic/bench/results}"
 BASE_BRANCH="${BASE_BRANCH:-bench/public-matrix-codex}"
-BRANCH="${BRANCH:-codex/publish-${benchmark}-sota-bf9b264}"
 WORKTREE="${WORKTREE:-${TMP_ROOT}/remnic-${benchmark}-sota-pr}"
 VERIFY_TEMPLATE="${SCRIPT_DIR}/verify-public-generic-sota-evidence.template.mjs"
 VERIFY_CORE_SCRIPT="${SCRIPT_DIR}/verify-public-benchmark-sota-evidence.mjs"
@@ -59,6 +58,12 @@ if [[ -z "${run_id}" ]]; then
   echo "waiting: no run id found for ${benchmark}" >&2
   exit 0
 fi
+
+RUN_BRANCH_SUFFIX="$(printf '%s' "${run_id}" | sed -E 's/^public-.*-codex-([[:alnum:]]+)-[0-9]{8}T[0-9]{6}Z$/\1/')"
+if [[ "${RUN_BRANCH_SUFFIX}" == "${run_id}" ]]; then
+  RUN_BRANCH_SUFFIX="bf9b264"
+fi
+BRANCH="${BRANCH:-codex/publish-${benchmark}-sota-${RUN_BRANCH_SUFFIX}}"
 
 SOURCE_EVIDENCE_DIR="${EVIDENCE_ROOT}/${run_id}"
 RESULTS_REL="docs/benchmarks/results/${run_id}"

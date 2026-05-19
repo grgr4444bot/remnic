@@ -41,14 +41,14 @@ const benchmarks = [
   },
   {
     benchmark: 'memory-arena',
-    branch: 'codex/publish-memoryarena-sota-bf9b264',
+    branchPrefix: 'codex/publish-memoryarena-sota-',
     evidenceDoc: 'evidence/memory-arena-gpt-5.5-sota-2026-05.md',
     verifier: 'verify-public-memoryarena-sota-evidence.mjs',
     manifestGlob: 'MANIFEST.memory-arena.json',
   },
   ...['amemgym', 'longmemeval', 'locomo', 'beam', 'memoryagentbench', 'membench', 'personamem'].map((benchmark) => ({
     benchmark,
-    branch: `codex/publish-${benchmark}-sota-bf9b264`,
+    branchPrefix: `codex/publish-${benchmark}-sota-`,
     evidenceDoc: `evidence/${benchmark}-gpt-5.5-sota-2026-05.md`,
     verifier: `verify-public-${benchmark}-sota-evidence.mjs`,
     manifestGlob: `MANIFEST.${benchmark}.json`,
@@ -92,18 +92,25 @@ function ghJson(args) {
   }
 }
 
-function latestPrFor(branch) {
+function latestPrFor(item) {
   const rows = ghJson([
     'pr',
     'list',
     '--repo', repo,
-    '--head', branch,
     '--base', 'bench/public-matrix-codex',
     '--state', 'all',
-    '--limit', '20',
+    '--limit', '100',
     '--json', 'number,state,url,headRefName,baseRefName',
   ]) ?? [];
-  const activeRows = rows.filter((row) => row.state === 'OPEN' || row.state === 'MERGED');
+  const activeRows = rows.filter((row) => {
+    if (row.state !== 'OPEN' && row.state !== 'MERGED') {
+      return false;
+    }
+    if (item.branchPrefix) {
+      return typeof row.headRefName === 'string' && row.headRefName.startsWith(item.branchPrefix);
+    }
+    return row.headRefName === item.branch;
+  });
   activeRows.sort((a, b) => Number(b.number) - Number(a.number));
   return activeRows[0];
 }
@@ -359,7 +366,7 @@ function runPublicMatrixVerifier(row, item) {
 
 const rows = benchmarks.map((item) => {
   const manifest = findManifest(item.manifestGlob);
-  const pr = latestPrFor(item.branch);
+  const pr = latestPrFor(item);
   const prClean = verifyPr(pr?.number, item.benchmark === 'ama-bench');
   const row = {
     benchmark: item.benchmark,
