@@ -1,6 +1,5 @@
 import { log } from "./logger.js";
 import { readEnvVar } from "./runtime/env.js";
-import { createHash } from "node:crypto";
 import path from "node:path";
 import os from "node:os";
 
@@ -46,6 +45,8 @@ let _resolverLoaded = false;
 let _resolverNextRetryAt = 0;
 const RESOLVER_RETRY_BACKOFF_MS = 60_000; // 1 minute between retries after first failure
 const resolvedCache = new Map<string, string | undefined>();
+const cacheObjectIds = new WeakMap<object, number>();
+let nextCacheObjectId = 1;
 const NON_LITERAL_AUTH_MARKERS = new Set([
   "secretref-managed",
   "lm-studio",
@@ -243,32 +244,22 @@ function resolveFromNamedEnvVar(marker: string): string | undefined {
   return value && value.trim().length > 0 ? value.trim() : undefined;
 }
 
-function stableSerializeForCache(value: unknown, seen = new WeakSet<object>()): string {
+function cacheIdentity(value: unknown): string {
   if (value === null) return "null";
   if (value === undefined) return "undefined";
-  if (typeof value === "string") return `string:${JSON.stringify(value)}`;
+  if (typeof value === "string") return `string:${value}`;
   if (typeof value === "number") return `number:${String(value)}`;
   if (typeof value === "boolean") return `boolean:${String(value)}`;
   if (typeof value === "bigint") return `bigint:${String(value)}`;
   if (typeof value === "symbol" || typeof value === "function") return typeof value;
-  if (value instanceof Date) return `date:${Number.isNaN(value.getTime()) ? "invalid" : value.toISOString()}`;
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => stableSerializeForCache(item, seen)).join(",")}]`;
-  }
   if (typeof value === "object") {
-    if (seen.has(value)) return "[Circular]";
-    seen.add(value);
-    const entries = Object.keys(value as Record<string, unknown>)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${stableSerializeForCache((value as Record<string, unknown>)[key], seen)}`);
-    seen.delete(value);
-    return `{${entries.join(",")}}`;
+    const existingId = cacheObjectIds.get(value);
+    if (existingId !== undefined) return `object:${existingId}`;
+    const newId = nextCacheObjectId++;
+    cacheObjectIds.set(value, newId);
+    return `object:${newId}`;
   }
   return String(value);
-}
-
-function cacheFingerprint(value: unknown): string {
-  return createHash("sha256").update(stableSerializeForCache(value)).digest("hex");
 }
 
 function providerSecretCacheKey(
@@ -280,8 +271,8 @@ function providerSecretCacheKey(
   return [
     `provider:${providerId}`,
     `agentDir:${resolvedAgentDir}`,
-    `apiKey:${cacheFingerprint(apiKeyValue)}`,
-    `cfg:${cacheFingerprint(gatewayConfig)}`,
+    `apiKey:${cacheIdentity(apiKeyValue)}`,
+    `cfg:${cacheIdentity(gatewayConfig)}`,
   ].join(":");
 }
 

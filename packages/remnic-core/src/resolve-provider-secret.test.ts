@@ -16,24 +16,25 @@ test("resolveProviderApiKey scopes cached gateway secrets by agent directory", a
     calls.push(String(agentDir));
     return { apiKey: `key:${agentDir}` };
   });
+  const gatewayConfig = {};
 
   try {
     const first = await resolveProviderApiKey(
       "openai",
       "secretref-managed",
-      {},
+      gatewayConfig,
       "/tmp/openclaw-profile-a/agent",
     );
     const second = await resolveProviderApiKey(
       "openai",
       "secretref-managed",
-      {},
+      gatewayConfig,
       "/tmp/openclaw-profile-b/agent",
     );
     const repeatFirst = await resolveProviderApiKey(
       "openai",
       "secretref-managed",
-      {},
+      gatewayConfig,
       "/tmp/openclaw-profile-a/agent",
     );
 
@@ -82,24 +83,26 @@ test("resolveProviderApiKey scopes cached gateway secrets by auth input and conf
     calls.push(profile);
     return { apiKey: `key:${profile}` };
   });
+  const alphaConfig = { profile: "alpha" };
+  const betaConfig = { profile: "beta" };
 
   try {
     const first = await resolveProviderApiKey(
       "openai",
       "secretref-managed",
-      { profile: "alpha" },
+      alphaConfig,
       "/tmp/openclaw-profile-shared/agent",
     );
     const second = await resolveProviderApiKey(
       "openai",
       "secretref-managed",
-      { profile: "beta" },
+      betaConfig,
       "/tmp/openclaw-profile-shared/agent",
     );
     const repeatFirst = await resolveProviderApiKey(
       "openai",
       "secretref-managed",
-      { profile: "alpha" },
+      alphaConfig,
       "/tmp/openclaw-profile-shared/agent",
     );
 
