@@ -572,6 +572,14 @@ export interface PluginConfig {
   qmdTierAutoBackfillEnabled: boolean;
   embeddingFallbackEnabled: boolean;
   embeddingFallbackProvider: "auto" | "openai" | "local";
+  /**
+   * Optional model identifier for local embedding fallback requests.
+   *
+   * Local chat/completion models and local embedding models are often
+   * different LM Studio/Ollama model IDs. When unset, Remnic preserves the
+   * legacy behavior and falls back to `localLlmModel`.
+   */
+  embeddingFallbackModel: string;
   /** Optional absolute path to qmd binary. If unset, PATH/fallback discovery is used. */
   qmdPath?: string;
   memoryDir: string;

@@ -342,7 +342,10 @@ export class EmbeddingFallback {
         }
         return {
           type: "local",
-          model: this.config.localLlmModel || DEFAULT_OPENAI_MODEL,
+          model:
+            this.config.embeddingFallbackModel ||
+            this.config.localLlmModel ||
+            DEFAULT_OPENAI_MODEL,
           endpoint,
           headers,
         };

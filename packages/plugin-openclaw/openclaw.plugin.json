@@ -303,6 +303,10 @@
         "default": "auto",
         "description": "Embedding provider selection for semantic fallback"
       },
+      "embeddingFallbackModel": {
+        "type": "string",
+        "description": "Optional model identifier for embedding fallback requests. Defaults to localLlmModel for legacy installs."
+      },
       "qmdPath": {
         "type": "string",
         "description": "Optional absolute path to qmd binary (bypasses PATH/fallback discovery)"
@@ -4877,6 +4881,12 @@
       "label": "Embedding Provider",
       "advanced": true,
       "placeholder": "auto"
+    },
+    "embeddingFallbackModel": {
+      "label": "Embedding Model",
+      "advanced": true,
+      "placeholder": "(defaults to local LLM model)",
+      "help": "Optional embedding model for semantic fallback. Use this when the local chat model and embedding model are different."
     },
     "qmdPath": {
       "label": "QMD Path",
