@@ -114,6 +114,7 @@
     "test:openclaw-scenarios": "NODE_OPTIONS=\"${NODE_OPTIONS:+$NODE_OPTIONS }--conditions=remnic-source\" pnpm exec tsx --test tests/openclaw-adapter-scenarios.test.ts",
     "test:openclaw-privacy": "NODE_OPTIONS=\"${NODE_OPTIONS:+$NODE_OPTIONS }--conditions=remnic-source\" pnpm exec tsx --test tests/openclaw-hook-privacy.test.ts",
     "test:entity-hardening": "NODE_OPTIONS=\"${NODE_OPTIONS:+$NODE_OPTIONS }--conditions=remnic-source\" tsx --test tests/intent.test.ts tests/recall-no-recall-short-circuit.test.ts tests/orchestrator-path-filter.test.ts tests/artifact-cache.test.ts tests/memory-cache.test.ts tests/entity-retrieval.test.ts tests/entity-synthesis-storage.test.ts tests/entity-synthesis-orchestrator.test.ts tests/config-recall-pipeline.test.ts tests/entity-contamination.test.ts",
+    "test:release-smoke": "pnpm run build && node scripts/check-release-artifacts.mjs",
     "plugin:inspect": "pnpm --filter @remnic/plugin-openclaw run plugin:inspect",
     "plugin:inspect:runtime": "pnpm --filter @remnic/plugin-openclaw run plugin:inspect:runtime",
     "scan:openclaw-plugin": "node scripts/openclaw-plugin-security-scan.mjs packages/plugin-openclaw",
@@ -133,7 +134,7 @@
     "hooks:install": "bash scripts/install-git-hooks.sh",
     "migrate": "NODE_OPTIONS=\"${NODE_OPTIONS:+$NODE_OPTIONS }--conditions=remnic-source\" tsx scripts/migrate.ts",
     "postinstall": "node scripts/ensure-better-sqlite3.mjs",
-    "prepack": "npm run build"
+    "prepack": "pnpm run check-types && pnpm run build"
   },
   "devDependencies": {
     "@openclaw/plugin-inspector": "0.3.10",
