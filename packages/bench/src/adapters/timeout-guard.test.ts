@@ -157,14 +157,24 @@ test("timeout guard removes merged caller abort listeners after successful phase
   const originalAdd = signal.addEventListener.bind(signal);
   const originalRemove = signal.removeEventListener.bind(signal);
   let activeAbortListeners = 0;
-  signal.addEventListener = ((type, listener, options) => {
+  const trackedAdd: AbortSignal["addEventListener"] = (
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ) => {
     if (type === "abort") activeAbortListeners += 1;
     return originalAdd(type, listener, options);
-  }) as AbortSignal["addEventListener"];
-  signal.removeEventListener = ((type, listener, options) => {
+  };
+  const trackedRemove: AbortSignal["removeEventListener"] = (
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions,
+  ) => {
     if (type === "abort") activeAbortListeners -= 1;
     return originalRemove(type, listener, options);
-  }) as AbortSignal["removeEventListener"];
+  };
+  signal.addEventListener = trackedAdd;
+  signal.removeEventListener = trackedRemove;
 
   await guarded.getStats("s", { signal });
   await guarded.getStats("s", { signal });
