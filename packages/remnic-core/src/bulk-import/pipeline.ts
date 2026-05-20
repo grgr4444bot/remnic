@@ -25,8 +25,15 @@ export interface ProcessBatchResult {
   entitiesCreated?: number;
 }
 
+export interface ProcessBatchContext {
+  dedup: boolean;
+  trustLevel: "import";
+  namespace?: string;
+}
+
 export type ProcessBatchFn = (
   turns: ImportTurn[],
+  context: ProcessBatchContext,
 ) => Promise<ProcessBatchResult>;
 
 export function validateBatchSize(value: number | undefined): number {
@@ -47,6 +54,36 @@ export function validateBatchSize(value: number | undefined): number {
     );
   }
   return value;
+}
+
+export function resolveBulkImportContext(
+  options: BulkImportOptions,
+): ProcessBatchContext {
+  if (options.dedup !== undefined && typeof options.dedup !== "boolean") {
+    throw new Error(
+      `dedup must be a boolean when provided, received ${String(options.dedup)}`,
+    );
+  }
+  if (options.trustLevel !== undefined && options.trustLevel !== "import") {
+    throw new Error(
+      `trustLevel must be 'import' when provided, received ${String(options.trustLevel)}`,
+    );
+  }
+  if (options.namespace !== undefined) {
+    if (typeof options.namespace !== "string" || options.namespace.trim().length === 0) {
+      throw new Error(
+        `namespace must be a non-empty string when provided, received ${String(options.namespace)}`,
+      );
+    }
+  }
+
+  return {
+    dedup: options.dedup !== false,
+    trustLevel: options.trustLevel ?? "import",
+    ...(options.namespace !== undefined
+      ? { namespace: options.namespace }
+      : {}),
+  };
 }
 
 /**
@@ -75,6 +112,7 @@ export async function runBulkImportPipeline(
 ): Promise<BulkImportResult> {
   const batchSize = validateBatchSize(options.batchSize);
   const dryRun = options.dryRun === true;
+  const batchContext = resolveBulkImportContext(options);
 
   const result: BulkImportResult = {
     memoriesCreated: 0,
@@ -120,7 +158,7 @@ export async function runBulkImportPipeline(
   for (let i = 0; i < validTurns.length; i += batchSize) {
     const batch = validTurns.slice(i, i + batchSize);
     try {
-      const batchResult = await processBatch(batch);
+      const batchResult = await processBatch(batch, batchContext);
       result.memoriesCreated += batchResult.memoriesCreated;
       result.duplicatesSkipped += batchResult.duplicatesSkipped;
       if (typeof batchResult.entitiesCreated === "number") {

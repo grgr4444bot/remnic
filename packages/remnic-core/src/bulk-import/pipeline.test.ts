@@ -4,7 +4,9 @@ import { describe, it } from "node:test";
 import {
   runBulkImportPipeline,
   formatBatchTranscript,
+  resolveBulkImportContext,
   validateBatchSize,
+  type ProcessBatchContext,
   type ProcessBatchFn,
 } from "./pipeline.js";
 import type {
@@ -49,13 +51,16 @@ function makeSource(
 function trackingProcessBatch(): {
   fn: ProcessBatchFn;
   calls: ImportTurn[][];
+  contexts: ProcessBatchContext[];
 } {
   const calls: ImportTurn[][] = [];
-  const fn: ProcessBatchFn = async (turns) => {
+  const contexts: ProcessBatchContext[] = [];
+  const fn: ProcessBatchFn = async (turns, context) => {
     calls.push([...turns]);
+    contexts.push(context);
     return { memoriesCreated: turns.length, duplicatesSkipped: 0 };
   };
-  return { fn, calls };
+  return { fn, calls, contexts };
 }
 
 describe("runBulkImportPipeline", () => {
@@ -117,6 +122,50 @@ describe("runBulkImportPipeline", () => {
     assert.equal(calls.length, 2); // 20 + 5
     assert.equal(calls[0].length, 20);
     assert.equal(calls[1].length, 5);
+  });
+
+  it("passes effective import options to every processBatch call", async () => {
+    const source = makeSource(5);
+    const { fn, contexts } = trackingProcessBatch();
+    await runBulkImportPipeline(
+      source,
+      {
+        batchSize: 2,
+        dedup: false,
+        trustLevel: "import",
+        namespace: "tenant-a",
+      },
+      fn,
+    );
+
+    assert.deepEqual(contexts, [
+      { dedup: false, trustLevel: "import", namespace: "tenant-a" },
+      { dedup: false, trustLevel: "import", namespace: "tenant-a" },
+      { dedup: false, trustLevel: "import", namespace: "tenant-a" },
+    ]);
+  });
+
+  it("uses explicit defaults for omitted import options", async () => {
+    const source = makeSource(1);
+    const { fn, contexts } = trackingProcessBatch();
+    await runBulkImportPipeline(source, {}, fn);
+
+    assert.deepEqual(contexts, [{ dedup: true, trustLevel: "import" }]);
+  });
+
+  it("validates no-op import option values before processing", () => {
+    assert.throws(
+      () => resolveBulkImportContext({ dedup: "false" as unknown as boolean }),
+      /dedup must be a boolean/,
+    );
+    assert.throws(
+      () => resolveBulkImportContext({ namespace: "" }),
+      /namespace must be a non-empty string/,
+    );
+    assert.throws(
+      () => resolveBulkImportContext({ trustLevel: "local" as "import" }),
+      /trustLevel must be 'import'/,
+    );
   });
 
   it("collects errors from processBatch in result.errors", async () => {
