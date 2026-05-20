@@ -84,11 +84,11 @@ function extractClaims(
 
 /**
  * Build the cited source content for a claim by resolving its page's seeAlso
- * references against the fixture file map. Falls back to a basename match if
- * no seeAlso entry resolves directly, and falls back to all sources only if
- * no narrower match is available. This prevents a misattributed citation from
- * scoring as valid just because the claim is supported somewhere else in the
- * merged corpus.
+ * references against the fixture file map. Non-empty unresolved seeAlso values
+ * are treated as unresolved citation metadata rather than as permission to
+ * search the full fixture corpus. Empty citation metadata still falls back to a
+ * basename match and then to all sources for legacy adapters that do not expose
+ * source references yet.
  */
 function resolveCitedSources(
   seeAlso: string[],
@@ -113,6 +113,10 @@ function resolveCitedSources(
 
   if (resolved.length > 0) {
     return resolved.join("\n\n---\n\n");
+  }
+
+  if (seeAlso.length > 0) {
+    return "";
   }
 
   // Fall back to a source whose basename matches the page path
