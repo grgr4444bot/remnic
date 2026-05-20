@@ -16,24 +16,25 @@ test("resolveProviderApiKey scopes cached gateway secrets by agent directory", a
     calls.push(String(agentDir));
     return { apiKey: `key:${agentDir}` };
   });
+  const gatewayConfig = {};
 
   try {
     const first = await resolveProviderApiKey(
       "openai",
       "secretref-managed",
-      {},
+      gatewayConfig,
       "/tmp/openclaw-profile-a/agent",
     );
     const second = await resolveProviderApiKey(
       "openai",
       "secretref-managed",
-      {},
+      gatewayConfig,
       "/tmp/openclaw-profile-b/agent",
     );
     const repeatFirst = await resolveProviderApiKey(
       "openai",
       "secretref-managed",
-      {},
+      gatewayConfig,
       "/tmp/openclaw-profile-a/agent",
     );
 
@@ -44,6 +45,71 @@ test("resolveProviderApiKey scopes cached gateway secrets by agent directory", a
       "/tmp/openclaw-profile-a/agent",
       "/tmp/openclaw-profile-b/agent",
     ]);
+  } finally {
+    clearSecretCache();
+  }
+});
+
+test("resolveProviderApiKey does not reuse cached literal keys for different inputs", async () => {
+  clearSecretCache();
+
+  try {
+    const first = await resolveProviderApiKey(
+      "openai",
+      "sk-first",
+      {},
+      "/tmp/openclaw-profile-literals/agent",
+    );
+    const second = await resolveProviderApiKey(
+      "openai",
+      "sk-second",
+      {},
+      "/tmp/openclaw-profile-literals/agent",
+    );
+
+    assert.equal(first, "sk-first");
+    assert.equal(second, "sk-second");
+  } finally {
+    clearSecretCache();
+  }
+});
+
+test("resolveProviderApiKey scopes cached gateway secrets by auth input and config", async () => {
+  clearSecretCache();
+
+  const calls: string[] = [];
+  __setGatewayResolverForTest(async ({ cfg }) => {
+    const profile = (cfg as { profile?: string } | undefined)?.profile ?? "unknown";
+    calls.push(profile);
+    return { apiKey: `key:${profile}` };
+  });
+  const alphaConfig = { profile: "alpha" };
+  const betaConfig = { profile: "beta" };
+
+  try {
+    const first = await resolveProviderApiKey(
+      "openai",
+      "secretref-managed",
+      alphaConfig,
+      "/tmp/openclaw-profile-shared/agent",
+    );
+    const second = await resolveProviderApiKey(
+      "openai",
+      "secretref-managed",
+      betaConfig,
+      "/tmp/openclaw-profile-shared/agent",
+    );
+    const repeatFirst = await resolveProviderApiKey(
+      "openai",
+      "secretref-managed",
+      alphaConfig,
+      "/tmp/openclaw-profile-shared/agent",
+    );
+
+    assert.equal(first, "key:alpha");
+    assert.equal(second, "key:beta");
+    assert.equal(repeatFirst, first);
+    assert.deepEqual(calls, ["alpha", "beta"]);
   } finally {
     clearSecretCache();
   }

@@ -45,6 +45,8 @@ let _resolverLoaded = false;
 let _resolverNextRetryAt = 0;
 const RESOLVER_RETRY_BACKOFF_MS = 60_000; // 1 minute between retries after first failure
 const resolvedCache = new Map<string, string | undefined>();
+const cacheObjectIds = new WeakMap<object, number>();
+let nextCacheObjectId = 1;
 const NON_LITERAL_AUTH_MARKERS = new Set([
   "secretref-managed",
   "lm-studio",
@@ -242,6 +244,38 @@ function resolveFromNamedEnvVar(marker: string): string | undefined {
   return value && value.trim().length > 0 ? value.trim() : undefined;
 }
 
+function cacheIdentity(value: unknown): string {
+  if (value === null) return "null";
+  if (value === undefined) return "undefined";
+  if (typeof value === "string") return `string:${value}`;
+  if (typeof value === "number") return `number:${String(value)}`;
+  if (typeof value === "boolean") return `boolean:${String(value)}`;
+  if (typeof value === "bigint") return `bigint:${String(value)}`;
+  if (typeof value === "symbol" || typeof value === "function") return typeof value;
+  if (typeof value === "object") {
+    const existingId = cacheObjectIds.get(value);
+    if (existingId !== undefined) return `object:${existingId}`;
+    const newId = nextCacheObjectId++;
+    cacheObjectIds.set(value, newId);
+    return `object:${newId}`;
+  }
+  return String(value);
+}
+
+function providerSecretCacheKey(
+  providerId: string,
+  resolvedAgentDir: string,
+  apiKeyValue: unknown,
+  gatewayConfig: unknown,
+): string {
+  return [
+    `provider:${providerId}`,
+    `agentDir:${resolvedAgentDir}`,
+    `apiKey:${cacheIdentity(apiKeyValue)}`,
+    `cfg:${cacheIdentity(gatewayConfig)}`,
+  ].join(":");
+}
+
 /**
  * Resolve a provider API key from various OpenClaw formats.
  *
@@ -261,12 +295,6 @@ export async function resolveProviderApiKey(
     agentDir ?? path.join(os.homedir(), ".openclaw", "agents", "main", "agent"),
   );
 
-  // Check cache first
-  const cacheKey = `provider:${providerId}:agentDir:${resolvedAgentDir}`;
-  if (resolvedCache.has(cacheKey)) {
-    return resolvedCache.get(cacheKey);
-  }
-
   let resolved: string | undefined;
 
   // Fast path: plain-text string that looks like an actual API key
@@ -277,16 +305,17 @@ export async function resolveProviderApiKey(
     if (isNonLiteralAuthMarker(trimmedApiKeyValue)) {
       const markerEnvValue = resolveFromNamedEnvVar(trimmedApiKeyValue);
       if (markerEnvValue) {
-        resolved = markerEnvValue;
-        resolvedCache.set(cacheKey, resolved);
-        return resolved;
+        return markerEnvValue;
       }
       // Fall through to gateway resolver / env var fallback
     } else {
-      resolved = trimmedApiKeyValue;
-      resolvedCache.set(cacheKey, resolved);
-      return resolved;
+      return trimmedApiKeyValue;
     }
+  }
+
+  const cacheKey = providerSecretCacheKey(providerId, resolvedAgentDir, apiKeyValue, gatewayConfig);
+  if (resolvedCache.has(cacheKey)) {
+    return resolvedCache.get(cacheKey);
   }
 
   // The API key is either a SecretRef object, "secretref-managed", or empty.
