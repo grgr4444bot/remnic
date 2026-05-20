@@ -1253,6 +1253,10 @@ export function parseConfig(raw: unknown): PluginConfig {
         : cfg.embeddingFallbackProvider === "local"
           ? "local"
           : "auto",
+    embeddingFallbackModel:
+      typeof cfg.embeddingFallbackModel === "string" && cfg.embeddingFallbackModel.length > 0
+        ? cfg.embeddingFallbackModel
+        : "",
     qmdPath:
       typeof cfg.qmdPath === "string" && cfg.qmdPath.length > 0
         ? cfg.qmdPath

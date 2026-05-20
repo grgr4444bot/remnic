@@ -138,6 +138,21 @@ test("parseConfig modelSource=gateway still honors an explicit openaiApiKey over
   }
 });
 
+test("parseConfig separates local chat and embedding fallback models", () => {
+  const cfg = parseConfig({
+    localLlmEnabled: true,
+    localLlmModel: "google/gemma-4-26b-a4b",
+    embeddingFallbackProvider: "local",
+    embeddingFallbackModel: "text-embedding-nomic-embed-text-v1.5@q4_k_m",
+  });
+
+  assert.equal(cfg.localLlmModel, "google/gemma-4-26b-a4b");
+  assert.equal(
+    cfg.embeddingFallbackModel,
+    "text-embedding-nomic-embed-text-v1.5@q4_k_m",
+  );
+});
+
 test("parseConfig openaiApiKey=false disables implicit OPENAI_API_KEY inheritance", () => {
   const original = process.env.OPENAI_API_KEY;
   process.env.OPENAI_API_KEY = "sk-env-should-not-be-used";
