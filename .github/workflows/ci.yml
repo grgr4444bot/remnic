@@ -101,3 +101,6 @@ jobs:
 
       - name: Build
         run: pnpm run build
+
+      - name: Release artifact smoke test
+        run: node scripts/check-release-artifacts.mjs

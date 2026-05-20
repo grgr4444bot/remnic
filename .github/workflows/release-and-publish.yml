@@ -61,6 +61,7 @@ jobs:
           pnpm run check-types
           pnpm test
           pnpm run build
+          node scripts/check-release-artifacts.mjs
 
       - name: Configure git identity
         run: |
@@ -322,7 +323,12 @@ jobs:
         run: pnpm rebuild better-sqlite3
 
       - name: Build all packages
-        run: pnpm -r run build
+        run: |
+          pnpm -r run build
+          pnpm run build
+
+      - name: Verify root release artifacts
+        run: node scripts/check-release-artifacts.mjs
 
       - name: Verify OpenClaw ClawHub artifact packlist
         run: pnpm run verify:openclaw-clawpack
