@@ -67,6 +67,18 @@ export interface ReviewOptions {
   confidenceThreshold?: number;
 }
 
+export interface ReviewActionOptions {
+  /** Match the threshold used when listing review items (default: 0.7) */
+  confidenceThreshold?: number;
+}
+
+interface ReviewFileMatch {
+  filePath: string;
+  location: "queue" | "category";
+}
+
+const DEFAULT_CONFIDENCE_THRESHOLD = 0.7;
+
 // ── Main functions ───────────────────────────────────────────────────────────
 
 /**
@@ -78,7 +90,7 @@ export function listReviewItems(options: ReviewOptions): ReviewListResult {
     memoryDir,
     reason: filterReason,
     limit = 50,
-    confidenceThreshold = 0.7,
+    confidenceThreshold = DEFAULT_CONFIDENCE_THRESHOLD,
   } = options;
 
   const items: ReviewItem[] = [];
@@ -154,6 +166,7 @@ export function listReviewItems(options: ReviewOptions): ReviewListResult {
 
       const confidence = parseConfidence(fm.confidence, 1);
       if (confidence >= confidenceThreshold) return;
+      if (parseBoolean(fm.reviewDismissed)) return;
 
       // Skip if already in items
       if (items.some((i) => i.id === fm.id)) return;
@@ -186,110 +199,183 @@ export function performReview(
   memoryDir: string,
   itemId: string,
   action: ReviewAction,
+  options: ReviewActionOptions = {},
 ): ReviewResult {
   switch (action) {
     case "approve":
-      return approveItem(memoryDir, itemId);
+      return approveItem(memoryDir, itemId, options);
     case "dismiss":
-      return dismissItem(memoryDir, itemId);
+      return dismissItem(memoryDir, itemId, options);
     case "flag":
-      return flagItem(memoryDir, itemId);
+      return flagItem(memoryDir, itemId, options);
   }
 }
 
 // ── Actions ──────────────────────────────────────────────────────────────────
 
-function approveItem(memoryDir: string, itemId: string): ReviewResult {
-  // Find the item in suggestions/ or review/
-  const locations = ["suggestions", "review"];
-  for (const loc of locations) {
-    const dir = path.join(memoryDir, loc);
-    if (!fs.existsSync(dir)) continue;
+function approveItem(
+  memoryDir: string,
+  itemId: string,
+  options: ReviewActionOptions,
+): ReviewResult {
+  const found = findReviewFileById(memoryDir, itemId, options);
+  if (!found) {
+    return { itemId, action: "approve", message: "Item not found" };
+  }
 
-    const found = findFileById(dir, itemId);
-    if (!found) continue;
+  const content = fs.readFileSync(found.filePath, "utf8");
+  const fm = parseFrontmatter(content);
+  if (!fm) return { itemId, action: "approve", message: "Could not parse frontmatter" };
 
-    const content = fs.readFileSync(found, "utf8");
-    const fm = parseFrontmatter(content);
-    if (!fm) return { itemId, action: "approve", message: "Could not parse frontmatter" };
+  const updatedContent = updateFrontmatterFields(content, {
+    confidence: "0.9",
+    confidenceTier: "high",
+    reviewDismissed: null,
+  });
 
-    // Promote to facts/ with boosted confidence
-    const category = (fm.category as string) ?? "fact";
-    const targetDir = getCategoryDir(memoryDir, category);
-    const dateDir = new Date().toISOString().split("T")[0];
-    const outputPath = path.join(targetDir, dateDir, path.basename(found));
-
-    // Update confidence in content
-    const updatedContent = content
-      .replace(/confidence: [\d.]+/, "confidence: 0.9")
-      .replace(/confidenceTier: \w+/, "confidenceTier: high");
-
-    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-    const promotedPath = writeFileWithoutClobber(outputPath, updatedContent, itemId);
-
-    // Remove from review
-    fs.unlinkSync(found);
-
+  if (found.location === "category") {
+    fs.writeFileSync(found.filePath, updatedContent, "utf8");
     return {
       itemId,
       action: "approve",
-      updatedPath: promotedPath,
-      message: `Promoted to ${category} with confidence 0.9`,
+      updatedPath: found.filePath,
+      message: "Approved low-confidence memory in place with confidence 0.9",
     };
   }
 
-  return { itemId, action: "approve", message: "Item not found" };
+  // Promote queued suggestions/review items to their category directory.
+  const category = (fm.category as string) ?? "fact";
+  const targetDir = getCategoryDir(memoryDir, category);
+  const dateDir = new Date().toISOString().split("T")[0];
+  const outputPath = path.join(targetDir, dateDir, path.basename(found.filePath));
+
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  const promotedPath = writeFileWithoutClobber(outputPath, updatedContent, itemId);
+
+  // Remove from review
+  fs.unlinkSync(found.filePath);
+
+  return {
+    itemId,
+    action: "approve",
+    updatedPath: promotedPath,
+    message: `Promoted to ${category} with confidence 0.9`,
+  };
 }
 
-function dismissItem(memoryDir: string, itemId: string): ReviewResult {
-  const locations = ["suggestions", "review"];
-  for (const loc of locations) {
-    const dir = path.join(memoryDir, loc);
-    if (!fs.existsSync(dir)) continue;
-
-    const found = findFileById(dir, itemId);
-    if (found) {
-      fs.unlinkSync(found);
-      return { itemId, action: "dismiss", message: "Dismissed and removed" };
-    }
+function dismissItem(
+  memoryDir: string,
+  itemId: string,
+  options: ReviewActionOptions,
+): ReviewResult {
+  const found = findReviewFileById(memoryDir, itemId, options);
+  if (!found) {
+    return { itemId, action: "dismiss", message: "Item not found" };
   }
 
-  return { itemId, action: "dismiss", message: "Item not found" };
+  if (found.location === "queue") {
+    fs.unlinkSync(found.filePath);
+    return { itemId, action: "dismiss", message: "Dismissed and removed" };
+  }
+
+  const content = fs.readFileSync(found.filePath, "utf8");
+  fs.writeFileSync(
+    found.filePath,
+    updateFrontmatterFields(content, {
+      reviewDismissed: "true",
+      reviewDismissedAt: new Date().toISOString(),
+    }),
+    "utf8",
+  );
+  return {
+    itemId,
+    action: "dismiss",
+    updatedPath: found.filePath,
+    message: "Dismissed low-confidence memory in place",
+  };
 }
 
-function flagItem(memoryDir: string, itemId: string): ReviewResult {
-  const locations = ["suggestions", "review"];
-  for (const loc of locations) {
-    const dir = path.join(memoryDir, loc);
-    if (!fs.existsSync(dir)) continue;
-
-    const found = findFileById(dir, itemId);
-    if (found) {
-      // Add flagged marker to frontmatter
-      const content = fs.readFileSync(found, "utf8");
-      const fixed = content.replace(
-        /^(---\n)/,
-        `---\nflagged: true\nflaggedAt: ${new Date().toISOString()}\n`,
-      );
-      fs.writeFileSync(found, fixed);
-      return { itemId, action: "flag", message: "Flagged for further review" };
-    }
+function flagItem(
+  memoryDir: string,
+  itemId: string,
+  options: ReviewActionOptions,
+): ReviewResult {
+  const found = findReviewFileById(memoryDir, itemId, options);
+  if (!found) {
+    return { itemId, action: "flag", message: "Item not found" };
   }
 
-  return { itemId, action: "flag", message: "Item not found" };
+  const content = fs.readFileSync(found.filePath, "utf8");
+  const fixed = updateFrontmatterFields(content, {
+    flagged: "true",
+    flaggedAt: new Date().toISOString(),
+  });
+  fs.writeFileSync(found.filePath, fixed);
+  return {
+    itemId,
+    action: "flag",
+    updatedPath: found.filePath,
+    message: "Flagged for further review",
+  };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function findFileById(dir: string, id: string): string | null {
+function findReviewFileById(
+  memoryDir: string,
+  id: string,
+  options: ReviewActionOptions = {},
+): ReviewFileMatch | null {
+  for (const loc of ["suggestions", "review"]) {
+    const dir = path.join(memoryDir, loc);
+    if (!fs.existsSync(dir)) continue;
+
+    const found = findFileById(dir, id);
+    if (found) return { filePath: found, location: "queue" };
+  }
+
+  for (const category of ALL_CATEGORY_DIRS) {
+    const dir = path.join(memoryDir, category);
+    if (!fs.existsSync(dir)) continue;
+
+    const found = findFileById(dir, id, (fm) => isLowConfidenceReviewCandidate(fm, options));
+    if (found) return { filePath: found, location: "category" };
+  }
+
+  return null;
+}
+
+function findFileById(
+  dir: string,
+  id: string,
+  include?: (frontmatter: Record<string, unknown>) => boolean,
+): string | null {
   const files = walkMdPaths(dir);
   for (const filePath of files) {
     const content = readFileSafe(filePath);
     if (!content) continue;
     const fm = parseFrontmatter(content);
-    if (fm?.id === id) return filePath;
+    if (fm?.id === id && (!include || include(fm))) return filePath;
   }
   return null;
+}
+
+function isLowConfidenceReviewCandidate(
+  fm: Record<string, unknown>,
+  options: ReviewActionOptions,
+): boolean {
+  const threshold = options.confidenceThreshold ?? DEFAULT_CONFIDENCE_THRESHOLD;
+  return (
+    parseConfidence(fm.confidence, 1) < threshold &&
+    !parseBoolean(fm.reviewDismissed)
+  );
+}
+
+function parseBoolean(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value !== "string") return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "true" || normalized === "1" || normalized === "yes";
 }
 
 function parseConfidence(value: unknown, fallback: number): number {
@@ -299,6 +385,43 @@ function parseConfidence(value: unknown, fallback: number): number {
     return Number.isFinite(n) ? n : fallback;
   }
   return fallback;
+}
+
+function updateFrontmatterFields(
+  content: string,
+  fields: Record<string, string | null>,
+): string {
+  const match = content.match(/^(---\n)([\s\S]*?)(\n---(?:\n|$))/);
+  if (!match) return content;
+
+  const seen = new Set<string>();
+  const lines = match[2].split("\n");
+  const nextLines: string[] = [];
+  for (const line of lines) {
+    const colonIdx = line.indexOf(":");
+    if (colonIdx === -1) {
+      nextLines.push(line);
+      continue;
+    }
+    const key = line.slice(0, colonIdx).trim();
+    if (!Object.prototype.hasOwnProperty.call(fields, key)) {
+      nextLines.push(line);
+      continue;
+    }
+    seen.add(key);
+    const value = fields[key];
+    if (value !== null) {
+      nextLines.push(`${key}: ${value}`);
+    }
+  }
+
+  for (const [key, value] of Object.entries(fields)) {
+    if (value !== null && !seen.has(key)) {
+      nextLines.push(`${key}: ${value}`);
+    }
+  }
+
+  return `${match[1]}${nextLines.join("\n")}${match[3]}${content.slice(match[0].length)}`;
 }
 
 function readFileSafe(filePath: string): string | null {

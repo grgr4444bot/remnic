@@ -48,6 +48,117 @@ test("listReviewItems applies reason filtering before enforcing the limit", asyn
   assert.equal(result.total, 1);
 });
 
+test("flag updates low-confidence category items returned by listReviewItems", async (t) => {
+  const memoryDir = await makeMemoryDir(t);
+  const factsDir = path.join(memoryDir, "facts", "2026-05-17");
+  await mkdir(factsDir, { recursive: true });
+  const memoryPath = path.join(factsDir, "low.md");
+  await writeFile(memoryPath, reviewMarkdown("low-category-flag"), "utf8");
+
+  assert.deepEqual(
+    listReviewItems({ memoryDir }).items.map((item) => item.id),
+    ["low-category-flag"],
+  );
+
+  const result = performReview(memoryDir, "low-category-flag", "flag");
+
+  assert.equal(result.updatedPath, memoryPath);
+  const updated = await readFile(memoryPath, "utf8");
+  assert.match(updated, /flagged: true/);
+  assert.match(updated, /flaggedAt: /);
+});
+
+test("approve raises low-confidence category item confidence in place", async (t) => {
+  const memoryDir = await makeMemoryDir(t);
+  const factsDir = path.join(memoryDir, "facts", "2026-05-17");
+  await mkdir(factsDir, { recursive: true });
+  const memoryPath = path.join(factsDir, "low.md");
+  await writeFile(memoryPath, reviewMarkdown("low-category-approve"), "utf8");
+
+  const result = performReview(memoryDir, "low-category-approve", "approve");
+
+  assert.equal(result.updatedPath, memoryPath);
+  const updated = await readFile(memoryPath, "utf8");
+  assert.match(updated, /confidence: 0\.9/);
+  assert.match(updated, /confidenceTier: high/);
+  assert.equal(listReviewItems({ memoryDir }).items.some((item) => item.id === "low-category-approve"), false);
+});
+
+test("dismiss marks low-confidence category items without deleting memory files", async (t) => {
+  const memoryDir = await makeMemoryDir(t);
+  const factsDir = path.join(memoryDir, "facts", "2026-05-17");
+  await mkdir(factsDir, { recursive: true });
+  const memoryPath = path.join(factsDir, "low.md");
+  await writeFile(memoryPath, reviewMarkdown("low-category-dismiss"), "utf8");
+
+  const result = performReview(memoryDir, "low-category-dismiss", "dismiss");
+
+  assert.equal(result.updatedPath, memoryPath);
+  await stat(memoryPath);
+  const updated = await readFile(memoryPath, "utf8");
+  assert.match(updated, /reviewDismissed: true/);
+  assert.equal(listReviewItems({ memoryDir }).items.some((item) => item.id === "low-category-dismiss"), false);
+});
+
+test("review actions do not mutate category memories that are not pending review", async (t) => {
+  const memoryDir = await makeMemoryDir(t);
+  const factsDir = path.join(memoryDir, "facts", "2026-05-17");
+  await mkdir(factsDir, { recursive: true });
+  const memoryPath = path.join(factsDir, "high.md");
+  const original = `---
+id: high-category
+category: fact
+confidence: 0.98
+confidenceTier: high
+source: test
+created: 2026-05-17T00:00:00.000Z
+---
+Reviewed memory.`;
+  await writeFile(memoryPath, original, "utf8");
+
+  assert.deepEqual(listReviewItems({ memoryDir }).items, []);
+
+  const result = performReview(memoryDir, "high-category", "approve");
+
+  assert.equal(result.message, "Item not found");
+  assert.equal(await readFile(memoryPath, "utf8"), original);
+});
+
+test("review actions can use the same custom confidence threshold as listReviewItems", async (t) => {
+  const memoryDir = await makeMemoryDir(t);
+  const factsDir = path.join(memoryDir, "facts", "2026-05-17");
+  await mkdir(factsDir, { recursive: true });
+  const memoryPath = path.join(factsDir, "medium.md");
+  await writeFile(
+    memoryPath,
+    `---
+id: medium-category
+category: fact
+confidence: 0.82
+confidenceTier: medium
+source: test
+created: 2026-05-17T00:00:00.000Z
+---
+Medium confidence memory.`,
+    "utf8",
+  );
+
+  assert.deepEqual(
+    listReviewItems({ memoryDir, confidenceThreshold: 0.9 }).items.map((item) => item.id),
+    ["medium-category"],
+  );
+  assert.equal(performReview(memoryDir, "medium-category", "approve").message, "Item not found");
+
+  const result = performReview(memoryDir, "medium-category", "approve", {
+    confidenceThreshold: 0.9,
+  });
+
+  assert.equal(result.updatedPath, memoryPath);
+  const updated = await readFile(memoryPath, "utf8");
+  assert.match(updated, /confidence: 0\.9/);
+  assert.match(updated, /confidenceTier: high/);
+});
+
 test("approve promotes to the source basename when no target exists", async (t) => {
   const memoryDir = await makeMemoryDir(t);
   const reviewDir = path.join(memoryDir, "review");
