@@ -1,6 +1,7 @@
 import type {
   BenchJudge,
   BenchMemoryAdapter,
+  BenchPhaseControl,
   BenchRecallOptions,
   BenchResponder,
   MemoryStats,
@@ -88,12 +89,16 @@ export function createTimeoutGuardedAdapter(
   };
 
   const wrapped: BenchMemoryAdapter = {
-    store(sessionId: string, messages: Message[]): Promise<void> {
+    store(
+      sessionId: string,
+      messages: Message[],
+      control?: BenchPhaseControl,
+    ): Promise<void> {
       if (phaseTimeoutMs === undefined) {
-        return adapter.store(sessionId, messages);
+        return adapter.store(sessionId, messages, control);
       }
       return run(`store session=${sessionId} messages=${messages.length}`, (signal) =>
-        adapter.store(sessionId, messages, { signal }),
+        adapter.store(sessionId, messages, mergeBenchPhaseControl(signal, control)),
       );
     },
     recall(
@@ -101,40 +106,48 @@ export function createTimeoutGuardedAdapter(
       query: string,
       budgetChars?: number,
       recallOptions?: BenchRecallOptions,
+      control?: BenchPhaseControl,
     ): Promise<string> {
       if (phaseTimeoutMs === undefined) {
-        return adapter.recall(sessionId, query, budgetChars, recallOptions);
+        return adapter.recall(sessionId, query, budgetChars, recallOptions, control);
       }
       return run(`recall session=${sessionId}`, (signal) =>
-        adapter.recall(sessionId, query, budgetChars, recallOptions, { signal }),
+        adapter.recall(
+          sessionId,
+          query,
+          budgetChars,
+          recallOptions,
+          mergeBenchPhaseControl(signal, control),
+        ),
       );
     },
     search(
       query: string,
       limit: number,
       sessionId?: string,
+      control?: BenchPhaseControl,
     ): Promise<SearchResult[]> {
       if (phaseTimeoutMs === undefined) {
-        return adapter.search(query, limit, sessionId);
+        return adapter.search(query, limit, sessionId, control);
       }
       return run(`search session=${sessionId ?? "all"} limit=${limit}`, (signal) =>
-        adapter.search(query, limit, sessionId, { signal }),
+        adapter.search(query, limit, sessionId, mergeBenchPhaseControl(signal, control)),
       );
     },
-    reset(sessionId?: string): Promise<void> {
+    reset(sessionId?: string, control?: BenchPhaseControl): Promise<void> {
       if (phaseTimeoutMs === undefined) {
-        return adapter.reset(sessionId);
+        return adapter.reset(sessionId, control);
       }
       return run(`reset session=${sessionId ?? "all"}`, (signal) =>
-        adapter.reset(sessionId, { signal }),
+        adapter.reset(sessionId, mergeBenchPhaseControl(signal, control)),
       );
     },
-    getStats(sessionId?: string): Promise<MemoryStats> {
+    getStats(sessionId?: string, control?: BenchPhaseControl): Promise<MemoryStats> {
       if (phaseTimeoutMs === undefined) {
-        return adapter.getStats(sessionId);
+        return adapter.getStats(sessionId, control);
       }
       return run(`stats session=${sessionId ?? "all"}`, (signal) =>
-        adapter.getStats(sessionId, { signal }),
+        adapter.getStats(sessionId, mergeBenchPhaseControl(signal, control)),
       );
     },
     destroy(): Promise<void> {
@@ -143,10 +156,14 @@ export function createTimeoutGuardedAdapter(
   };
 
   if (adapter.drain) {
-    wrapped.drain = (): Promise<void> =>
+    wrapped.drain = (control?: BenchPhaseControl): Promise<void> =>
       drainTimeoutMs === undefined
-        ? adapter.drain!()
-        : run("drain", (signal) => adapter.drain!({ signal }), drainTimeoutMs);
+        ? adapter.drain!(control)
+        : run(
+          "drain",
+          (signal) => adapter.drain!(mergeBenchPhaseControl(signal, control)),
+          drainTimeoutMs,
+        );
   }
   if (adapter.responder) {
     wrapped.responder =
@@ -160,6 +177,40 @@ export function createTimeoutGuardedAdapter(
   }
 
   return wrapped;
+}
+
+function mergeBenchPhaseControl(
+  timeoutSignal: AbortSignal,
+  callerControl: BenchPhaseControl | undefined,
+): BenchPhaseControl {
+  const signal = mergeAbortSignals(timeoutSignal, callerControl?.signal);
+  return signal === undefined ? {} : { signal };
+}
+
+function mergeAbortSignals(
+  timeoutSignal: AbortSignal,
+  callerSignal: AbortSignal | undefined,
+): AbortSignal | undefined {
+  if (!callerSignal) return timeoutSignal;
+  if (timeoutSignal.aborted) return timeoutSignal;
+  if (callerSignal.aborted) {
+    return AbortSignal.abort(callerSignal.reason);
+  }
+
+  const controller = new AbortController();
+  const abortFromTimeout = () => controller.abort(timeoutSignal.reason);
+  const abortFromCaller = () => controller.abort(callerSignal.reason);
+  timeoutSignal.addEventListener("abort", abortFromTimeout, { once: true });
+  callerSignal.addEventListener("abort", abortFromCaller, { once: true });
+  controller.signal.addEventListener(
+    "abort",
+    () => {
+      timeoutSignal.removeEventListener("abort", abortFromTimeout);
+      callerSignal.removeEventListener("abort", abortFromCaller);
+    },
+    { once: true },
+  );
+  return controller.signal;
 }
 
 export function createTimeoutGuardedIngestionAdapter(
@@ -233,9 +284,9 @@ function wrapResponder(
   run: <T>(phase: string, fn: (signal: AbortSignal) => Promise<T>) => Promise<T>,
 ): BenchResponder {
   return {
-    respond(question, recalledText) {
+    respond(question, recalledText, control) {
       return run("respond", (signal) =>
-        responder.respond(question, recalledText, { signal }),
+        responder.respond(question, recalledText, mergeBenchPhaseControl(signal, control)),
       );
     },
   };
@@ -246,24 +297,29 @@ function wrapJudge(
   run: <T>(phase: string, fn: (signal: AbortSignal) => Promise<T>) => Promise<T>,
 ): BenchJudge {
   const wrapped: BenchJudge = {
-    score(question, predicted, expected) {
+    score(question, predicted, expected, control) {
       return run("judge.score", (signal) =>
-        judge.score(question, predicted, expected, { signal }),
+        judge.score(question, predicted, expected, mergeBenchPhaseControl(signal, control)),
       );
     },
   };
 
   if (judge.scoreWithMetrics) {
-    wrapped.scoreWithMetrics = (question, predicted, expected) =>
+    wrapped.scoreWithMetrics = (question, predicted, expected, control) =>
       run("judge.scoreWithMetrics", (signal) =>
-        judge.scoreWithMetrics!(question, predicted, expected, { signal }),
+        judge.scoreWithMetrics!(
+          question,
+          predicted,
+          expected,
+          mergeBenchPhaseControl(signal, control),
+        ),
       );
   }
 
   if (judge.scoreBinaryPrompt) {
-    wrapped.scoreBinaryPrompt = (prompt) =>
+    wrapped.scoreBinaryPrompt = (prompt, control) =>
       run("judge.scoreBinaryPrompt", (signal) =>
-        judge.scoreBinaryPrompt!(prompt, { signal }),
+        judge.scoreBinaryPrompt!(prompt, mergeBenchPhaseControl(signal, control)),
       );
   }
 
