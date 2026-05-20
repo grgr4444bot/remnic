@@ -146,6 +146,32 @@ test("timeout guard merges caller abort signal with phase timeout signal", async
   assert.equal(sawAbort, true);
 });
 
+test("timeout guard removes merged caller abort listeners after successful phases", async () => {
+  const adapter = makeAdapter();
+  const guarded = createTimeoutGuardedAdapter(adapter, {
+    benchmarkId: "timeout-test",
+    timeoutMs: 100,
+  });
+  const controller = new AbortController();
+  const signal = controller.signal;
+  const originalAdd = signal.addEventListener.bind(signal);
+  const originalRemove = signal.removeEventListener.bind(signal);
+  let activeAbortListeners = 0;
+  signal.addEventListener = ((type, listener, options) => {
+    if (type === "abort") activeAbortListeners += 1;
+    return originalAdd(type, listener, options);
+  }) as AbortSignal["addEventListener"];
+  signal.removeEventListener = ((type, listener, options) => {
+    if (type === "abort") activeAbortListeners -= 1;
+    return originalRemove(type, listener, options);
+  }) as AbortSignal["removeEventListener"];
+
+  await guarded.getStats("s", { signal });
+  await guarded.getStats("s", { signal });
+
+  assert.equal(activeAbortListeners, 0);
+});
+
 test("timeout guard forwards recall options", async () => {
   const adapter = makeAdapter();
   let forwardedAsOf = "";
