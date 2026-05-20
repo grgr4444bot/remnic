@@ -13,14 +13,14 @@ import { FallbackLlmClient } from "../src/fallback-llm.ts";
 import type { GatewayConfig } from "../src/types.ts";
 
 test("usesMaxCompletionTokens detects newer OpenAI chat-completions models", () => {
-  assert.equal(usesMaxCompletionTokens("gpt-5.2", { assumeOpenAI: true }), true);
+  assert.equal(usesMaxCompletionTokens("gpt-5.5", { assumeOpenAI: true }), true);
   assert.equal(usesMaxCompletionTokens("gpt-5-mini", { assumeOpenAI: true }), true);
   assert.equal(usesMaxCompletionTokens("gpt-4o", { assumeOpenAI: true }), true);
   assert.equal(usesMaxCompletionTokens("gpt-4o-mini", { assumeOpenAI: true }), true);
   assert.equal(usesMaxCompletionTokens("gpt-4.1", { assumeOpenAI: true }), true);
   assert.equal(usesMaxCompletionTokens("gpt-4.1-mini", { assumeOpenAI: true }), true);
   assert.equal(usesMaxCompletionTokens("o3-mini", { assumeOpenAI: true }), true);
-  assert.equal(usesMaxCompletionTokens("gpt-5.2"), false);
+  assert.equal(usesMaxCompletionTokens("gpt-5.5"), false);
   assert.equal(usesMaxCompletionTokens("o3-mini"), false);
   assert.equal(usesMaxCompletionTokens("gpt-4orca", { assumeOpenAI: true }), false);
   assert.equal(usesMaxCompletionTokens("gpt-5compat", { assumeOpenAI: true }), false);
@@ -30,7 +30,7 @@ test("usesMaxCompletionTokens detects newer OpenAI chat-completions models", () 
 });
 
 test("buildChatCompletionTokenLimit selects max_completion_tokens for gpt-5 models", () => {
-  assert.deepEqual(buildChatCompletionTokenLimit("gpt-5.2", 4096, { assumeOpenAI: true }), {
+  assert.deepEqual(buildChatCompletionTokenLimit("gpt-5.5", 4096, { assumeOpenAI: true }), {
     max_completion_tokens: 4096,
   });
   assert.deepEqual(buildChatCompletionTokenLimit("gpt-4o-mini", 1024, { assumeOpenAI: true }), {
@@ -69,7 +69,7 @@ test("extractWithDirectClient uses max_completion_tokens for gpt-5 chat completi
       memoryDir: ".tmp/memory",
       workspaceDir: ".tmp/workspace",
       openaiApiKey: "test-key",
-      model: "gpt-5.2",
+      model: "gpt-5.5",
     }),
   ) as any;
 
@@ -101,7 +101,7 @@ test("extractWithDirectClient uses max_completion_tokens for gpt-5 chat completi
 
   const result = await engine.extractWithDirectClient("hello world");
   assert.ok(result);
-  assert.equal(capturedBody?.model, "gpt-5.2");
+  assert.equal(capturedBody?.model, "gpt-5.5");
   assert.equal("max_completion_tokens" in (capturedBody ?? {}), true);
   assert.equal("max_tokens" in (capturedBody ?? {}), false);
 });
@@ -113,7 +113,7 @@ test("extractWithDirectClient keeps max_tokens for custom chat-compatible base U
       workspaceDir: ".tmp/workspace",
       openaiApiKey: "test-key",
       openaiBaseUrl: "https://api.example.test/v1",
-      model: "gpt-5.2",
+      model: "gpt-5.5",
     }),
   ) as any;
 
@@ -145,7 +145,7 @@ test("extractWithDirectClient keeps max_tokens for custom chat-compatible base U
 
   const result = await engine.extractWithDirectClient("hello world");
   assert.ok(result);
-  assert.equal(capturedBody?.model, "gpt-5.2");
+  assert.equal(capturedBody?.model, "gpt-5.5");
   assert.equal("max_completion_tokens" in (capturedBody ?? {}), false);
   assert.equal("max_tokens" in (capturedBody ?? {}), true);
 });
@@ -155,7 +155,7 @@ test("fallback OpenAI client uses max_completion_tokens for gpt-5 providers", as
     agents: {
       defaults: {
         model: {
-          primary: "openai/gpt-5.2",
+          primary: "openai/gpt-5.5",
         },
       },
     },
@@ -192,7 +192,7 @@ test("fallback OpenAI client uses max_completion_tokens for gpt-5 providers", as
       maxTokens: 1234,
     });
     assert.ok(response);
-    assert.equal(requestBody?.model, "gpt-5.2");
+    assert.equal(requestBody?.model, "gpt-5.5");
     assert.equal(requestBody?.max_completion_tokens, 1234);
     assert.equal("max_tokens" in (requestBody ?? {}), false);
     assert.equal("temperature" in (requestBody ?? {}), false);
@@ -256,7 +256,7 @@ test("fallback OpenAI client keeps max_tokens for custom base URLs", async () =>
     agents: {
       defaults: {
         model: {
-          primary: "openai/gpt-5.2",
+          primary: "openai/gpt-5.5",
         },
       },
     },
@@ -293,7 +293,7 @@ test("fallback OpenAI client keeps max_tokens for custom base URLs", async () =>
       maxTokens: 256,
     });
     assert.ok(response);
-    assert.equal(requestBody?.model, "gpt-5.2");
+    assert.equal(requestBody?.model, "gpt-5.5");
     assert.equal(requestBody?.max_tokens, 256);
     assert.equal("max_completion_tokens" in (requestBody ?? {}), false);
     assert.equal(requestBody?.temperature, 0.3);

@@ -101,7 +101,7 @@ test("parseConfig preserves explicit disables, rejects invalid dreaming minima, 
     activeRecallThinking: "xhigh",
     activeRecallTimeoutMs: 100,
     activeRecallCacheTtlMs: 999999,
-    activeRecallModel: "  gpt-5.2-mini  ",
+    activeRecallModel: "  gpt-5.5  ",
     activeRecallModelFallbackPolicy: "resolved-only",
     activeRecallPersistTranscripts: true,
     activeRecallTranscriptDir: "  nested/active-recall  ",
@@ -116,7 +116,7 @@ test("parseConfig preserves explicit disables, rejects invalid dreaming minima, 
       maxEntries: 5,
       injectRecentCount: 99,
       minIntervalMinutes: 0,
-      narrativeModel: "  gpt-5.2-mini  ",
+      narrativeModel: "  gpt-5.5  ",
       narrativePromptStyle: "diary",
       watchFile: false,
     },
@@ -165,7 +165,7 @@ test("parseConfig preserves explicit disables, rejects invalid dreaming minima, 
   assert.equal(cfg.activeRecallThinking, "xhigh");
   assert.equal(cfg.activeRecallTimeoutMs, 250);
   assert.equal(cfg.activeRecallCacheTtlMs, 120000);
-  assert.equal(cfg.activeRecallModel, "gpt-5.2-mini");
+  assert.equal(cfg.activeRecallModel, "gpt-5.5");
   assert.equal(cfg.activeRecallModelFallbackPolicy, "resolved-only");
   assert.equal(cfg.activeRecallPersistTranscripts, true);
   assert.equal(cfg.activeRecallTranscriptDir, "nested/active-recall");
@@ -180,7 +180,7 @@ test("parseConfig preserves explicit disables, rejects invalid dreaming minima, 
     maxEntries: 500,
     injectRecentCount: 20,
     minIntervalMinutes: 1,
-    narrativeModel: "gpt-5.2-mini",
+    narrativeModel: "gpt-5.5",
     narrativePromptStyle: "diary",
     watchFile: false,
   });

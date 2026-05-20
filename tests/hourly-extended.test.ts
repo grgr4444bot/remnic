@@ -18,7 +18,7 @@ test("v2.4 extended hourly summary parser uses Topics bullets for recall", async
   const cfg: PluginConfig = {
     // minimal required fields
     openaiApiKey: undefined,
-    model: "gpt-5.2",
+    model: "gpt-5.5",
     reasoningEffort: "low",
     triggerMode: "smart",
     bufferMaxTurns: 5,
@@ -88,7 +88,7 @@ test("v2.4 extended hourly summary parser uses Topics bullets for recall", async
     hourlySummaryCronAutoRegister: false,
     summaryRecallHours: 24,
     maxSummaryCount: 6,
-    summaryModel: "gpt-5.2",
+    summaryModel: "gpt-5.5",
     hourlySummariesExtendedEnabled: true,
     hourlySummariesIncludeToolStats: false,
     hourlySummariesIncludeSystemMessages: false,

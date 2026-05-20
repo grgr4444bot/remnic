@@ -211,7 +211,7 @@ interface TaskResult {
 
 ```typescript
 interface LlmProvider {
-  id: string;                        // e.g. "openai:gpt-5.2"
+  id: string;                        // e.g. "openai:gpt-5.5"
   name: string;
 
   complete(prompt: string, opts?: CompletionOpts): Promise<CompletionResult>;
@@ -263,7 +263,7 @@ judge:
 
 system:
   provider: openai
-  model: gpt-5.2
+  model: gpt-5.5
   apiKey: ${OPENAI_API_KEY}
 
 runs:
@@ -412,7 +412,7 @@ import { runBenchmark, compare } from "@remnic/bench";
 const result = await runBenchmark("longmemeval", {
   mode: "quick",
   judge: { provider: "openai", baseUrl: "https://api.z.ai/v1", model: "glm-5.1" },
-  system: { provider: "openai", model: "gpt-5.2" },
+  system: { provider: "openai", model: "gpt-5.5" },
 });
 ```
 

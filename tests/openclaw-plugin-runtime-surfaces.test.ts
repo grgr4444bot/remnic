@@ -180,7 +180,12 @@ for (const manifestPath of OPENCLAW_MANIFEST_PATHS) {
 
     assert.equal(manifest.name, "Remnic OpenClaw Plugin");
     assert.equal(manifest.version, packageJson.version);
-    assert.deepEqual(manifest.setup, { requiresRuntime: false });
+    assert.deepEqual(
+      manifest.setup,
+      {
+        requiresRuntime: false,
+      },
+    );
     assert.equal(
       "providers" in (manifest.setup ?? {}),
       false,

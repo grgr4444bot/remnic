@@ -136,7 +136,7 @@ test("FallbackLlmClient builds mixed chain with explicit and models.json provide
         },
       },
     },
-    "openai/gpt-5.2",
+    "openai/gpt-5.5",
     ["openai-codex/gpt-5.4", "anthropic/claude-opus-4-6"],
   );
 

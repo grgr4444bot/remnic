@@ -219,7 +219,7 @@ test("llm_output handler logs token usage without throwing", async () => {
   await assert.doesNotReject(
     async () =>
       handler(
-        { model: "gpt-5.2", tokenUsage: { input: 100, output: 50 }, durationMs: 200 },
+        { model: "gpt-5.5", tokenUsage: { input: 100, output: 50 }, durationMs: 200 },
         { sessionKey: "test" },
       ),
     "llm_output handler should not throw",

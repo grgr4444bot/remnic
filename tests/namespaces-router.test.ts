@@ -13,7 +13,7 @@ function tmpDir(prefix: string): string {
 function baseConfig(memoryDir: string): PluginConfig {
   return {
     openaiApiKey: undefined,
-    model: "gpt-5.2",
+    model: "gpt-5.5",
     reasoningEffort: "low",
     triggerMode: "smart",
     bufferMaxTurns: 5,
@@ -83,7 +83,7 @@ function baseConfig(memoryDir: string): PluginConfig {
     hourlySummaryCronAutoRegister: false,
     summaryRecallHours: 24,
     maxSummaryCount: 6,
-    summaryModel: "gpt-5.2",
+    summaryModel: "gpt-5.5",
     hourlySummariesExtendedEnabled: false,
     hourlySummariesIncludeToolStats: false,
     hourlySummariesIncludeSystemMessages: false,
