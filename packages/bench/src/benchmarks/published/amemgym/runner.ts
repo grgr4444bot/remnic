@@ -645,6 +645,11 @@ async function loadDataset(
         const parsed = parseDataset(raw, filename);
         return ensureDatasetProfiles(applyLimit(parsed, normalizedLimit));
       } catch (error) {
+        if (!isFileNotFoundError(error)) {
+          throw new Error(
+            `AMemGym dataset file ${filename} is invalid: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
         datasetErrors.push(
           `${filename}: ${error instanceof Error ? error.message : String(error)}`,
         );
@@ -673,6 +678,13 @@ function parseDataset(raw: string, filename: string): AMemGymProfile[] {
     );
   }
   return parsed as AMemGymProfile[];
+}
+
+function isFileNotFoundError(error: unknown): boolean {
+  return typeof error === "object"
+    && error !== null
+    && "code" in error
+    && (error as { code?: unknown }).code === "ENOENT";
 }
 
 function normalizeLimit(limit: number | undefined): number | undefined {
