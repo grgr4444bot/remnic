@@ -294,7 +294,7 @@ export class FallbackLlmClient {
     modelString: string,
     providers: Record<string, ModelProviderConfig>,
   ): ModelRef | null {
-    // Parse "provider/model" format (e.g., "openai/gpt-5.2", "anthropic/claude-opus-4-6")
+    // Parse "provider/model" format (e.g., "openai/gpt-5.5", "anthropic/claude-opus-4-6")
     const parts = modelString.split("/");
     if (parts.length < 2) {
       log.warn(`fallback LLM: invalid model format: ${modelString}`);
@@ -302,7 +302,7 @@ export class FallbackLlmClient {
     }
 
     const requestedProviderId = parts[0];
-    const modelId = parts.slice(1).join("/"); // Handle cases like "openai/gpt-5.2-turbo"
+    const modelId = parts.slice(1).join("/"); // Handle cases like "openai/gpt-5.5"
 
     // Respect the active gateway config first so profile-local overrides and
     // credentials win. Fall back to the materialized models.json only when

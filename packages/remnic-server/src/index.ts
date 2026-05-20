@@ -14,7 +14,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { parseConfig, Orchestrator, EngramAccessService, EngramAccessHttpServer, initLogger, log, getAllValidTokens, getAllValidTokensCached, expandTildePath, type PluginConfig } from "@remnic/core";
+import { parseConfig, isOpenaiApiKeyDisabled, Orchestrator, EngramAccessService, EngramAccessHttpServer, initLogger, log, getAllValidTokens, getAllValidTokensCached, expandTildePath, type PluginConfig } from "@remnic/core";
 
 // ── Config loading ──────────────────────────────────────────────────────────
 
@@ -129,6 +129,20 @@ function envOverrides(): Partial<ServerConfig["server"]> & { remnic?: Record<str
   return { ...overrides, ...(Object.keys(remnic).length > 0 ? { remnic } : {}) };
 }
 
+export function mergeRemnicConfigForServer(
+  fileRemnic: Record<string, unknown>,
+  envRemnic: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const effectiveEnvRemnic = { ...(envRemnic ?? {}) };
+  if (isOpenaiApiKeyDisabled(fileRemnic.openaiApiKey)) {
+    // A local/gateway-only deployment can explicitly disable the direct
+    // OpenAI client. Preserve that opt-out even when the process has a
+    // global OPENAI_API_KEY for unrelated tools.
+    delete effectiveEnvRemnic.openaiApiKey;
+  }
+  return { ...fileRemnic, ...effectiveEnvRemnic };
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
@@ -177,7 +191,7 @@ export async function startServer(options?: {
   const { remnic: envRemnic, ...envServer } = env;
 
   // Merge: file < env < cli flags
-  const remnicConfig = { ...fileConfig.remnic, ...(envRemnic ?? {}) };
+  const remnicConfig = mergeRemnicConfigForServer(fileConfig.remnic, envRemnic);
   const cliServerConfig: Partial<ServerConfig["server"]> = {};
   if (options?.host !== undefined) cliServerConfig.host = options.host;
   if (options?.port !== undefined) cliServerConfig.port = parseServerPort(options.port, "options.port");
@@ -374,7 +388,7 @@ Environment:
   REMNIC_HOST          Bind address (ENGRAM_HOST also supported)
   REMNIC_AUTH_TOKEN    Auth bearer token (ENGRAM_AUTH_TOKEN also supported)
   REMNIC_MEMORY_DIR    Override memory directory (ENGRAM_MEMORY_DIR also supported)
-  OPENAI_API_KEY       OpenAI API key for extraction
+  OPENAI_API_KEY       OpenAI API key for extraction; ignored when config sets openaiApiKey=false
 `);
     process.exit(0);
   }

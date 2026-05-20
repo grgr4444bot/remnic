@@ -1603,6 +1603,25 @@ export class Orchestrator {
     await (this.qmd as { dispose?: () => void | Promise<void> }).dispose?.();
   }
 
+  /**
+   * Stop background initialization and release runtime-owned handles.
+   * Long-lived hosts should call this from their shutdown path; one-shot
+   * commands should call it before returning to let Node exit naturally.
+   */
+  async destroy(): Promise<void> {
+    this.abortDeferredInit();
+    if (this.qmdMaintenanceTimer) {
+      clearTimeout(this.qmdMaintenanceTimer);
+      this.qmdMaintenanceTimer = null;
+    }
+    this.qmdMaintenancePending = false;
+    await this.namespaceSearchRouter.dispose();
+    await this.disposeSearchBackendIfNeeded();
+    if (this.conversationQmd && this.conversationQmd !== this.qmd) {
+      await (this.conversationQmd as { dispose?: () => void | Promise<void> }).dispose?.();
+    }
+  }
+
   /** Set per-session workspace for the next recall() call (compaction reset). @internal */
   setRecallWorkspaceOverride(sessionKey: string, dir: string): void {
     this._recallWorkspaceOverrides.set(sessionKey, dir);

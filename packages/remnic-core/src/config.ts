@@ -113,6 +113,10 @@ function coerceBooleanLike(value: unknown): boolean | undefined {
   return undefined;
 }
 
+export function isOpenaiApiKeyDisabled(value: unknown): boolean {
+  return value === false || (typeof value === "string" && value.trim().toLowerCase() === "false");
+}
+
 /**
  * Detect a SecretRef-shaped object (issue #757) without resolving it.
  * SecretRefs are preserved verbatim through `parseConfig` and resolved at
@@ -154,7 +158,7 @@ function parseAgentAccessAuthToken(raw: unknown): import("./types.js").AgentAcce
   );
 }
 
-function resolveEnvVars(value: string): string {
+export function resolveEnvVars(value: string): string {
   const resolved = value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, envVar: string) => {
     const envValue = readEnvVar(envVar);
     if (!envValue) {
@@ -262,13 +266,13 @@ function parseSemanticChunkingConfig(
 
 // Cursor review on PR #736: the default reasoning model used by the
 // extraction pipeline (`config.model`) and the new peer profile
-// reasoner (`peerProfileReasonerModel`) was hardcoded as `"gpt-5.2"`
+// reasoner (`peerProfileReasonerModel`) was hardcoded as `"gpt-5.5"`
 // in two places. Centralize the default so both surfaces — and any
 // future LLM-backed surface — always agree on the same model id.
-// Sibling packages (briefing, active-recall) keep their own constants
-// because they're scoped to those subsystems; this one lives in the
-// config module because it spans extraction + peer-profile.
-export const DEFAULT_REASONING_MODEL = "gpt-5.2";
+// Sibling packages may keep their own constants only when they are scoped to
+// their own subsystem and intentionally diverge. Shared reasoning-model
+// defaults should use this constant.
+export const DEFAULT_REASONING_MODEL = "gpt-5.5";
 
 const VALID_EFFORTS: ReasoningEffort[] = ["none", "low", "medium", "high"];
 const VALID_TRIGGERS: TriggerMode[] = ["smart", "every_n", "time_based"];
@@ -465,8 +469,15 @@ export function parseConfig(raw: unknown): PluginConfig {
   const modelSource =
     cfg.modelSource === "gateway" ? "gateway" : "plugin";
 
+  const openaiApiKeyDisabled = isOpenaiApiKeyDisabled(cfg.openaiApiKey);
+
   let apiKey: string | undefined;
-  if (typeof cfg.openaiApiKey === "string" && cfg.openaiApiKey.length > 0) {
+  if (openaiApiKeyDisabled) {
+    // Explicit opt-out for local/gateway-only deployments. Without this,
+    // a stale process-level OPENAI_API_KEY can be captured even when the
+    // operator wants Remnic to use local LLMs and never try direct OpenAI.
+    apiKey = undefined;
+  } else if (typeof cfg.openaiApiKey === "string" && cfg.openaiApiKey.length > 0) {
     apiKey = resolveEnvVars(cfg.openaiApiKey);
   } else if (modelSource === "gateway") {
     // Gateway mode deliberately delegates LLM calls to OpenClaw's model chain.
@@ -2544,7 +2555,7 @@ export function parseConfig(raw: unknown): PluginConfig {
     recallPlannerModel:
       typeof cfg.recallPlannerModel === "string" && cfg.recallPlannerModel.trim().length > 0
         ? cfg.recallPlannerModel.trim()
-        : "gpt-5.2-mini",
+        : DEFAULT_REASONING_MODEL,
     recallPlannerTimeoutMs:
       typeof cfg.recallPlannerTimeoutMs === "number" ? cfg.recallPlannerTimeoutMs : 1500,
     recallPlannerUseResponsesApi: cfg.recallPlannerUseResponsesApi !== false,

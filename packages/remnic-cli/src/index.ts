@@ -39,6 +39,8 @@ import * as childProcess from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   parseConfig,
+  isOpenaiApiKeyDisabled,
+  resolveEnvVars,
   Orchestrator,
   EngramAccessService,
   initLogger,
@@ -356,7 +358,9 @@ const CLI_MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const CLI_REPO_ROOT = path.resolve(CLI_MODULE_DIR, "../../..");
 const EVAL_RUNNER_PATH = path.join(CLI_REPO_ROOT, "evals", "run.ts");
 const OPENCLAW_GATEWAY_LABEL = "ai.openclaw.gateway";
-const CLI_SUCCESS_EXIT_GRACE_MS = 2_000;
+// QMD teardown and cache reads can leave short-lived filesystem requests after
+// successful one-shot commands; give them enough time to drain before forcing.
+const CLI_SUCCESS_EXIT_GRACE_MS = 5_000;
 const CLI_OUTPUT_FLUSH_GRACE_MS = 250;
 
 export const BENCHMARK_CATALOG: BenchCatalogEntry[] = [
@@ -3841,8 +3845,9 @@ async function cmdStatus(json: boolean): Promise<void> {
     if (!response.ok) {
       console.log(`Health: server responded with ${response.status} ${response.statusText}`);
     } else {
-      const health = await response.json();
-      console.log(`Health: ${health.status ?? "ok"}`);
+      const health = (await response.json()) as { status?: unknown };
+      const status = typeof health.status === "string" ? health.status : "ok";
+      console.log(`Health: ${status}`);
     }
   } catch {
     console.log("Health: unable to reach server");
@@ -3971,6 +3976,7 @@ async function cmdQuery(queryText: string, json: boolean, explain: boolean): Pro
     // One-shot CLI calls should not wait for or orphan deferred QMD
     // maintenance; the daemon/gateway process performs full warmup instead.
     orchestrator.abortDeferredInit();
+    await orchestrator.destroy();
   }
 }
 
@@ -4901,6 +4907,23 @@ async function cmdDoctor(): Promise<void> {
   const configPath = resolveConfigPath();
   const configExists = fs.existsSync(configPath);
   checks.push({ name: "Config file", ok: configExists, detail: configPath });
+  let standaloneConfig: ReturnType<typeof parseConfig> | undefined;
+  let standaloneConfigError: string | undefined;
+  let standaloneOpenaiApiKeyExplicitlyFalse = false;
+  if (configExists) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(configPath, "utf8"));
+      const remnicCfg = raw.remnic ?? raw.engram ?? raw;
+      standaloneOpenaiApiKeyExplicitlyFalse =
+        typeof remnicCfg === "object" &&
+        remnicCfg !== null &&
+        !Array.isArray(remnicCfg) &&
+        isOpenaiApiKeyDisabled((remnicCfg as Record<string, unknown>).openaiApiKey);
+      standaloneConfig = parseConfig(remnicCfg);
+    } catch (err) {
+      standaloneConfigError = err instanceof Error ? err.message : String(err);
+    }
+  }
 
   const memoryDir = resolveMemoryDir();
   try {
@@ -4917,6 +4940,7 @@ async function cmdDoctor(): Promise<void> {
   let openclawConfigValid = false;
   let openclawPluginModeConfigured = false;
   let activeOpenclawModelSource: string | undefined;
+  let activeOpenclawEntryConfig: Record<string, unknown> | null = null;
 
   if (openclawConfigExists) {
     try {
@@ -5063,6 +5087,7 @@ async function cmdDoctor(): Promise<void> {
         (slotValue === REMNIC_OPENCLAW_PLUGIN_ID || slotValue === REMNIC_OPENCLAW_LEGACY_PLUGIN_ID)
       ) {
         openclawPluginModeConfigured = true;
+        activeOpenclawEntryConfig = entryConfig;
         activeOpenclawModelSource =
           typeof entryConfig?.modelSource === "string" ? entryConfig.modelSource : undefined;
       }
@@ -5099,17 +5124,69 @@ async function cmdDoctor(): Promise<void> {
     }
   }
 
-  const hasApiKey = !!process.env.OPENAI_API_KEY;
-  const openaiKeyOptionalForGateway =
-    openclawPluginModeConfigured && activeOpenclawModelSource === "gateway";
+  const standaloneHasApiKey = standaloneConfig
+    ? !!standaloneConfig.openaiApiKey
+    : !!process.env.OPENAI_API_KEY;
+  const activeOpenclawOpenaiApiKey = activeOpenclawEntryConfig?.openaiApiKey;
+  const activeOpenclawOpenaiApiKeyExplicitlyFalse =
+    isOpenaiApiKeyDisabled(activeOpenclawOpenaiApiKey);
+  const hasExplicitOpenclawOpenaiApiKey =
+    typeof activeOpenclawOpenaiApiKey === "string" && activeOpenclawOpenaiApiKey.trim().length > 0;
+  let activeOpenclawConfigHasApiKey = false;
+  let activeOpenclawOpenaiApiKeyError: string | undefined;
+  if (hasExplicitOpenclawOpenaiApiKey) {
+    try {
+      activeOpenclawConfigHasApiKey = resolveEnvVars(activeOpenclawOpenaiApiKey).trim().length > 0;
+    } catch (err) {
+      activeOpenclawOpenaiApiKeyError = err instanceof Error ? err.message : String(err);
+    }
+  }
+  const openclawHasApiKey = activeOpenclawOpenaiApiKeyExplicitlyFalse
+    ? false
+    : hasExplicitOpenclawOpenaiApiKey
+      ? activeOpenclawConfigHasApiKey
+      : !!process.env.OPENAI_API_KEY;
+  const diagnosingOpenclawPluginMode = openclawPluginModeConfigured;
+  const hasApiKey = diagnosingOpenclawPluginMode ? openclawHasApiKey : standaloneHasApiKey;
+  const openclawKeyErrorBlocksOk = diagnosingOpenclawPluginMode && !!activeOpenclawOpenaiApiKeyError;
+  const standaloneConfigErrorBlocksOk = !diagnosingOpenclawPluginMode && !!standaloneConfigError;
+  const localLlmConfigured = standaloneConfig?.localLlmEnabled === true;
+  const activeOpenclawLocalLlmConfigured =
+    activeOpenclawEntryConfig?.localLlmEnabled === true || activeOpenclawEntryConfig?.localLlmEnabled === "true";
+  const openaiKeyOptionalForOpenclaw =
+    openclawPluginModeConfigured &&
+    (activeOpenclawModelSource === "gateway" || activeOpenclawLocalLlmConfigured);
+  const openaiKeyOptionalForStandalone =
+    !diagnosingOpenclawPluginMode &&
+    (standaloneConfig?.modelSource === "gateway" || localLlmConfigured);
   checks.push({
     name: "OPENAI_API_KEY",
-    ok: hasApiKey || openaiKeyOptionalForGateway,
-    warn: !hasApiKey,
-    detail: hasApiKey
-      ? "set"
-      : openaiKeyOptionalForGateway
-      ? "not set (not required for OpenClaw gateway modelSource)"
+    ok:
+      !openclawKeyErrorBlocksOk &&
+      !standaloneConfigErrorBlocksOk &&
+      (hasApiKey || openaiKeyOptionalForOpenclaw || openaiKeyOptionalForStandalone),
+    warn:
+      openclawKeyErrorBlocksOk ||
+      standaloneConfigErrorBlocksOk ||
+      (!hasApiKey && !openaiKeyOptionalForOpenclaw && !openaiKeyOptionalForStandalone),
+    detail: standaloneConfigErrorBlocksOk
+      ? "config parse failed"
+      : openclawKeyErrorBlocksOk
+      ? "OpenClaw openaiApiKey placeholder failed"
+      : hasApiKey
+      ? "configured"
+      : !diagnosingOpenclawPluginMode && standaloneOpenaiApiKeyExplicitlyFalse && localLlmConfigured
+      ? "disabled by config (local LLM enabled)"
+      : !diagnosingOpenclawPluginMode && standaloneOpenaiApiKeyExplicitlyFalse && standaloneConfig?.modelSource === "gateway"
+      ? "disabled by config (gateway modelSource)"
+      : activeOpenclawOpenaiApiKeyExplicitlyFalse
+      ? "disabled by OpenClaw config"
+      : openaiKeyOptionalForOpenclaw
+      ? activeOpenclawModelSource === "gateway"
+        ? "not set (not required for OpenClaw gateway modelSource)"
+        : "not set (not required for OpenClaw local LLM)"
+      : openaiKeyOptionalForStandalone
+      ? "not set (standalone local/gateway model path configured)"
       : "not set (required for direct OpenAI-backed extraction)",
   });
 
@@ -8108,6 +8185,8 @@ export async function runTrainingExport(
   // still supporting `--format weclone` out of the box.
   // (Codex feedback on PR #545.)
   type WecloneExportModule = Awaited<ReturnType<typeof loadWecloneExportModule>>;
+  type WecloneTrainingRecords = Parameters<WecloneExportModule["synthesizeTrainingPairs"]>[0];
+  type WeclonePrivacyRecords = Parameters<WecloneExportModule["sweepPii"]>[0];
   let wecloneExport: WecloneExportModule | undefined;
   const ensureWeclone = async (): Promise<WecloneExportModule> => {
     if (!wecloneExport) {
@@ -8185,7 +8264,7 @@ export async function runTrainingExport(
       );
     }
     const mod = await ensureWeclone();
-    records = mod.synthesizeTrainingPairs(records as unknown as Record<string, unknown>[], {
+    records = mod.synthesizeTrainingPairs(records as unknown as WecloneTrainingRecords, {
       maxPairsPerRecord: args.maxPairsPerRecord,
     }) as unknown as TrainingExportRecord[];
   }
@@ -8194,7 +8273,7 @@ export async function runTrainingExport(
   if (args.privacySweep) {
     if (adapterIsWeclone) {
       const mod = await ensureWeclone();
-      const swept = mod.sweepPii(records as unknown as Record<string, unknown>[]);
+      const swept = mod.sweepPii(records as unknown as WeclonePrivacyRecords);
       records = swept.cleanRecords as unknown as TrainingExportRecord[];
       redactedCount = swept.redactedCount;
     } else {
@@ -8956,6 +9035,17 @@ function waitForStreamDrain(stream: NodeJS.WriteStream): Promise<void> {
   });
 }
 
+function activeNonStdioHandleCount(): number {
+  const getActiveHandles = (process as unknown as {
+    _getActiveHandles?: () => unknown[];
+  })._getActiveHandles;
+  const handles = getActiveHandles?.call(process) ?? [];
+  return handles.filter((handle) => {
+    const fd = (handle as { fd?: unknown })?.fd;
+    return fd !== 0 && fd !== 1 && fd !== 2;
+  }).length;
+}
+
 async function armCliSuccessExitWatchdog(): Promise<void> {
   const exitCode = process.exitCode ?? 0;
   process.exitCode = exitCode;
@@ -8969,12 +9059,14 @@ async function armCliSuccessExitWatchdog(): Promise<void> {
   ]);
 
   const watchdog = setTimeout(() => {
-    try {
-      process.stderr.write(
-        `Warning: remnic CLI forced a clean exit after ${CLI_SUCCESS_EXIT_GRACE_MS}ms because a handle remained open.\n`,
-      );
-    } catch {
-      // Ignore write failures during forced shutdown.
+    if (activeNonStdioHandleCount() > 0) {
+      try {
+        process.stderr.write(
+          `Warning: remnic CLI forced a clean exit after ${CLI_SUCCESS_EXIT_GRACE_MS}ms because a handle remained open.\n`,
+        );
+      } catch {
+        // Ignore write failures during forced shutdown.
+      }
     }
     process.exit(exitCode);
   }, CLI_SUCCESS_EXIT_GRACE_MS);
