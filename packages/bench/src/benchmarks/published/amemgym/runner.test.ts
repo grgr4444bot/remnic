@@ -127,6 +127,106 @@ test("AMemGym batches tiny session messages before storing profile context", asy
   }
 });
 
+test("AMemGym rejects malformed primary dataset files instead of falling back", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "remnic-amemgym-malformed-"));
+  let storeCalls = 0;
+
+  try {
+    await writeFile(path.join(tempDir, "amemgym-v1-base.json"), "{", "utf8");
+    await writeFile(
+      path.join(tempDir, "data.json"),
+      JSON.stringify([
+        {
+          id: "fallback-profile",
+          start_time: "2025-01-01T00:00:00Z",
+          user_profile: {
+            uuid: "user-1",
+            name: "Maya",
+            age: 29,
+            gender: "female",
+          },
+          state_schema: { city: { type: "string" } },
+          periods: [
+            {
+              period_start: "2025-01-01T00:00:00Z",
+              period_end: "2025-01-31T23:59:59Z",
+              period_summary: "Maya updated her city.",
+              sessions: [],
+              state: { city: "Chicago" },
+              updates: { city: "Chicago" },
+              update_cnts: { city: 1 },
+            },
+          ],
+          qas: [
+            {
+              query: "What city does Maya live in now?",
+              required_info: ["city"],
+              answer_choices: [
+                { state: ["Chicago"], answer: "Chicago" },
+                { state: ["Austin"], answer: "Austin" },
+              ],
+            },
+          ],
+        },
+      ]),
+      "utf8",
+    );
+
+    await assert.rejects(
+      () =>
+        runAMemGymBenchmark({
+          benchmark: amemGymDefinition,
+          mode: "full",
+          datasetDir: tempDir,
+          system: {
+            async store() {
+              storeCalls += 1;
+            },
+            async recall() {
+              return "Chicago";
+            },
+            async search() {
+              return [];
+            },
+            async reset() {},
+            async drain() {},
+            async destroy() {},
+            async getStats() {
+              return { totalMessages: 0, totalSummaryNodes: 0, maxDepth: 0 };
+            },
+            responder: {
+              async respond() {
+                return {
+                  text: "1",
+                  tokens: { input: 1, output: 1 },
+                  latencyMs: 1,
+                  model: "amemgym-test-responder",
+                };
+              },
+            },
+            judge: {
+              async score() {
+                return 1;
+              },
+              async scoreWithMetrics() {
+                return {
+                  score: 1,
+                  tokens: { input: 0, output: 0 },
+                  latencyMs: 0,
+                  model: "amemgym-test-judge",
+                };
+              },
+            },
+          },
+        }),
+      /AMemGym dataset file amemgym-v1-base\.json is invalid:/,
+    );
+    assert.equal(storeCalls, 0);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("AMemGym fails fast when profile drain fails before scoring", async () => {
   let completedTasks = 0;
   let recallCalls = 0;

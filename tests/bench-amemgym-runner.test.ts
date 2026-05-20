@@ -1586,7 +1586,7 @@ test("runBenchmark fails fast when amemgym full mode is given an explicit unread
         datasetDir,
         system: adapter,
       }),
-    /AMemGym dataset not found under/,
+    /AMemGym dataset file data\.json is invalid:/,
   );
 });
 
