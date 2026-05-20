@@ -240,7 +240,7 @@ test("migration: merges legacy config values (except memoryDir)", () => {
           config: {
             memoryDir: "/old/path",
             debug: false,
-            model: "gpt-5.2",
+            model: "gpt-5.5",
           },
         },
       },
@@ -250,7 +250,7 @@ test("migration: merges legacy config values (except memoryDir)", () => {
 
   const newConfig = result.plugins!.entries!["openclaw-remnic"].config!;
   // Should inherit model from legacy
-  assert.equal(newConfig.model, "gpt-5.2", "should inherit model from legacy entry");
+  assert.equal(newConfig.model, "gpt-5.5", "should inherit model from legacy entry");
   assert.equal(newConfig.modelSource, "plugin", "implicit legacy installs should stay in plugin model mode");
   // memoryDir should be the new one (not the old one)
   assert.equal(newConfig.memoryDir, "/new/path");

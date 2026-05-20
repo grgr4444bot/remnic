@@ -2,7 +2,7 @@ export { loadDaySummaryPrompt } from "./day-summary.js";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import OpenAI from "openai";
 import { createRequire } from "node:module";
-import { parseConfig } from "./config.js";
+import { DEFAULT_REASONING_MODEL, parseConfig } from "./config.js";
 import { initLogger } from "./logger.js";
 import { log } from "./logger.js";
 import {
@@ -3740,7 +3740,7 @@ const pluginDefinition = {
         }
 
         // Get model to use - prefer summary model, then default, then first available
-        const model = cfg.summaryModel || cfg.model || "gpt-5.2";
+        const model = cfg.summaryModel || cfg.model || DEFAULT_REASONING_MODEL;
 
         // Pick a random minute (1-59) to avoid colliding with other top-of-hour crons
         const randomMinute = Math.floor(Math.random() * 59) + 1;

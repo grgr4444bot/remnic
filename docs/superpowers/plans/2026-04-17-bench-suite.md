@@ -222,7 +222,7 @@ import { OpenAIProvider } from "../openai.js";
 describe("OpenAIProvider", () => {
   it("tracks token usage across calls", async () => {
     const provider = new OpenAIProvider({
-      model: "gpt-5.2",
+      model: "gpt-5.5",
       apiKey: "test-key",
     });
     // Mock fetch to return a fake completion
@@ -230,7 +230,7 @@ describe("OpenAIProvider", () => {
     globalThis.fetch = mock.fn(async () => new Response(JSON.stringify({
       choices: [{ message: { content: "test response" } }],
       usage: { prompt_tokens: 10, completion_tokens: 5 },
-      model: "gpt-5.2",
+      model: "gpt-5.5",
     }), { status: 200, headers: { "content-type": "application/json" } }));
 
     await provider.complete("test prompt");

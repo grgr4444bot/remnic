@@ -116,8 +116,12 @@
     "properties": {
       "openaiApiKey": {
         "anyOf": [
-          { "type": "string" },
-          { "const": false }
+          {
+            "type": "string"
+          },
+          {
+            "const": false
+          }
         ],
         "description": "Optional OpenAI API key for plugin mode (or set OPENAI_API_KEY env var). Ignored by default gateway-mode installs; in plugin mode, Remnic may send conversation and memory content to OpenAI or the configured OpenAI-compatible endpoint for extraction, consolidation, summarization, and embeddings."
       },

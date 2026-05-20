@@ -260,7 +260,7 @@ instead of being re-indexed as a fresh memory on the next watch cycle.
             "maxEntries": 500,
             "injectRecentCount": 3,
             "minIntervalMinutes": 120,
-            "narrativeModel": "gpt-5.2",
+            "narrativeModel": "gpt-5.5",
             "narrativePromptStyle": "reflective",
             "watchFile": true
           }
