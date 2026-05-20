@@ -239,3 +239,86 @@ tasks:
   assert.equal(result.cost.totalLatencyMs >= 20, true);
   assert.equal(result.cost.meanQueryLatencyMs >= 20, true);
 });
+
+test("runCustomBenchmarkFile emits progress callbacks after each completed task", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "remnic-custom-bench-progress-"));
+  const filePath = path.join(tmpDir, "progress-check.yaml");
+  await writeFile(
+    filePath,
+    `
+name: Progress Check
+scoring: exact_match
+tasks:
+  - question: What is alphakey?
+    expected: alphakey
+  - question: What is betakey?
+    expected: betakey
+`,
+  );
+
+  const adapter = new FakeMemoryAdapter();
+  await adapter.store("memory", [
+    { role: "assistant", content: "alphakey" },
+    { role: "assistant", content: "betakey" },
+  ]);
+
+  const progressEvents: Array<{
+    completed: number;
+    total: number | undefined;
+    taskId: string;
+    actual: string;
+  }> = [];
+  const result = await runCustomBenchmarkFile(filePath, {
+    mode: "quick",
+    system: adapter,
+    onTaskComplete(task, completed, total) {
+      progressEvents.push({
+        completed,
+        total,
+        taskId: task.taskId,
+        actual: task.actual,
+      });
+    },
+  });
+
+  assert.equal(result.results.tasks.length, 2);
+  assert.deepEqual(
+    progressEvents.map((event) => event.completed),
+    [1, 2],
+  );
+  assert.deepEqual(
+    progressEvents.map((event) => event.total),
+    [2, 2],
+  );
+  assert.deepEqual(
+    progressEvents.map((event) => event.actual),
+    ["alphakey", "betakey"],
+  );
+  assert.deepEqual(
+    progressEvents.map((event) => event.taskId),
+    ["progress-check-1-1", "progress-check-1-2"],
+  );
+
+  const fullProgressEvents: Array<{
+    completed: number;
+    total: number | undefined;
+  }> = [];
+  const fullResult = await runCustomBenchmarkFile(filePath, {
+    mode: "full",
+    system: adapter,
+    onTaskComplete(_task, completed, total) {
+      fullProgressEvents.push({ completed, total });
+    },
+  });
+  const fullTotal = fullResult.meta.runCount * 2;
+
+  assert.equal(fullProgressEvents.length, fullTotal);
+  assert.deepEqual(
+    fullProgressEvents.map((event) => event.completed),
+    Array.from({ length: fullTotal }, (_value, index) => index + 1),
+  );
+  assert.deepEqual(
+    fullProgressEvents.map((event) => event.total),
+    Array.from({ length: fullTotal }, () => fullTotal),
+  );
+});
