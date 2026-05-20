@@ -7,7 +7,7 @@ import path from "node:path";
 import type { RunBenchmarkOptions, BenchmarkDefinition, BenchmarkResult, ResolvedRunBenchmarkOptions, TaskResult } from "../../types.js";
 import { answerBenchmarkQuestion } from "../../answering.js";
 import { aggregateTaskScores, exactMatch, f1Score, llmJudgeScoreDetailed, rougeL, timed } from "../../scorer.js";
-import { orchestrateBenchmarkRuns } from "../../benchmark.js";
+import { orchestrateBenchmarkRuns, resolveBenchmarkRunCount } from "../../benchmark.js";
 import { finalizeBenchmarkResultConfig } from "../../result-config.js";
 import { getGitSha, getRemnicVersion } from "../../reporter.js";
 import { loadCustomBenchmarkFile } from "./loader.js";
@@ -36,10 +36,24 @@ async function runCustomBenchmark(
     );
   }
 
-  const { runCount, seeds, runs } = await orchestrateBenchmarkRuns(
+  const runCount = resolveBenchmarkRunCount(options.mode);
+  const tasksPerRun = selectTasks(spec, options.limit);
+  const totalTaskCount = runCount * tasksPerRun.length;
+  let completedTaskCount = 0;
+  const { seeds, runs } = await orchestrateBenchmarkRuns(
     options.mode,
     async (seed, runIndex) =>
-      runCustomBenchmarkRun(spec, options, seed, runIndex),
+      runCustomBenchmarkRun(
+        spec,
+        options,
+        seed,
+        runIndex,
+        tasksPerRun,
+        (taskResult) => {
+          completedTaskCount += 1;
+          options.onTaskComplete?.(taskResult, completedTaskCount, totalTaskCount);
+        },
+      ),
     undefined,
     options.seed,
   );
@@ -92,14 +106,9 @@ async function runCustomBenchmarkRun(
   options: ResolvedRunBenchmarkOptions,
   seed: number,
   runIndex: number,
+  tasks: readonly CustomBenchmarkSpec["tasks"][number][],
+  onTaskComplete?: (task: TaskResult) => void,
 ): Promise<TaskResult[]> {
-  const tasks = benchmark.tasks.slice(0, normalizeLimit(options.limit) ?? benchmark.tasks.length);
-  if (tasks.length === 0) {
-    throw new Error(
-      `Custom benchmark "${benchmark.name}" is empty after applying the requested limit.`,
-    );
-  }
-
   const results: TaskResult[] = [];
   for (const [taskIndex, task] of tasks.entries()) {
     const { result: searchResults, durationMs } = await timed(async () =>
@@ -119,7 +128,7 @@ async function runCustomBenchmarkRun(
       task.expected,
     );
 
-    results.push({
+    const taskResult: TaskResult = {
       taskId: `${slugify(benchmark.name)}-${runIndex + 1}-${taskIndex + 1}`,
       question: task.question,
       expected: task.expected,
@@ -143,10 +152,26 @@ async function runCustomBenchmarkRun(
         responderModel: answered.model,
         judgeModel: scored.judgeMetrics.model,
       },
-    });
+    };
+    results.push(taskResult);
+    onTaskComplete?.(taskResult);
   }
 
   return results;
+}
+
+function selectTasks(
+  benchmark: CustomBenchmarkSpec,
+  limit: number | undefined,
+): readonly CustomBenchmarkSpec["tasks"][number][] {
+  const tasks = benchmark.tasks.slice(0, normalizeLimit(limit) ?? benchmark.tasks.length);
+  if (tasks.length === 0) {
+    throw new Error(
+      `Custom benchmark "${benchmark.name}" is empty after applying the requested limit.`,
+    );
+  }
+
+  return tasks;
 }
 
 async function scoreTask(
