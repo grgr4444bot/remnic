@@ -8,6 +8,7 @@ import { EngramAccessHttpServer } from "./access-http.js";
 import { EngramAccessInputError, type EngramAccessService } from "./access-service.js";
 import { parseConfig } from "./config.js";
 import { readPair, writePair } from "./contradiction/contradiction-review.js";
+import { projectTagProjectId } from "./coding/coding-namespace.js";
 import type { StorageManager } from "./storage.js";
 
 test("HTTP server rejects invalid constructor ports", () => {
@@ -146,19 +147,20 @@ test("HTTP coding-context endpoint accepts projectTag shorthand", async () => {
       },
       body: JSON.stringify({
         sessionKey: "s1",
-        projectTag: "blend-supply",
+        projectTag: "Blend/Supply",
       }),
     });
 
+    const projectId = projectTagProjectId("Blend/Supply");
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { ok: true });
     assert.deepEqual(calls, [
       {
         sessionKey: "s1",
         codingContext: {
-          projectId: "tag:blend-supply",
+          projectId,
           branch: null,
-          rootPath: "tag:blend-supply",
+          rootPath: projectId,
           defaultBranch: null,
         },
       },

@@ -19,6 +19,7 @@ import {
   type GraphEvent,
 } from "./graph-events.js";
 import { expandTildePath } from "./utils/path.js";
+import { projectTagProjectId } from "./coding/coding-namespace.js";
 
 export interface EngramAccessHttpServerOptions {
   service: EngramAccessService;
@@ -170,11 +171,11 @@ function codingContextFromProjectTag(projectTag: string): {
   rootPath: string;
   defaultBranch: string | null;
 } {
-  const tag = projectTag.trim();
+  const projectId = projectTagProjectId(projectTag);
   return {
-    projectId: `tag:${tag}`,
+    projectId,
     branch: null,
-    rootPath: `tag:${tag}`,
+    rootPath: projectId,
     defaultBranch: null,
   };
 }
