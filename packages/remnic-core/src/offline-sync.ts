@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   lstat,
   mkdir,
+  open,
   readdir,
   readFile,
   rename,
@@ -13,6 +14,7 @@ import path from "node:path";
 import {
   DEFAULT_TRANSFER_EXCLUDE_DIRS,
 } from "./transfer/exclusions.js";
+import { isEncryptedFile, MAGIC_HEADER_SIZE } from "./secure-store/secure-fs.js";
 import {
   prepareSafeArchiveRoot,
   resolveSafeArchiveTarget,
@@ -25,6 +27,7 @@ import { parseFlexibleIsoTimestamp } from "./utils/iso-timestamp.js";
 export const OFFLINE_SYNC_SNAPSHOT_FORMAT = "remnic.offline-sync.snapshot.v1";
 export const OFFLINE_SYNC_CHANGESET_FORMAT = "remnic.offline-sync.changeset.v1";
 export const OFFLINE_SYNC_STATE_VERSION = 1;
+export const OFFLINE_SYNC_FILE_CONTENT_MAX_CHUNK_BYTES = 64 * 1024 * 1024;
 
 export interface OfflineSyncFileState {
   path: string;
@@ -124,6 +127,13 @@ export interface OfflineSyncFileTarget {
 }
 
 export interface OfflineSyncFileWriteTarget extends OfflineSyncFileTarget {
+  content: Buffer;
+}
+
+export interface OfflineSyncFileContentChunk extends Omit<OfflineSyncFileState, "sha256"> {
+  sha256?: string;
+  offset: number;
+  chunkBytes: number;
   content: Buffer;
 }
 
@@ -435,6 +445,35 @@ async function readOfflineSyncFileRecord(
   };
 }
 
+async function fileIsSecureStoreEncrypted(filePath: string): Promise<boolean> {
+  const handle = await open(filePath, "r");
+  try {
+    const header = Buffer.alloc(MAGIC_HEADER_SIZE);
+    const { bytesRead } = await handle.read(header, 0, header.length, 0);
+    return bytesRead >= MAGIC_HEADER_SIZE && isEncryptedFile(header);
+  } finally {
+    await handle.close();
+  }
+}
+
+async function readPlainFileContentChunk(options: {
+  filePath: string;
+  offset: number;
+  length: number;
+  bytes: number;
+}): Promise<Buffer> {
+  const chunkBytes = Math.min(options.length, options.bytes - options.offset);
+  const chunk = Buffer.alloc(chunkBytes);
+  if (chunkBytes === 0) return chunk;
+  const handle = await open(options.filePath, "r");
+  try {
+    const { bytesRead } = await handle.read(chunk, 0, chunk.length, options.offset);
+    return bytesRead === chunk.length ? chunk : chunk.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
+}
+
 export async function buildOfflineSyncSnapshot(options: {
   root: string;
   sourceId: string;
@@ -527,6 +566,81 @@ export async function buildOfflineSyncSnapshotForPaths(options: {
     sourceId: normalizeSourceId(options.sourceId, "sourceId"),
     includeTranscripts,
     files: files.sort(compareByPath),
+  };
+}
+
+export async function readOfflineSyncFileContentChunk(options: {
+  root: string;
+  path: string;
+  offset?: number;
+  length?: number;
+  includeTranscripts?: boolean;
+  readFile?: (target: OfflineSyncFileTarget) => Promise<Buffer>;
+}): Promise<OfflineSyncFileContentChunk> {
+  const rootAbs = path.resolve(options.root);
+  const root = await prepareSafeArchiveRoot(rootAbs, "readOfflineSyncFileContentChunk", "root");
+  const includeTranscripts = options.includeTranscripts !== false;
+  const relPath = normalizeRelativePath(options.path, "path");
+  if (shouldExcludeRelPath(relPath, includeTranscripts)) {
+    throw new Error(`offline sync file content path is excluded: ${relPath}`);
+  }
+  const offset = options.offset === undefined
+    ? 0
+    : assertNonNegativeInteger(options.offset, "offset");
+  const requestedLength = options.length === undefined
+    ? OFFLINE_SYNC_FILE_CONTENT_MAX_CHUNK_BYTES
+    : assertNonNegativeInteger(options.length, "length");
+  if (requestedLength < 1 || requestedLength > OFFLINE_SYNC_FILE_CONTENT_MAX_CHUNK_BYTES) {
+    throw new Error(
+      `length must be an integer from 1 to ${OFFLINE_SYNC_FILE_CONTENT_MAX_CHUNK_BYTES}`,
+    );
+  }
+  const filePath = await resolveSafeArchiveTarget(root, relPath);
+  const st = await lstat(filePath).catch((error: unknown) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  });
+  if (!st || st.isSymbolicLink() || !st.isFile()) {
+    throw new Error(`offline sync file content path not found: ${relPath}`);
+  }
+  const encrypted = await fileIsSecureStoreEncrypted(filePath);
+  if (!encrypted) {
+    if (offset > st.size) {
+      throw new Error(`offset must be <= file size for ${relPath}`);
+    }
+    const chunk = await readPlainFileContentChunk({
+      filePath,
+      offset,
+      length: requestedLength,
+      bytes: st.size,
+    });
+    return {
+      path: relPath,
+      bytes: st.size,
+      mtimeMs: st.mtimeMs,
+      offset,
+      chunkBytes: chunk.length,
+      content: chunk,
+    };
+  }
+  if (!options.readFile) {
+    throw new Error(`offline sync file content requires a secure-store read hook: ${relPath}`);
+  }
+  const content = await options.readFile({ root: root.abs, path: relPath, filePath });
+  if (offset > content.length) {
+    throw new Error(`offset must be <= file size for ${relPath}`);
+  }
+  const digest = sha256Buffer(content);
+  const end = Math.min(content.length, offset + requestedLength);
+  const chunk = content.subarray(offset, end);
+  return {
+    path: relPath,
+    sha256: digest.sha256,
+    bytes: digest.bytes,
+    mtimeMs: st.mtimeMs,
+    offset,
+    chunkBytes: chunk.length,
+    content: Buffer.from(chunk),
   };
 }
 
