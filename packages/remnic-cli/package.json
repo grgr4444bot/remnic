@@ -1,6 +1,6 @@
 {
   "name": "@remnic/cli",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "description": "CLI for Remnic memory — init, query, doctor, daemon management",
   "type": "module",
   "main": "dist/index.js",
