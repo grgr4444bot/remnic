@@ -77,13 +77,14 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@remnic/core": "workspace:^",
+    "@remnic/core": "^1.1.12",
     "openai": "^6.0.0"
   },
   "peerDependencies": {
     "openclaw": ">=2026.5.16-beta.1"
   },
   "devDependencies": {
+    "@remnic/core": "workspace:^",
     "@openclaw/plugin-inspector": "0.3.10",
     "acorn": "^8.16.0",
     "tsup": "^8.5.1",

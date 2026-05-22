@@ -44,9 +44,10 @@
  */
 
 import { lstat, mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
-import { generateSalt, open, seal } from "./cipher.js";
+import { generateSalt, open, parseEnvelope, seal } from "./cipher.js";
 
 // ---------------------------------------------------------------------------
 // Error classes
@@ -156,6 +157,7 @@ export function decryptFileBody(buf: Buffer, key: Buffer, aad?: Buffer): Buffer 
     throw new Error(`decryptFileBody: unknown flags byte 0x${flags.toString(16).padStart(2, "0")}`);
   }
   const envelope = buf.subarray(MAGIC_HEADER_SIZE);
+  parseEnvelope(envelope);
   try {
     return open(key, envelope, aad ? { aad } : {});
   } catch (err) {
@@ -252,7 +254,7 @@ export interface WriteMaybeEncryptedFileOptions {
  * - If `key` is provided and non-null, encrypt the content first.
  * - If `key` is null, write the content as plain UTF-8 (unencrypted store).
  *
- * Writes atomically: content is written to a `.tmp-<pid>-<ts>` file
+ * Writes atomically: content is written to a unique temp file
  * first, then renamed into place (CLAUDE.md gotcha #54 — never delete
  * before write).
  */
@@ -275,7 +277,7 @@ export async function writeMaybeEncryptedFile(
   }
 
   if (atomic) {
-    const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+    const tempPath = uniqueAtomicTempPath(filePath, "tmp");
     try {
       await writeFile(tempPath, data, { mode });
       await rename(tempPath, filePath);
@@ -364,7 +366,7 @@ export async function migrateMemoryDirToEncrypted(
       const encrypted = encryptFileBody(content, key, aad);
 
       // Atomic write: temp → rename (gotcha #54).
-      const tempPath = `${filePath}.enc-tmp-${process.pid}-${Date.now()}`;
+      const tempPath = uniqueAtomicTempPath(filePath, "enc-tmp");
       try {
         await writeFile(tempPath, encrypted, { mode: 0o600 });
         await rename(tempPath, filePath);
@@ -417,7 +419,7 @@ export async function decryptMemoryDirToPlaintext(
 
       const aad = filePathAad(filePath, storageAadRootForFile(filePath, dir));
       const plaintext = decryptFileBody(buf, key, aad);
-      const tempPath = `${filePath}.dec-tmp-${process.pid}-${Date.now()}`;
+      const tempPath = uniqueAtomicTempPath(filePath, "dec-tmp");
       try {
         await writeFile(tempPath, plaintext, { mode: 0o600 });
         await rename(tempPath, filePath);
@@ -444,6 +446,10 @@ export async function decryptMemoryDirToPlaintext(
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+function uniqueAtomicTempPath(filePath: string, label: string): string {
+  return `${filePath}.${label}-${process.pid}-${Date.now()}-${randomUUID()}`;
+}
 
 /**
  * Recursively collect files under `dir` that are read through the

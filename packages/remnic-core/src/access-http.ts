@@ -121,6 +121,36 @@ function parseTrustZoneFilter(raw: string | null): TrustZoneName | undefined {
   throw new HttpError(400, "zone must be one of quarantine|working|trusted", "invalid_zone_filter");
 }
 
+function parseStrictIntegerQuery(
+  raw: string | null,
+  field: string,
+  defaultValue: number,
+  minValue: number,
+): number {
+  if (raw === null) return defaultValue;
+  if (!/^(?:0|[1-9]\d*)$/.test(raw)) {
+    throw new HttpError(400, `${field} must be an integer`, `invalid_${field}`);
+  }
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < minValue) {
+    throw new HttpError(400, `${field} must be an integer >= ${minValue}`, `invalid_${field}`);
+  }
+  return value;
+}
+
+function parseMemorySort(raw: string | null): "updated_desc" | "updated_asc" | "created_desc" | "created_asc" | undefined {
+  if (raw === null) return undefined;
+  if (
+    raw === "updated_desc" ||
+    raw === "updated_asc" ||
+    raw === "created_desc" ||
+    raw === "created_asc"
+  ) {
+    return raw;
+  }
+  throw new HttpError(400, "sort must be one of updated_desc|updated_asc|created_desc|created_asc", "invalid_sort");
+}
+
 /**
  * Decode a `:peerId` URL path segment, converting malformed percent-encoded
  * input (e.g., `%E0%A4%A`) into a 400 client error rather than letting
@@ -132,6 +162,21 @@ function decodePeerIdSegment(raw: string): string {
   } catch {
     throw new EngramAccessInputError("peerId path segment is not valid percent-encoded input");
   }
+}
+
+function codingContextFromProjectTag(projectTag: string): {
+  projectId: string;
+  branch: string | null;
+  rootPath: string;
+  defaultBranch: string | null;
+} {
+  const tag = projectTag.trim();
+  return {
+    projectId: `tag:${tag}`,
+    branch: null,
+    rootPath: `tag:${tag}`,
+    defaultBranch: null,
+  };
 }
 
 export class EngramAccessHttpServer {
@@ -302,14 +347,15 @@ export class EngramAccessHttpServer {
   }
 
   /** Cache for per-request identity resolution (avoids double adapter resolution) */
-  private identityCache = new WeakMap<IncomingMessage, { principal?: string; namespace?: string }>();
+  private identityCache = new WeakMap<IncomingMessage, { principal?: string; namespace?: string; sessionKey?: string }>();
 
-  /** Resolve principal and namespace from request headers and adapter identity */
-  private resolveRequestIdentity(req: IncomingMessage): { principal?: string; namespace?: string } {
+  /** Resolve principal, namespace, and session key from request headers and adapter identity */
+  private resolveRequestIdentity(req: IncomingMessage): { principal?: string; namespace?: string; sessionKey?: string } {
     const cached = this.identityCache.get(req);
     if (cached) return cached;
     let principal: string | undefined;
     let namespace: string | undefined;
+    let sessionKey: string | undefined;
 
     // Explicit header override takes priority for principal
     if (this.trustPrincipalHeader) {
@@ -323,20 +369,22 @@ export class EngramAccessHttpServer {
       }
     }
 
-    // Try adapter-based identity resolution for both principal and namespace
+    if (!principal) {
+      principal = this.authenticatedPrincipal;
+    }
+
+    // Try adapter-based identity resolution for namespace and, only when no
+    // server principal is configured, an adapter-owned default principal.
     const adapterIdentity = this.resolveAdapterIdentity(req);
     if (adapterIdentity) {
       if (!principal) {
         principal = adapterIdentity.principal;
       }
       namespace = adapterIdentity.namespace;
+      sessionKey = adapterIdentity.sessionKey;
     }
 
-    if (!principal) {
-      principal = this.authenticatedPrincipal;
-    }
-
-    const result = { principal, namespace };
+    const result = { principal, namespace, sessionKey };
     this.identityCache.set(req, result);
     return result;
   }
@@ -384,10 +432,6 @@ export class EngramAccessHttpServer {
     const parsed = new URL(req.url ?? "/", `http://${hostToUrlAuthority(this.host)}`);
     const pathname = parsed.pathname;
 
-    if (this.adminConsoleEnabled && await this.handleAdminConsole(req, res, pathname)) {
-      return;
-    }
-
     if (!this.isAuthorized(req, pathname)) {
       const body = JSON.stringify({ error: "unauthorized", code: "unauthorized" });
       res.writeHead(401, {
@@ -396,6 +440,10 @@ export class EngramAccessHttpServer {
         "x-request-id": correlationId,
       });
       res.end(body);
+      return;
+    }
+
+    if (this.adminConsoleEnabled && await this.handleAdminConsole(req, res, pathname)) {
       return;
     }
 
@@ -542,9 +590,17 @@ export class EngramAccessHttpServer {
     // doctor` (PR 8) surfaces the attached context.
     if (req.method === "POST" && pathname === "/engram/v1/coding-context") {
       const body = await this.readValidatedBody(req, "setCodingContext");
+      const codingContext =
+        body.codingContext !== undefined
+          ? body.codingContext
+          : typeof body.projectTag === "string"
+            ? codingContextFromProjectTag(body.projectTag)
+            : (() => {
+                throw new EngramAccessInputError("codingContext or projectTag is required");
+              })();
       this.service.setCodingContext({
         sessionKey: body.sessionKey,
-        codingContext: body.codingContext,
+        codingContext,
       });
       this.respondJson(res, 200, { ok: true });
       return;
@@ -582,6 +638,7 @@ export class EngramAccessHttpServer {
         namespace: this.resolveNamespace(req, body.namespace),
         principal: this.resolveRequestPrincipal(req),
         mode: body.mode,
+        passphrase: body.passphrase,
       });
       this.recordWriteRateLimitHit();
       this.respondJson(res, 200, result);
@@ -961,15 +1018,9 @@ export class EngramAccessHttpServer {
     }
 
     if (req.method === "GET" && pathname === "/engram/v1/memories") {
-      const limitRaw = parseInt(parsed.searchParams.get("limit") ?? "50", 10);
-      const offsetRaw = parseInt(parsed.searchParams.get("offset") ?? "0", 10);
-      const sortParam = parsed.searchParams.get("sort") ?? undefined;
-      const sort = sortParam === "updated_desc"
-        || sortParam === "updated_asc"
-        || sortParam === "created_desc"
-        || sortParam === "created_asc"
-        ? sortParam
-        : undefined;
+      const limit = parseStrictIntegerQuery(parsed.searchParams.get("limit"), "limit", 50, 1);
+      const offset = parseStrictIntegerQuery(parsed.searchParams.get("offset"), "offset", 0, 0);
+      const sort = parseMemorySort(parsed.searchParams.get("sort"));
       const response = await this.service.memoryBrowse({
         query: parsed.searchParams.get("q") ?? undefined,
         status: parsed.searchParams.get("status") ?? undefined,
@@ -977,8 +1028,8 @@ export class EngramAccessHttpServer {
         namespace: parsed.searchParams.get("namespace") ?? undefined,
         authenticatedPrincipal: this.resolveRequestPrincipal(req),
         sort,
-        limit: Number.isFinite(limitRaw) ? limitRaw : 50,
-        offset: Number.isFinite(offsetRaw) ? offsetRaw : 0,
+        limit,
+        offset,
       });
       this.respondJson(res, 200, response);
       return;
@@ -997,21 +1048,20 @@ export class EngramAccessHttpServer {
     if (req.method === "GET" && timelineMatch) {
       const memoryId = decodeURIComponent(timelineMatch[1] ?? "");
       const namespace = parsed.searchParams.get("namespace") ?? undefined;
-      const limitRaw = parseInt(parsed.searchParams.get("limit") ?? "200", 10);
-      const limit = Number.isFinite(limitRaw) ? limitRaw : 200;
+      const limit = parseStrictIntegerQuery(parsed.searchParams.get("limit"), "limit", 200, 1);
       const response = await this.service.memoryTimeline(memoryId, namespace, limit, this.resolveRequestPrincipal(req));
       this.respondJson(res, response.found ? 200 : 404, response);
       return;
     }
 
     if (req.method === "GET" && pathname === "/engram/v1/entities") {
-      const limitRaw = parseInt(parsed.searchParams.get("limit") ?? "50", 10);
-      const offsetRaw = parseInt(parsed.searchParams.get("offset") ?? "0", 10);
+      const limit = parseStrictIntegerQuery(parsed.searchParams.get("limit"), "limit", 50, 1);
+      const offset = parseStrictIntegerQuery(parsed.searchParams.get("offset"), "offset", 0, 0);
       const response = await this.service.entityList({
         namespace: parsed.searchParams.get("namespace") ?? undefined,
         query: parsed.searchParams.get("q") ?? undefined,
-        limit: Number.isFinite(limitRaw) ? limitRaw : 50,
-        offset: Number.isFinite(offsetRaw) ? offsetRaw : 0,
+        limit,
+        offset,
       });
       this.respondJson(res, 200, response);
       return;
@@ -1079,16 +1129,16 @@ export class EngramAccessHttpServer {
     }
 
     if (req.method === "GET" && pathname === "/engram/v1/trust-zones/records") {
-      const limitRaw = parseInt(parsed.searchParams.get("limit") ?? "25", 10);
-      const offsetRaw = parseInt(parsed.searchParams.get("offset") ?? "0", 10);
+      const limit = parseStrictIntegerQuery(parsed.searchParams.get("limit"), "limit", 25, 1);
+      const offset = parseStrictIntegerQuery(parsed.searchParams.get("offset"), "offset", 0, 0);
       const response = await this.service.trustZoneBrowse({
         query: parsed.searchParams.get("q") ?? undefined,
         zone: parseTrustZoneFilter(parsed.searchParams.get("zone")),
         kind: parseTrustZoneKindFilter(parsed.searchParams.get("kind")),
         sourceClass: parseTrustZoneSourceClassFilter(parsed.searchParams.get("sourceClass")),
         namespace: parsed.searchParams.get("namespace") ?? undefined,
-        limit: Number.isFinite(limitRaw) ? limitRaw : 25,
-        offset: Number.isFinite(offsetRaw) ? offsetRaw : 0,
+        limit,
+        offset,
       }, this.resolveRequestPrincipal(req));
       this.respondJson(res, 200, response);
       return;
@@ -1234,7 +1284,7 @@ export class EngramAccessHttpServer {
         return;
       }
       const namespace = parsed.searchParams.get("namespace") ?? undefined;
-      const limitRaw = parseInt(parsed.searchParams.get("limit") ?? "50", 10);
+      const limit = parseStrictIntegerQuery(parsed.searchParams.get("limit"), "limit", 50, 1);
       const {
         isDefaultReviewNamespace,
         listPairs,
@@ -1249,7 +1299,7 @@ export class EngramAccessHttpServer {
         filter: rawFilter as "all" | "unresolved" | "contradicts" | "independent" | "duplicates" | "needs-user",
         namespace: reviewNamespace,
         includeUnscopedForNamespace,
-        limit: Number.isFinite(limitRaw) ? limitRaw : 50,
+        limit,
       });
       this.respondJson(res, 200, result);
       return;
@@ -1791,8 +1841,11 @@ export class EngramAccessHttpServer {
       return typeof raw === "string" ? raw.trim() : undefined;
     })();
     const mcpCorrelationId = correlationIdStore.getStore() ?? randomUUID();
+    const requestIdentity = this.resolveRequestIdentity(req);
     const response = await this.mcpServer.handleRequest(request, {
-      principalOverride: this.resolveRequestPrincipal(req),
+      principalOverride: requestIdentity.principal,
+      namespaceOverride: requestIdentity.namespace,
+      sessionKeyOverride: requestIdentity.sessionKey,
       sessionId,
       correlationId: mcpCorrelationId,
     });
