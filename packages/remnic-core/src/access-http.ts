@@ -433,6 +433,10 @@ export class EngramAccessHttpServer {
     const parsed = new URL(req.url ?? "/", `http://${hostToUrlAuthority(this.host)}`);
     const pathname = parsed.pathname;
 
+    if (this.adminConsoleEnabled && await this.handleAdminConsole(req, res, pathname)) {
+      return;
+    }
+
     if (!this.isAuthorized(req, pathname)) {
       const body = JSON.stringify({ error: "unauthorized", code: "unauthorized" });
       res.writeHead(401, {
@@ -441,10 +445,6 @@ export class EngramAccessHttpServer {
         "x-request-id": correlationId,
       });
       res.end(body);
-      return;
-    }
-
-    if (this.adminConsoleEnabled && await this.handleAdminConsole(req, res, pathname)) {
       return;
     }
 
