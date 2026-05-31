@@ -1355,15 +1355,7 @@ ${truncatedConversation}`;
         {
           role: "system",
           content:
-            this.buildExtractionInstructions(existingEntities) +
-            `\n\nRespond with valid JSON matching this schema:
-{
-  "facts": [{"category": "decision", "content": "Chose React over Vue for the dashboard rewrite", "importance": 8, "confidence": 0.9, "tags": ["frontend"], "scope": "project", "structuredAttributes": {"chosen": "React", "rejected": "Vue"}}, {"category": "fact", "content": "The API gateway uses rate limiting at 1000 req/min", "importance": 6, "confidence": 0.95, "tags": ["infra"], "scope": "project", "entityRef": "project-dashboard", "structuredAttributes": {"rate_limit": "1000 req/min"}}, {"category": "reasoning_trace", "content": "How I chose the dashboard rewrite framework", "confidence": 0.9, "tags": ["frontend"], "scope": "project", "reasoningTrace": {"steps": [{"order": 1, "description": "Listed constraints: SSR needed, team mostly JS"}, {"order": 2, "description": "Ran a spike in Vue 3 — worked, but ecosystem felt thin for our needs"}, {"order": 3, "description": "Ran the same spike in React — integrated faster with Next.js"}], "finalAnswer": "Picked React with Next.js for SSR + ecosystem fit"}}],
-  "entities": [{"name": "person-sarah-chen", "type": "person", "facts": ["Leads the backend team", "Joined from Google in 2024"], "structuredSections": [{"key": "beliefs", "title": "Beliefs", "facts": ["Small teams should own whole systems."]}]}, {"name": "project-dashboard", "type": "project", "facts": ["React-based admin panel", "Deployed on AWS ECS"]}],
-  "profileUpdates": ["User prefers TypeScript over plain JavaScript"],
-  "questions": [{"question": "What database does the analytics service use?", "context": "Came up during discussion of migration plan", "priority": 0.5}],
-  "relationships": [{"source": "person-sarah-chen", "target": "project-dashboard", "label": "leads development of"}]
-}`,
+            this.buildExtractionInstructions(existingEntities),
         },
         { role: "user", content: conversation },
       ],
@@ -1539,7 +1531,16 @@ Finally, write a brief identity reflection about the AGENT who had this conversa
 - Did the agent handle the user's needs well or miss something?
 - What behavioral tendencies are visible? (e.g., cautious, creative, thorough, impatient)
 - What could the agent improve next time?
-Do NOT write about the extraction process itself. Do NOT say things like "I extracted durable facts" — that's about YOUR job, not the agent's behavior.`;
+Do NOT write about the extraction process itself. Do NOT say things like "I extracted durable facts" — that's about YOUR job, not the agent's behavior.
+
+Respond with valid JSON matching this exact schema:
+{
+  "facts": [{"category": "decision", "content": "Chose PostgreSQL over MongoDB for the user service", "confidence": 0.9, "scope": "project", "structuredAttributes": {"chosen": "PostgreSQL", "rejected": "MongoDB"}}, {"category": "procedure", "content": "When you cut a hotfix release, follow the checklist", "confidence": 0.9, "scope": "project", "procedureSteps": [{"order": 1, "intent": "Branch from main and cherry-pick the fix"}, {"order": 2, "intent": "Run CI and tag the release"}]}, {"category": "reasoning_trace", "content": "How I debugged the staging latency spike", "confidence": 0.9, "scope": "project", "reasoningTrace": {"steps": [{"order": 1, "description": "Checked CPU/memory dashboards"}, {"order": 2, "description": "Ran traceroute and saw retries against cache tier"}, {"order": 3, "description": "Tailed cache-tier logs and spotted eviction storms"}], "finalAnswer": "Root cause was an undersized eviction policy on the session cache", "observedOutcome": "Increased cache size, p95 returned to baseline within 10 minutes"}}, {"category": "commitment", "content": "Must ship v2.0 API by end of March", "confidence": 1.0, "scope": "project", "structuredAttributes": {"deadline": "end of March", "deliverable": "v2.0 API"}}, {"category": "fact", "content": "The store backend uses Redis for session caching", "confidence": 0.95, "scope": "project", "entityRef": "project-acme-store"}, {"category": "principle", "content": "Always run migrations in a transaction to avoid partial schema updates", "confidence": 0.9, "scope": "global"}],
+  "entities": [{"name": "person-jane-doe", "type": "person", "facts": ["Works at Acme Corp", "Prefers Python over JavaScript"]}, {"name": "project-acme-store", "type": "project", "facts": ["Built with Next.js", "Deployed on Vercel"]}],
+  "profileUpdates": ["User prefers dark mode in all editors"],
+  "questions": [{"question": "Which cloud provider hosts the staging environment?", "context": "Came up during deployment discussion", "priority": 0.5}],
+  "relationships": [{"source": "person-jane-doe", "target": "company-acme-corp", "label": "works at"}]
+}`;
   }
 
   async consolidate(
