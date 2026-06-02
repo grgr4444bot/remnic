@@ -215,17 +215,17 @@ export class FallbackLlmClient {
 
     try {
       const candidates = extractJsonCandidates(response.content);
-      log.debug(`fallback LLM: extraction raw response (${response.content?.length ?? 0} chars): ${response.content?.substring(0, 500)}`);
-      log.debug(`fallback LLM: extraction response (${response.content?.length ?? 0} chars), ${candidates.length} JSON candidate(s)`);
+      log.info(`fallback LLM: extraction raw response (${response.content?.length ?? 0} chars): ${response.content?.substring(0, 500)}`);
+      log.info(`fallback LLM: extraction response (${response.content?.length ?? 0} chars), ${candidates.length} JSON candidate(s)`);
       for (const c of candidates) {
         try {
           const parsed = JSON.parse(c);
           return { result: schema.parse(parsed), modelUsed: response.modelUsed };
         } catch (err) {
-          log.debug(`fallback LLM: candidate failed: ${err instanceof Error ? err.message : String(err)}`);
+          log.warn(`fallback LLM: candidate failed: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
-      log.debug(`fallback LLM: all ${candidates.length} candidates failed schema validation`);
+      log.warn(`fallback LLM: all ${candidates.length} candidates failed schema validation`);
       return null;
     } catch (err) {
       log.warn("fallback LLM: failed to parse structured output:", err);
