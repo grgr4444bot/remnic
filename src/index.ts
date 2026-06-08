@@ -725,17 +725,23 @@ const pluginDefinition = {
       `SDK detection: version=${sdkCaps.sdkVersion}, beforePromptBuild=${sdkCaps.hasBeforePromptBuild}, memoryPromptSection=${sdkCaps.hasRegisterMemoryPromptSection}, memoryCapability=${sdkCaps.hasRegisterMemoryCapability}, typedHooks=${sdkCaps.hasTypedHooks}`,
     );
 
-    // Metadata/setup loaders invoke register() to inspect static surfaces. Keep
-    // those paths inert: no migrations, config reads, hooks, services, or tools.
     if (isNonRuntimeRegistrationMode(sdkCaps.registrationMode)) {
-      log.info(
-        `registrationMode=${sdkCaps.registrationMode} — skipping runtime initialization`,
-      );
-      // Register tool stubs so the tool policy can match `alsoAllow` entries
-      // during isolated/cron sessions. Without these, the policy evaluates
-      // against an empty registry and discards allowlist entries as "unknown".
-      registerToolStubs(api);
-      return;
+      // If an orchestrator already exists (from main gateway init in this
+      // process), proceed with full init so tools actually work in cron
+      // sessions instead of returning "not initialized" stubs.
+      if ((globalThis as any)[keys.ORCHESTRATOR]) {
+        log.info(
+          `registrationMode=${sdkCaps.registrationMode} — but orchestrator exists, proceeding with full init`,
+        );
+      } else {
+        log.info(
+          `registrationMode=${sdkCaps.registrationMode} — no orchestrator yet, registering stubs only`,
+        );
+        // Register tool stubs so the tool policy can match `alsoAllow` entries
+        // during isolated/cron sessions before the main gateway init completes.
+        registerToolStubs(api);
+        return;
+      }
     }
 
     const disableRegisterMigration =

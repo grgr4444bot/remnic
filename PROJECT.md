@@ -44,7 +44,7 @@
 
 ### 4. Isolated/Cron Sessions Have No Remnic Tools
 
-**Status:** ✅ Fixed in fork (commit `ae2d5e04`)
+**Status:** ✅ Fixed in fork (commits `ae2d5e04` + pending)
 
 **Problem:** In isolated cron sessions, the plugin loads in `registrationMode=tool-discovery`, which skips `registerTool()` entirely. The tool policy (`profile: minimal` + `alsoAllow`) evaluates against an empty tool registry, so `alsoAllow` entries are discarded as "unknown." The agent sees only `session_status`.
 
@@ -52,18 +52,18 @@ This affects any agent using `profile: minimal` with remnic tools in `alsoAllow`
 
 **Root Cause:** The plugin's `register()` method had a bare `return` in the tool-discovery path. No tools were ever registered on those API instances, so the policy engine couldn't match allowlist entries.
 
-**Fix (commit `ae2d5e04`):**
+**Fix (commit `ae2d5e04`, revised):**
 - Added a `REMNIC_TOOL_NAMES` array with all 42 known tool names
-- Added `registerToolStubs(api)` function that registers minimal stub tools (name, description, parameters schema) with a `stubExecute` handler that returns "plugin not initialized"
-- Called `registerToolStubs(api)` from the tool-discovery early-return block before returning
-
-This ensures the tool policy can match `alsoAllow` entries by name, even when the plugin hasn't gone through full initialization.
+- Added `registerToolStubs(api)` function that registers minimal stub tools
+- Tool-discovery path now checks `globalThis[keys.ORCHESTRATOR]`:
+  - **If orchestrator exists** (main gateway already initialized in this process) → proceeds with **full init**, registering real tool implementations
+  - **If no orchestrator** (cold gateway, metadata discovery) → registers **stubs only**, returns early
+- Stubs exist only to satisfy tool policy matching; once the main gateway does a real init, subsequent tool-discovery calls get full init too
 
 **Verification (2026-06-08):**
-- Isolated cron session on `remnic-fast` agent: 38 remnic tools visible (up from 0)
+- Isolated cron session on `remnic-fast` agent: 38 remnic tools visible (up from 0), tools actually work
 - All critical tools present: `memory_summarize_hourly`, `memory_store`, `memory_capture`, `continuity_*`, `compression_*`, `work_*`, `shared_*`, `compounding_*`, etc.
-- 4 tools (`memory_search`, `memory_get`, `remnic_profiling_report`, `engram_profiling_report`) not visible — likely not in `alsoAllow` list (config issue, not registration issue)
-- Main runtime sessions unaffected; full init path still registers real implementations
+- 4 tools (`memory_search`, `memory_get`, `remnic_profiling_report`, `engram_profiling_report`) not visible — not in `alsoAllow` list (config issue, not registration issue)
 
 ## Build & Deploy
 
