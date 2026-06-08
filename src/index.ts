@@ -605,6 +605,88 @@ function isNonRuntimeRegistrationMode(
   return typeof mode === "string" && NON_RUNTIME_REGISTRATION_MODES.has(mode);
 }
 
+/**
+ * Tool names known to Remnic.
+ * Registered as stubs in tool-discovery mode so the tool policy can match
+ * `alsoAllow` entries. Without these, policy evaluation sees zero tools and
+ * reports allowlist entries as "unknown", leaving isolated/cron sessions
+ * with only built-in tools like `session_status`.
+ */
+const REMNIC_TOOL_NAMES: readonly string[] = [
+  "memory_search",
+  "memory_get",
+  "continuity_audit_generate",
+  "continuity_incident_open",
+  "continuity_incident_close",
+  "continuity_incident_list",
+  "continuity_loop_add_or_update",
+  "continuity_loop_review",
+  "identity_anchor_get",
+  "identity_anchor_update",
+  "memory_feedback",
+  "memory_last_recall",
+  "memory_intent_debug",
+  "memory_qmd_debug",
+  "memory_graph_explain_last_recall",
+  "memory_feedback_last_recall",
+  "context_checkpoint",
+  "memory_action_apply",
+  "compression_guidelines_optimize",
+  "compression_guidelines_activate",
+  "memory_store",
+  "memory_capture",
+  "memory_promote",
+  "memory_profile",
+  "memory_entities",
+  "memory_questions",
+  "memory_identity",
+  "memory_governance_run",
+  "memory_summarize_hourly",
+  "conversation_index_update",
+  "work_task",
+  "work_project",
+  "work_board",
+  "shared_context_write_output",
+  "shared_feedback_record",
+  "shared_priorities_append",
+  "shared_context_cross_signals_run",
+  "shared_context_curate_daily",
+  "compounding_weekly_synthesize",
+  "compounding_promote_candidate",
+  "remnic_profiling_report",
+  "engram_profiling_report",
+];
+
+/**
+ * Register minimal tool stubs so the tool policy can resolve `alsoAllow`
+ * entries before the plugin has a chance to fully initialize.
+ * Called from the tool-discovery early-return path.
+ */
+function registerToolStubs(api: OpenClawPluginApi): void {
+  if (typeof api.registerTool !== "function") return;
+  const stubExecute = async () => ({
+    content: [
+      {
+        type: "text" as const,
+        text: "Remnic plugin not fully initialized in this session (tool-discovery mode). Tools are registered as stubs to satisfy tool policy matching. No operations are available until the plugin initializes in a runtime session.",
+      },
+    ],
+    details: undefined,
+  });
+  for (const name of REMNIC_TOOL_NAMES) {
+    api.registerTool({
+      name,
+      label: name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+      description: `Stub: ${name} (plugin not initialized)`,
+      parameters: {},
+      execute: stubExecute,
+    });
+  }
+  log.info(
+    `registered ${REMNIC_TOOL_NAMES.length} tool stubs for allowlist matching (tool-discovery mode)`,
+  );
+}
+
 const pluginDefinition = {
   id: PLUGIN_ID,
   name: "Remnic (Local Memory)",
@@ -649,6 +731,10 @@ const pluginDefinition = {
       log.info(
         `registrationMode=${sdkCaps.registrationMode} — skipping runtime initialization`,
       );
+      // Register tool stubs so the tool policy can match `alsoAllow` entries
+      // during isolated/cron sessions. Without these, the policy evaluates
+      // against an empty registry and discards allowlist entries as "unknown".
+      registerToolStubs(api);
       return;
     }
 
