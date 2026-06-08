@@ -42,6 +42,29 @@
 
 **Findings:** The `before_prompt_build` hook fires every turn, runs recall asynchronously, and caches the result. The `registerMemoryPromptSection` synchronous builder returns pre-computed lines from cache. If injection seems to only happen at session start, check SDK version, `hooks.allowPromptInjection`, session toggles, or cron recall mode settings.
 
+### 4. Isolated/Cron Sessions Have No Remnic Tools
+
+**Status:** ✅ Fixed in fork (commit `ae2d5e04`)
+
+**Problem:** In isolated cron sessions, the plugin loads in `registrationMode=tool-discovery`, which skips `registerTool()` entirely. The tool policy (`profile: minimal` + `alsoAllow`) evaluates against an empty tool registry, so `alsoAllow` entries are discarded as "unknown." The agent sees only `session_status`.
+
+This affects any agent using `profile: minimal` with remnic tools in `alsoAllow`.
+
+**Root Cause:** The plugin's `register()` method had a bare `return` in the tool-discovery path. No tools were ever registered on those API instances, so the policy engine couldn't match allowlist entries.
+
+**Fix (commit `ae2d5e04`):**
+- Added a `REMNIC_TOOL_NAMES` array with all 42 known tool names
+- Added `registerToolStubs(api)` function that registers minimal stub tools (name, description, parameters schema) with a `stubExecute` handler that returns "plugin not initialized"
+- Called `registerToolStubs(api)` from the tool-discovery early-return block before returning
+
+This ensures the tool policy can match `alsoAllow` entries by name, even when the plugin hasn't gone through full initialization.
+
+**Verification (2026-06-08):**
+- Isolated cron session on `remnic-fast` agent: 38 remnic tools visible (up from 0)
+- All critical tools present: `memory_summarize_hourly`, `memory_store`, `memory_capture`, `continuity_*`, `compression_*`, `work_*`, `shared_*`, `compounding_*`, etc.
+- 4 tools (`memory_search`, `memory_get`, `remnic_profiling_report`, `engram_profiling_report`) not visible — likely not in `alsoAllow` list (config issue, not registration issue)
+- Main runtime sessions unaffected; full init path still registers real implementations
+
 ## Build & Deploy
 
 ### Building
