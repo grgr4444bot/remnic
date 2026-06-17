@@ -36,11 +36,30 @@
 
 **Findings:** When `modelSource === "gateway"`, remnic intentionally skips local LLM and direct OpenAI clients, routing all extraction through `FallbackLlmClient` which uses the gateway's model chain. This is by design — the plugin controls the prompt but the model selection is up to the gateway config.
 
-### 3. Auto-Injection Only in System Prompt (Not Per-Turn)
+### 3. Recall Injection Timing — Cache Filled Too Late
 
-**Status:** Analyzed — already works per-turn in new SDK
+**Status:** ✅ Fixed (in upstream since ~2026.05.15, present in fork)
 
-**Findings:** The `before_prompt_build` hook fires every turn, runs recall asynchronously, and caches the result. The `registerMemoryPromptSection` synchronous builder returns pre-computed lines from cache. If injection seems to only happen at session start, check SDK version, `hooks.allowPromptInjection`, session toggles, or cron recall mode settings.
+**Problem:** The `buildMemoryPromptSection` synchronous builder was called by the gateway **before** the `before_prompt_build` hook had a chance to populate the recall cache. This meant the cache was always empty when the builder ran, so no memory context was injected into the system prompt.
+
+**Root cause:** Two interrelated issues:
+1. **Session key mismatch:** `memoryBuildFn` defaulted to session key `"default"` while recall stored data under the real session key (e.g., `"agent:main:matrix:direct:@grgr4444:matrix.org"`). Even when the cache was populated, the builder looked up the wrong key.
+2. **Missing `prependSystemContext` return:** In the non-`useMemoryPromptSection` path, `recallHookHandler` did not return `prependSystemContext`, so even correctly cached recall results were never injected into the system prompt.
+
+**Fix applied (2026-05-15):**
+- The `before_prompt_build` hook now pre-computes recall asynchronously and stores results in a per-session cache (`cachedMemoryBySession`) keyed by the real session key.
+- The synchronous `memoryBuildFn` (registered via `registerMemoryPromptSection`) reads from this cache with a destructive get.
+- In the non-`useMemoryPromptSection` path, `recallHookHandler` now returns `{ prependSystemContext, memoryLines }` so memory is injected even without the section builder.
+- The hook wrapper in the `useMemoryPromptSection` path strips the internal `memoryLines` field and returns only `prependSystemContext` (for auxiliary lines like dreams/verbose headers) to the gateway.
+
+**Code locations (installed version):**
+- Hook registration: `src/index.ts` lines ~2097-2138
+- `recallHookHandler` return: lines ~1959-1975
+- Cache functions: lines ~1142-1180
+
+**Verification:** System prompt grew from ~38K to ~46K chars with memory context visible after fix.
+
+**Note on prompt caching:** Injecting recall context into `prependSystemContext` changes the system prompt every turn, which breaks LLM prompt caching. The `useMemoryPromptSection` path avoids this by keeping memory in a separate section builder, but the non-`useMemoryPromptSection` path inherently breaks cache. This is a known trade-off.
 
 ### 4. Isolated/Cron Sessions Have No Remnic Tools
 
@@ -97,6 +116,10 @@ cp -r packages/plugin-openclaw/dist ~/.openclaw/npm/node_modules/@remnic/plugin-
 - Built and deployed fork as drop-in replacement
 - Fixed extraction prompt — added JSON schema example, removed duplicate in direct client (commit `d86f4205`)
 - Analyzed all 3 known issues — extraction prompt was the only real code bug
+
+### 2026-06-17
+
+- **Recall injection timing fix verified:** The fix from 2026-05-15 is present in both the installed plugin and the fork. The `before_prompt_build` hook pre-computes recall and caches it for the synchronous `memoryBuildFn` builder. The non-`useMemoryPromptSection` path also correctly returns `prependSystemContext`. Updated PROJECT.md with full documentation of this fix.
 
 ### 2026-06-02
 
