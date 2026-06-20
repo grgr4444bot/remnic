@@ -2251,14 +2251,15 @@ const pluginDefinition = {
         log.debug(
             `${hookLabel}: returning memory context with ${trimmed.length} chars`,
         );
-        // New SDK (before_prompt_build): only prependSystemContext — gateway
-        // applies both fields separately, so returning both would duplicate.
-        // Legacy (before_agent_start): return both for backward compat with
-        // older gateways that may consume either field.
+        // New SDK (before_prompt_build): always return prependSystemContext.
+        // The registerMemoryPromptSection builder cannot receive sessionKey
+        // from the gateway (it only passes { availableTools, citationsMode }),
+        // so it cannot look up the cache. The hook is the primary injection
+        // mechanism; the builder is a secondary path for SDK parity.
         if (hookLabel === "before_prompt_build") {
           return promptWithVerbose
             ? { prependSystemContext: promptWithVerbose, memoryLines }
-            : { memoryLines };
+            : { prependSystemContext: memoryLines.join("\n").replace(/\n$/, ""), memoryLines };
         }
         return promptWithVerbose
           ? {
@@ -2426,6 +2427,20 @@ const pluginDefinition = {
               sessionIdentity.providerThreadId,
               result.memoryLines,
             );
+          }
+          // Return prependSystemContext with memory context so the gateway
+          // injects it into the system prompt. The registerMemoryPromptSection
+          // builder is a secondary path; the hook is the primary injection
+          // mechanism. Without this, memory is silently dropped when the
+          // builder doesn't receive sessionKey from the gateway (which only
+          // passes { availableTools, citationsMode }).
+          //
+          // When recallHookHandler already returned prependSystemContext (from
+          // the primary recall path), use it directly — don't append another
+          // copy of memoryLines on top (would double-inject).
+          if (result?.memoryLines) {
+            const auxiliary = result.prependSystemContext || result.memoryLines.join("\n").replace(/\n$/, "");
+            return { prependSystemContext: auxiliary, memoryLines: result.memoryLines };
           }
           if (result && "memoryLines" in result) {
             const { memoryLines: _ml, ...gatewayResult } = result;
